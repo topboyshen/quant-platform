@@ -1,0 +1,28 @@
+[Unit]
+Description=Research Ledger local-only API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=researchledger
+Group=researchledger
+WorkingDirectory=/opt/research-ledger
+Environment=LEDGER_DB_NAME=research_ledger
+ExecStart=/opt/research-ledger/venv/bin/python /opt/research-ledger/app/ledger_app.py serve --host 127.0.0.1 --port 18769
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/research-ledger /run/research-ledger
+RuntimeDirectory=research-ledger
+RuntimeDirectoryMode=0750
+UMask=0077
+MemoryMax=320M
+CPUQuota=50%
+TasksMax=96
+
+[Install]
+WantedBy=multi-user.target

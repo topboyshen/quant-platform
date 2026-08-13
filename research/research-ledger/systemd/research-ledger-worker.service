@@ -1,0 +1,22 @@
+[Unit]
+Description=Research Ledger deterministic calibration worker
+After=postgresql.service research-ledger.service
+
+[Service]
+Type=oneshot
+User=researchledger
+Group=researchledger
+WorkingDirectory=/opt/research-ledger
+Environment=LEDGER_DB_NAME=research_ledger
+ExecStart=/opt/research-ledger/venv/bin/python /opt/research-ledger/app/ledger_worker.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/research-ledger /run/research-ledger
+RuntimeDirectory=research-ledger
+RuntimeDirectoryMode=0750
+UMask=0077
+MemoryMax=160M
+CPUQuota=25%
+TasksMax=64
