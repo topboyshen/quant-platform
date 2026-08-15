@@ -26,8 +26,8 @@ from zoneinfo import ZoneInfo
 import psycopg
 from psycopg.rows import dict_row
 
-APP_VERSION = "0.1.0-shadow"
-MIGRATION_VERSION = "002_snapshot_cas_dedup"
+APP_VERSION = "0.2.0-daily-candidate-shadow"
+MIGRATION_VERSION = "003_daily_candidate_v1"
 UTC = timezone.utc
 CN_TZ = ZoneInfo("Asia/Shanghai")
 FORMAL_MIN_FORECASTS = 300
@@ -771,9 +771,87 @@ def import_model_manifest(conn: psycopg.Connection, manifest: dict[str, Any], ac
 
 def count_summary(conn: psycopg.Connection) -> dict[str, int]:
     tables = [
-        "research_case", "research_snapshot", "evidence_snapshot", "review_round", "review_submission", "risk_decision", "forecast_protocol", "forecast_batch", "forecast", "outcome_observation", "settlement", "evaluation", "calibration_snapshot", "calibration_suggestion", "model_artifact", "model_change_proposal", "human_approval", "replay_run", "delivery_event", "audit_event", "import_ledger",
+        "research_case", "research_snapshot", "evidence_snapshot", "review_round", "review_submission", "risk_decision", "forecast_protocol", "forecast_batch", "forecast", "outcome_observation", "settlement", "evaluation", "calibration_snapshot", "calibration_suggestion", "model_artifact", "model_change_proposal", "human_approval", "replay_run", "delivery_event", "audit_event", "import_ledger", "daily_candidate_run", "daily_candidate_entry",
     ]
     return {table: int(conn.execute(f"SELECT count(*) AS n FROM ledger.{table}").fetchone()["n"]) for table in tables}
+
+
+def ingest_daily_candidate_submission(conn: psycopg.Connection, token: str | None, payload: dict[str, Any]) -> dict[str, Any]:
+    cap = require_capability(conn, token, "PRODUCER")
+    if payload.get("schemaVersion") != "daily-candidate-submission.v1":
+        raise ValueError("daily candidate submission schema invalid")
+    claimed_hash = payload.get("submissionHash")
+    core = dict(payload)
+    core.pop("submissionHash", None)
+    if not isinstance(claimed_hash, str) or claimed_hash != sha256_json(core):
+        raise ValueError("daily candidate submission hash mismatch")
+    computed = payload.get("computed") or {}
+    manifest = payload.get("manifest") or {}
+    receipt = payload.get("manifestReceipt") or {}
+    candidates = computed.get("candidates") or []
+    if computed.get("executionCap") != 0 or manifest.get("executionCap") != 0:
+        raise ValueError("execution cap must be zero")
+    if len(candidates) > 3 or len(manifest.get("candidateRefs") or []) != len(candidates):
+        raise ValueError("candidate cardinality mismatch")
+    if receipt.get("status") != "COMPLETE" or receipt.get("manifestId") != manifest.get("manifestId"):
+        raise ValueError("gateway manifest receipt incomplete")
+    if computed.get("calibrationStatus") != "INSUFFICIENT_PROSPECTIVE_SAMPLES":
+        raise ValueError("uncalibrated status required")
+    if manifest.get("nightDecision") == "CANDIDATE_SET" and not candidates:
+        raise ValueError("candidate decision is empty")
+    if manifest.get("nightDecision") == "ABSTAINED" and candidates:
+        raise ValueError("abstention contains candidates")
+
+    run_id = uuid.UUID(computed["producerRunId"])
+    existing = conn.execute("SELECT payload_hash FROM ledger.daily_candidate_run WHERE run_id=%s", (run_id,)).fetchone()
+    if existing:
+        if existing["payload_hash"] != claimed_hash:
+            raise ValueError("daily candidate run hash conflict")
+        return {"run_id": str(run_id), "candidate_count": len(candidates), "idempotent_replay": True}
+
+    package_receipts = {row["packageId"]: row for row in payload.get("packageReceipts") or []}
+    refs = manifest.get("candidateRefs") or []
+    packages = {row["packageId"]: row for row in payload.get("packages") or []}
+    decision = manifest["nightDecision"]
+    if manifest.get("publicationStatus") == "WITHDRAWN":
+        decision = "WITHDRAWN"
+    created_at = parse_dt(payload.get("submittedAt")) or now_utc()
+    conn.execute(
+        """INSERT INTO ledger.daily_candidate_run
+           (run_id,manifest_id,manifest_receipt_id,target_session,data_cutoff,policy_version,
+            universe_snapshot_hash,context_snapshot_hash,revision,supersedes_manifest_id,decision,
+            publication_status,candidate_count,execution_cap,calibration_status,payload_hash,
+            payload_json,created_at,created_by)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,%s,%s,%s,%s,%s)""",
+        (run_id, uuid.UUID(manifest["manifestId"]), uuid.UUID(receipt["receiptId"]),
+         date.fromisoformat(manifest["targetSession"]), parse_dt(manifest["dataCutoff"]),
+         manifest["policyVersion"], manifest["universeSnapshotHash"], manifest["contextSnapshotHash"],
+         manifest["revision"], uuid.UUID(manifest["supersedes"]) if manifest.get("supersedes") else None,
+         decision, manifest["publicationStatus"], len(candidates), computed["calibrationStatus"],
+         claimed_hash, json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+         created_at, cap["actor_id"]),
+    )
+    for rank_no, (candidate, ref) in enumerate(zip(candidates, refs), start=1):
+        package = packages.get(ref["packageId"])
+        package_receipt = package_receipts.get(ref["packageId"])
+        if not package or not package_receipt or package.get("payloadHash") != ref.get("payloadHash"):
+            raise ValueError("candidate package receipt mismatch")
+        conn.execute(
+            """INSERT INTO ledger.daily_candidate_entry
+               (candidate_id,run_id,package_id,package_receipt_id,symbol,rank_no,rank_strength,
+                qlib_cross_section,kronos_return_percent,model_agreement_stability,score_type,
+                package_payload_hash,created_at)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (uuid.UUID(ref["candidateId"]), run_id, uuid.UUID(ref["packageId"]),
+             uuid.UUID(package_receipt["receiptId"]), candidate["symbol"], rank_no,
+             Decimal(candidate["rankStrength"]), Decimal(candidate["qlibCrossSection"]),
+             Decimal(candidate["kronosDirectionReturnPercent"]),
+             Decimal(candidate["modelAgreementStability"]), candidate["scoreType"],
+             ref["payloadHash"], created_at),
+        )
+    add_audit(conn, cap["actor_id"], "DAILY_CANDIDATE_INGEST", "daily_candidate_run", run_id,
+              {"payload_hash": claimed_hash, "candidate_count": len(candidates), "execution_cap": 0})
+    return {"run_id": str(run_id), "candidate_count": len(candidates), "idempotent_replay": False}
 
 
 class LedgerHandler(BaseHTTPRequestHandler):
@@ -840,6 +918,10 @@ class LedgerHandler(BaseHTTPRequestHandler):
                 if self.path == "/v1/risk-vetoes":
                     veto_id = risk_veto(conn, self._capability() or "", uuid.UUID(payload["round_id"]), payload["reason_hash"], payload.get("actor_id", "risk_officer"))
                     self._json(HTTPStatus.CREATED, {"risk_decision_id": str(veto_id)})
+                    return
+                if self.path == "/v1/daily-candidate-runs":
+                    result = ingest_daily_candidate_submission(conn, self._capability(), payload)
+                    self._json(HTTPStatus.CREATED if not result["idempotent_replay"] else HTTPStatus.OK, result)
                     return
             self._json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
         except PermissionError:
