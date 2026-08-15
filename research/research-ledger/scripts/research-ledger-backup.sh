@@ -6,6 +6,7 @@ readonly APP_ROOT="${LEDGER_APP_ROOT:-/opt/research-ledger}"
 readonly PG_DATABASE="${LEDGER_DB_NAME:-research_ledger}"
 readonly PHASE2_DB="${PHASE2_DB_PATH:-/var/lib/research-system-phase2/phase2.db}"
 readonly PROTOCOL="${PHASE2_PROTOCOL_PATH:-/opt/research-system-phase2/protocol/calibration_protocol_v1.json}"
+readonly LEDGER_STATE="${LEDGER_STATE_ROOT:-/var/lib/research-ledger}"
 readonly BACKUP_ROOT="${LEDGER_BACKUP_ROOT:-/var/backups/research-ledger}"
 readonly HOURLY="$BACKUP_ROOT/hourly"
 readonly STATE_ROOT="${LEDGER_BACKUP_STATE_ROOT:-/var/lib/research-ledger-backup}"
@@ -15,9 +16,13 @@ readonly FINAL="$HOURLY/$NAME"
 readonly TMP_ARCHIVE="$HOURLY/.$NAME.tmp"
 
 [[ "$(id -u)" == "0" ]] || { printf 'backup must run as root\n' >&2; exit 1; }
-for required in "$APP_ROOT/.git" "$APP_ROOT/app/ledger_app.py" "$PHASE2_DB" "$PROTOCOL"; do
+for required in "$APP_ROOT/.git" "$APP_ROOT/app/ledger_app.py" "$PHASE2_DB" "$PROTOCOL" "$LEDGER_STATE/cas" "$LEDGER_STATE/manifests"; do
   [[ -e "$required" && ! -L "$required" ]] || { printf 'required backup input missing or symlinked: %s\n' "$required" >&2; exit 1; }
 done
+if [[ -n "$(find "$LEDGER_STATE" -type l -print -quit)" ]]; then
+  printf 'Ledger state contains a symbolic link; refusing incomplete backup\n' >&2
+  exit 1
+fi
 
 install -d -o root -g ubuntu -m 0750 "$BACKUP_ROOT" "$HOURLY"
 install -d -o root -g researchledger -m 0750 "$STATE_ROOT"
@@ -48,6 +53,40 @@ with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as src:
 PY
 
 install -m 0644 "$PROTOCOL" "$stage/calibration_protocol_v1.json"
+install -d -m 0700 "$stage/ledger-state"
+cp -a --no-preserve=ownership "$LEDGER_STATE/." "$stage/ledger-state/"
+
+# Bind every file-backed snapshot in PostgreSQL to a present, hash-matching CAS
+# object in both the live state and this archive. This makes a successful backup
+# a recoverable evidence set rather than only a database dump.
+runuser -u postgres -- psql -X -d "$PG_DATABASE" -At -F $'\t' \
+  -c "SELECT storage_uri,content_hash FROM ledger.research_snapshot ORDER BY storage_uri,content_hash" \
+  > "$stage/research-snapshot-storage.tsv"
+snapshot_count=0
+while IFS=$'\t' read -r storage_uri expected_hash; do
+  [[ -n "$storage_uri" && "$expected_hash" =~ ^[0-9a-f]{64}$ ]] || {
+    printf 'invalid research snapshot storage row\n' >&2
+    exit 1
+  }
+  case "$storage_uri" in
+    "file://$LEDGER_STATE/cas/"*) source_path="${storage_uri#file://}" ;;
+    *) printf 'unsupported research snapshot storage URI: %s\n' "$storage_uri" >&2; exit 1 ;;
+  esac
+  [[ -f "$source_path" && ! -L "$source_path" ]] || {
+    printf 'research snapshot CAS object missing: %s\n' "$source_path" >&2
+    exit 1
+  }
+  relative_path="${source_path#"$LEDGER_STATE/"}"
+  archived_path="$stage/ledger-state/$relative_path"
+  [[ -f "$archived_path" && ! -L "$archived_path" ]] || {
+    printf 'research snapshot CAS object missing from backup stage: %s\n' "$relative_path" >&2
+    exit 1
+  }
+  [[ "$(sha256sum "$source_path" | awk '{print $1}')" == "$expected_hash" ]]
+  [[ "$(sha256sum "$archived_path" | awk '{print $1}')" == "$expected_hash" ]]
+  snapshot_count=$((snapshot_count + 1))
+done < "$stage/research-snapshot-storage.tsv"
+printf '%s\n' "$snapshot_count" > "$stage/research-snapshot-storage.count"
 git -C "$APP_ROOT" bundle create "$stage/research-ledger.git.bundle" --all
 git -C "$APP_ROOT" diff --binary --no-ext-diff > "$stage/research-ledger-worktree.patch"
 git -C "$APP_ROOT" ls-files --others --exclude-standard -z > "$stage/untracked-files.list"
