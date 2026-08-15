@@ -2,6 +2,7 @@
 Description=Research Ledger local-only API
 After=network-online.target postgresql.service
 Wants=network-online.target
+OnFailure=research-ledger-alert@%n.service
 
 [Service]
 Type=simple

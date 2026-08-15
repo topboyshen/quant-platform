@@ -162,12 +162,40 @@ def insert_settlement(conn, prefix: str, outcome_id, status: str):
 
 def main() -> int:
     app.apply_migration()
+    threshold_rows = [
+        {
+            "batch_id": f"retry-{index}",
+            "independent_session": f"2026-07-{(index % 10) + 1:02d}",
+            "probability": ((index % 10) + 0.5) / 10,
+            "observed_value": index % 2,
+        }
+        for index in range(300)
+    ]
+    raw_threshold = app.calibration_cohort(threshold_rows, formal_allowed=False)
+    reviewed_threshold = app.calibration_cohort(threshold_rows, formal_allowed=True)
+    assert raw_threshold["sample_size_threshold_met"] is True
+    assert raw_threshold["formal_threshold_met"] is False
+    assert raw_threshold["status"] == "DIAGNOSTIC_ONLY"
+    assert raw_threshold["brier"] is None and raw_threshold["ece"] is None and raw_threshold["bins"] == []
+    assert reviewed_threshold["status"] == "STABLE" and reviewed_threshold["formal_threshold_met"] is True
+    assert reviewed_threshold["brier"] is not None and reviewed_threshold["ece"] is not None
     with app.connect() as conn:
+        initial_calibration = app.calibration_status(conn)
         pending = make_manifest("main", "PENDING_REVIEW")
         approved = make_manifest("main", "APPROVED")
         app.import_phase2_manifest(conn, pending, "revision-test")
         assert [(r["revision_no"], r["outcome_status"]) for r in outcome_rows(conn, "main")] == [(1, "PENDING_REVIEW")]
         assert settlement_rows(conn, "main") == []
+        pending_calibration = app.calibration_status(conn)
+        assert pending_calibration["raw_cohort"]["due_forecast_count"] == initial_calibration["raw_cohort"]["due_forecast_count"] + 1
+        assert pending_calibration["raw_cohort"]["observed_forecast_count"] == initial_calibration["raw_cohort"]["observed_forecast_count"] + 1
+        assert pending_calibration["pending_review_count"] == initial_calibration["pending_review_count"] + 1
+        assert pending_calibration["eligible_forecast_count"] == initial_calibration["eligible_forecast_count"]
+        assert pending_calibration["maturity_reason_code"] == "AWAITING_OUTCOME_REVIEW"
+        assert pending_calibration["raw_cohort"]["diagnostic_metrics"]["status"] == "DIAGNOSTIC_ONLY"
+        assert pending_calibration["raw_cohort"]["diagnostic_metrics"]["brier"] is None
+        assert pending_calibration["raw_cohort"]["diagnostic_metrics"]["ece"] is None
+        assert pending_calibration["raw_cohort"]["diagnostic_metrics"]["bins"] == []
         app.import_phase2_manifest(conn, copy.deepcopy(pending), "revision-test")
         assert len(outcome_rows(conn, "main")) == 1
         app.import_phase2_manifest(conn, approved, "revision-test")
@@ -177,8 +205,34 @@ def main() -> int:
         assert outcomes[1]["prior_outcome_id"] == outcomes[0]["outcome_id"]
         assert len(settlements) == 1 and settlements[0]["outcome_id"] == outcomes[1]["outcome_id"]
         assert conn.execute("SELECT count(*) AS n FROM ledger.evaluation WHERE settlement_id=%s", (settlements[0]["settlement_id"],)).fetchone()["n"] == 1
+        reviewed_calibration = app.calibration_status(conn)
+        assert reviewed_calibration["raw_cohort"]["due_forecast_count"] == pending_calibration["raw_cohort"]["due_forecast_count"]
+        assert reviewed_calibration["eligible_forecast_count"] == initial_calibration["eligible_forecast_count"] + 1
+        assert reviewed_calibration["coverage"]["reviewed_settled_count"] == initial_calibration["eligible_forecast_count"] + 1
+        assert reviewed_calibration["review_coverage_rate"] == 1.0
         app.import_phase2_manifest(conn, copy.deepcopy(approved), "revision-test")
         assert len(outcome_rows(conn, "main")) == 2 and len(settlement_rows(conn, "main")) == 1
+
+        no_outcome = make_manifest("no-outcome", "PENDING_REVIEW")
+        no_outcome["outcomes"] = []
+        app.import_phase2_manifest(conn, no_outcome, "revision-test")
+        missing_calibration = app.calibration_status(conn)
+        assert missing_calibration["raw_cohort"]["due_forecast_count"] == reviewed_calibration["raw_cohort"]["due_forecast_count"] + 1
+        assert missing_calibration["latest_outcome_status_counts"]["NO_OUTCOME"] == 1
+        assert missing_calibration["coverage"]["outcome_over_raw"] < 1.0
+
+        future = make_manifest("future", "PENDING_REVIEW")
+        future["batches"][0]["target_session"] = "2099-08-14"
+        future["forecasts"][0]["target_session"] = "2099-08-14"
+        future["outcomes"] = []
+        app.import_phase2_manifest(conn, future, "revision-test")
+        assert app.calibration_status(conn)["raw_cohort"]["due_forecast_count"] == missing_calibration["raw_cohort"]["due_forecast_count"]
+
+        vetoed = make_manifest("vetoed", "PENDING_REVIEW")
+        vetoed["batches"][0]["status"] = "VETOED"
+        vetoed["outcomes"] = []
+        app.import_phase2_manifest(conn, vetoed, "revision-test")
+        assert app.calibration_status(conn)["raw_cohort"]["due_forecast_count"] == missing_calibration["raw_cohort"]["due_forecast_count"]
 
         direct = make_manifest("direct", "APPROVED")
         app.import_phase2_manifest(conn, direct, "revision-test")
@@ -254,6 +308,21 @@ def main() -> int:
         insert_settlement(conn, "cal-pair", reviewed_outcome, "REVIEWED")
         assert app.calibration_status(conn)["eligible_forecast_count"] == count_with_pair
         assert app.calibration_status(conn)["eligible_forecast_count"] >= 3
+
+        snapshots_before = conn.execute("SELECT count(*) AS n FROM ledger.calibration_snapshot").fetchone()["n"]
+        snapshot_one = app.write_calibration_snapshot(conn, actor="revision-test")
+        snapshot_two = app.write_calibration_snapshot(conn, actor="revision-test")
+        snapshots_after = conn.execute("SELECT count(*) AS n FROM ledger.calibration_snapshot").fetchone()["n"]
+        persisted = conn.execute(
+            "SELECT raw_due_forecast_count,raw_due_independent_batch_count FROM ledger.calibration_snapshot WHERE calibration_snapshot_id=%s",
+            (snapshot_one,),
+        ).fetchone()
+        final_calibration = app.calibration_status(conn)
+        assert snapshot_one == snapshot_two and snapshots_after == snapshots_before + 1
+        assert final_calibration["raw_cohort"]["independent_batch_count"] == 1
+        assert final_calibration["reviewed_cohort"]["independent_batch_count"] == 1
+        assert persisted["raw_due_forecast_count"] == final_calibration["raw_cohort"]["due_forecast_count"]
+        assert persisted["raw_due_independent_batch_count"] == final_calibration["raw_cohort"]["independent_batch_count"]
 
     print("PHASE2_OUTCOME_REVISION_GUARDS=passed")
     return 0

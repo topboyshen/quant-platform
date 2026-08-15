@@ -1,0 +1,23 @@
+[Unit]
+Description=Research Ledger consistent local backup
+After=postgresql.service
+OnFailure=research-ledger-alert@%n.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/research-ledger
+ExecStart=/opt/research-ledger/scripts/research-ledger-backup.sh
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/backups/research-ledger /var/lib/research-ledger-backup /run/lock
+MemoryMax=256M
+CPUQuota=40%
+TasksMax=128

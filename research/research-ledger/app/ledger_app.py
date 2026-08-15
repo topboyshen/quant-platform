@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import secrets
 import sqlite3
@@ -26,8 +27,8 @@ from zoneinfo import ZoneInfo
 import psycopg
 from psycopg.rows import dict_row
 
-APP_VERSION = "0.2.0-daily-candidate-shadow"
-MIGRATION_VERSION = "003_daily_candidate_v1"
+APP_VERSION = "0.3.0-dual-calibration"
+MIGRATION_VERSION = "004_calibration_dual_cohort_v1"
 UTC = timezone.utc
 CN_TZ = ZoneInfo("Asia/Shanghai")
 FORMAL_MIN_FORECASTS = 300
@@ -309,56 +310,189 @@ def settle_forecast(conn: psycopg.Connection, forecast_id: uuid.UUID, observed_v
     return settlement_id
 
 
-def calibration_status(conn: psycopg.Connection) -> dict[str, Any]:
-    rows = list(conn.execute(
-        """SELECT f.forecast_id,f.probability,f.batch_id,o.observed_value,s.reviewed_at
-           FROM ledger.forecast f
-           JOIN LATERAL (
-             SELECT * FROM ledger.outcome_observation o WHERE o.forecast_id=f.forecast_id ORDER BY o.revision_no DESC LIMIT 1
-           ) o ON o.outcome_status='REVIEWED'
-           JOIN LATERAL (
-             SELECT * FROM ledger.settlement s WHERE s.forecast_id=f.forecast_id ORDER BY s.revision_no DESC LIMIT 1
-           ) s ON s.settlement_status='REVIEWED' AND s.outcome_id=o.outcome_id
-           LEFT JOIN ledger.forecast_batch b ON b.batch_id=f.batch_id
-           WHERE f.forecast_type='BINARY_EVENT' AND f.status='SEALED' AND f.prospective_eligible=true
-             AND (b.batch_status IS NULL OR b.batch_status <> 'VETOED')"""
-
-    ).fetchall())
-    batches = {str(row["batch_id"]) for row in rows if row["batch_id"]}
+def calibration_cohort(rows: list[dict[str, Any]], *, formal_allowed: bool) -> dict[str, Any]:
+    # A trading session is the independent calibration unit. Multiple retries
+    # or batches for the same session must not inflate the formal threshold.
+    batches = {str(row["independent_session"]) for row in rows if row["independent_session"]}
     bins: list[dict[str, Any]] = []
     ece = 0.0
     brier = None
     if rows:
-        brier = sum((float(r["probability"]) - float(r["observed_value"])) ** 2 for r in rows) / len(rows)
+        brier = math.fsum((float(r["probability"]) - float(r["observed_value"])) ** 2 for r in rows) / len(rows)
         for bucket in range(10):
             members = [r for r in rows if min(9, int(float(r["probability"]) * 10)) == bucket]
             if not members:
                 continue
-            mean_probability = sum(float(r["probability"]) for r in members) / len(members)
-            outcome_rate = sum(float(r["observed_value"]) for r in members) / len(members)
+            mean_probability = math.fsum(float(r["probability"]) for r in members) / len(members)
+            outcome_rate = math.fsum(float(r["observed_value"]) for r in members) / len(members)
             gap = mean_probability - outcome_rate
             ece += abs(gap) * len(members) / len(rows)
             bins.append({"bucket": bucket, "n": len(members), "mean_probability": mean_probability, "outcome_rate": outcome_rate, "gap": gap, "stable_eligible": len(members) >= FORMAL_MIN_BIN})
-    stable = len(rows) >= FORMAL_MIN_FORECASTS and len(batches) >= FORMAL_MIN_BATCHES and bool(bins) and all(x["stable_eligible"] for x in bins)
+    sample_size_threshold_met = len(rows) >= FORMAL_MIN_FORECASTS and len(batches) >= FORMAL_MIN_BATCHES and bool(bins) and all(x["stable_eligible"] for x in bins)
+    stable = formal_allowed and sample_size_threshold_met
     return {
-        "status": "STABLE" if stable else "INSUFFICIENT_PROSPECTIVE_SAMPLES",
-        "eligible_forecast_count": len(rows),
+        "status": "STABLE" if stable else ("PROVISIONAL" if formal_allowed and rows else ("DIAGNOSTIC_ONLY" if rows else "INSUFFICIENT_PROSPECTIVE_SAMPLES")),
+        "forecast_count": len(rows),
         "independent_batch_count": len(batches),
         "brier": brier if stable else None,
         "ece": ece if stable else None,
         "bins": bins if stable else [],
+        "formal_threshold_met": stable,
+        "sample_size_threshold_met": sample_size_threshold_met,
         "reason": None if stable else f"requires_{FORMAL_MIN_BATCHES}_batches_{FORMAL_MIN_FORECASTS}_forecasts_and_{FORMAL_MIN_BIN}_per_displayed_bin",
     }
 
 
-def write_calibration_snapshot(conn: psycopg.Connection, actor: str = "calibration_worker") -> uuid.UUID:
-    payload = calibration_status(conn)
-    snapshot_id = uuid.uuid4()
-    conn.execute(
-        """INSERT INTO ledger.calibration_snapshot(calibration_snapshot_id,metric_type,status,eligible_forecast_count,independent_batch_count,excluded_count,input_filter_hash,metric_payload,computed_at,computed_by,content_hash)
-           VALUES (%s,'BINARY_BRIER',%s,%s,%s,0,%s,%s,%s,%s,%s)""",
-        (snapshot_id, payload["status"], payload["eligible_forecast_count"], payload["independent_batch_count"], sha256_text("sealed+prospective+reviewed+binary"), json.dumps(payload), now_utc(), actor, sha256_json(payload)),
-    )
+def calibration_status(conn: psycopg.Connection, as_of: datetime | None = None) -> dict[str, Any]:
+    as_of = as_of or now_utc()
+    matured = list(conn.execute(
+        """SELECT f.forecast_id,f.probability,f.batch_id,
+                  COALESCE(f.target_session,b.target_session) AS independent_session,
+                  o.outcome_id,o.outcome_status,o.observed_value,
+                  s.outcome_id AS settlement_outcome_id,s.settlement_status
+           FROM ledger.forecast f
+           LEFT JOIN LATERAL (
+             SELECT * FROM ledger.outcome_observation o WHERE o.forecast_id=f.forecast_id ORDER BY o.revision_no DESC LIMIT 1
+           ) o ON true
+           LEFT JOIN LATERAL (
+             SELECT * FROM ledger.settlement s WHERE s.forecast_id=f.forecast_id ORDER BY s.revision_no DESC LIMIT 1
+           ) s ON true
+           LEFT JOIN ledger.forecast_batch b ON b.batch_id=f.batch_id
+           WHERE f.forecast_type='BINARY_EVENT' AND f.status='SEALED' AND f.prospective_eligible=true
+             AND f.window_end <= %s
+             AND (b.batch_status IS NULL OR b.batch_status <> 'VETOED')
+           ORDER BY f.forecast_id""",
+        (as_of,),
+    ).fetchall())
+    raw_rows = [
+        row for row in matured
+        if row["outcome_status"] in {"PENDING_REVIEW", "REVIEWED"}
+        and row["observed_value"] is not None
+        and Decimal(str(row["observed_value"])) in {Decimal("0"), Decimal("1")}
+    ]
+    reviewed_rows = [
+        row for row in raw_rows
+        if row["outcome_status"] == "REVIEWED"
+        and row["settlement_status"] == "REVIEWED"
+        and row["settlement_outcome_id"] == row["outcome_id"]
+    ]
+    raw = calibration_cohort(raw_rows, formal_allowed=False)
+    reviewed = calibration_cohort(reviewed_rows, formal_allowed=True)
+    status_counts: defaultdict[str, int] = defaultdict(int)
+    for row in matured:
+        status_counts[row["outcome_status"] or "NO_OUTCOME"] += 1
+    matured_count = len(matured)
+    observed_count = len(raw_rows)
+    reviewed_count = len(reviewed_rows)
+    stable = reviewed["formal_threshold_met"]
+    matured_batches = {str(row["independent_session"]) for row in matured if row["independent_session"]}
+    coverage_bins: list[dict[str, Any]] = []
+    for bucket in range(10):
+        raw_members = [row for row in raw_rows if min(9, int(float(row["probability"]) * 10)) == bucket]
+        reviewed_members = [row for row in reviewed_rows if min(9, int(float(row["probability"]) * 10)) == bucket]
+        if not raw_members:
+            continue
+        coverage_bins.append({
+            "bucket": bucket,
+            "raw_n": len(raw_members),
+            "reviewed_n": len(reviewed_members),
+            "reviewed_over_raw": len(reviewed_members) / len(raw_members),
+        })
+    if stable:
+        maturity_reason_code = "FORMAL_CALIBRATION_STABLE"
+    elif not matured_count:
+        maturity_reason_code = "NO_MATURED_FORECASTS"
+    elif not observed_count:
+        maturity_reason_code = "AWAITING_OUTCOME_CAPTURE"
+    elif not reviewed_count:
+        maturity_reason_code = "AWAITING_OUTCOME_REVIEW"
+    elif reviewed_count < observed_count:
+        maturity_reason_code = "PARTIAL_OUTCOME_REVIEW"
+    else:
+        maturity_reason_code = "ACCUMULATING_INDEPENDENT_SAMPLES"
+    return {
+        # Backward-compatible formal fields. Formal calibration remains gated on
+        # the latest reviewed outcome and its matching reviewed settlement.
+        "status": "STABLE" if stable else "INSUFFICIENT_PROSPECTIVE_SAMPLES",
+        "eligible_forecast_count": reviewed_count,
+        "independent_batch_count": reviewed["independent_batch_count"],
+        "brier": reviewed["brier"] if stable else None,
+        "ece": reviewed["ece"] if stable else None,
+        "bins": reviewed["bins"] if stable else [],
+        "reason": None if stable else reviewed["reason"],
+        "maturity_reason_code": maturity_reason_code,
+        # The raw cohort is deliberately separate: it exposes selection and
+        # review lag without granting unreviewed observations formal standing.
+        "matured_forecast_count": matured_count,
+        "observed_forecast_count": observed_count,
+        "pending_review_count": status_counts["PENDING_REVIEW"],
+        "reviewed_outcome_count": status_counts["REVIEWED"],
+        "unobserved_or_excluded_count": matured_count - observed_count,
+        "outcome_capture_rate": (observed_count / matured_count) if matured_count else None,
+        "review_coverage_rate": (reviewed_count / observed_count) if observed_count else None,
+        "latest_outcome_status_counts": dict(sorted(status_counts.items())),
+        "raw_cohort": {
+            "due_forecast_count": matured_count,
+            "independent_batch_count": len(matured_batches),
+            "observed_forecast_count": observed_count,
+            "latest_outcome_status_counts": dict(sorted(status_counts.items())),
+            "diagnostic_metrics": raw,
+        },
+        "reviewed_cohort": {
+            "eligible_forecast_count": reviewed_count,
+            "independent_batch_count": reviewed["independent_batch_count"],
+            "diagnostic_metrics": reviewed,
+        },
+        "coverage": {
+            "outcome_observed_count": observed_count,
+            "reviewed_outcome_count": status_counts["REVIEWED"],
+            "reviewed_settled_count": reviewed_count,
+            "outcome_over_raw": (observed_count / matured_count) if matured_count else None,
+            "reviewed_over_observed": (reviewed_count / observed_count) if observed_count else None,
+        },
+        "coverage_bins": coverage_bins,
+    }
+
+
+def write_calibration_snapshot(
+    conn: psycopg.Connection,
+    actor: str = "calibration_worker",
+    *,
+    payload: dict[str, Any] | None = None,
+    computed_at: datetime | None = None,
+) -> uuid.UUID:
+    computed_at = computed_at or now_utc()
+    payload = payload or calibration_status(conn, computed_at)
+    input_filter_hash = sha256_text("sealed+prospective+matured+latest-outcome+dual-denominator+binary-v1")
+    content_hash = sha256_json(payload)
+    snapshot_id = stable_uuid("ledger-calibration-snapshot", input_filter_hash, content_hash)
+    existing = conn.execute(
+        "SELECT calibration_snapshot_id FROM ledger.calibration_snapshot WHERE calibration_snapshot_id=%s",
+        (snapshot_id,),
+    ).fetchone()
+    if existing:
+        return existing["calibration_snapshot_id"]
+    inserted = conn.execute(
+        """INSERT INTO ledger.calibration_snapshot(calibration_snapshot_id,metric_type,status,eligible_forecast_count,independent_batch_count,excluded_count,input_filter_hash,metric_payload,computed_at,computed_by,content_hash,raw_due_forecast_count,raw_due_independent_batch_count)
+           VALUES (%s,'BINARY_BRIER',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           ON CONFLICT (calibration_snapshot_id) DO NOTHING
+           RETURNING calibration_snapshot_id""",
+        (
+            snapshot_id, payload["status"], payload["eligible_forecast_count"],
+            payload["independent_batch_count"],
+            sum(payload["latest_outcome_status_counts"].get(status, 0) for status in ("CONFLICTED", "MISSING", "VOID")),
+            input_filter_hash, json.dumps(payload), computed_at, actor, content_hash,
+            payload["raw_cohort"]["due_forecast_count"], payload["raw_cohort"]["independent_batch_count"],
+        ),
+    ).fetchone()
+    if not inserted:
+        stored = conn.execute(
+            "SELECT input_filter_hash,content_hash FROM ledger.calibration_snapshot WHERE calibration_snapshot_id=%s",
+            (snapshot_id,),
+        ).fetchone()
+        if not stored or stored["input_filter_hash"] != input_filter_hash or stored["content_hash"] != content_hash:
+            raise RuntimeError("calibration snapshot deterministic identity conflict")
+        return snapshot_id
     add_audit(conn, actor, "CALIBRATION_SNAPSHOT", "calibration_snapshot", snapshot_id, payload)
     return snapshot_id
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Research feedback pipeline completion check
+
+[Timer]
+OnCalendar=*-*-* 16:20:00 Asia/Shanghai
+Persistent=true
+Unit=research-ledger-pipeline-health.service
+
+[Install]
+WantedBy=timers.target

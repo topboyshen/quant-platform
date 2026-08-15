@@ -17,6 +17,9 @@ fi
 install -d -o root -g root -m 0755 "$APP" "$APP/app" "$APP/migrations" "$APP/systemd"
 install -d -o root -g researchledger -m 2750 "$DATA" "$DATA/cas" "$DATA/manifests" "$DATA/manifests/astock" "$DATA/manifests/phase2" "$DATA/manifests/models" "$DATA/import-reports"
 install -d -o root -g root -m 0750 "$BACKUP"
+install -d -o root -g ubuntu -m 0750 "$BACKUP/hourly"
+install -d -o root -g researchledger -m 0750 /var/lib/research-ledger-backup
+chmod 0755 "$APP/scripts/research-ledger-backup.sh" "$APP/scripts/research-ledger-alert.sh" "$APP/scripts/research-ledger-runtime-health.sh" "$APP/scripts/research-ledger-pipeline-health.sh"
 
 if ! test -x "$APP/venv/bin/python"; then
   python3 -m venv "$APP/venv"
@@ -47,7 +50,18 @@ install -o root -g root -m 0644 "$APP/systemd/research-ledger.service" /etc/syst
 install -o root -g root -m 0644 "$APP/systemd/research-ledger-worker.service" /etc/systemd/system/research-ledger-worker.service
 install -o root -g root -m 0644 "$APP/systemd/research-ledger-worker.timer" /etc/systemd/system/research-ledger-worker.timer
 install -o root -g root -m 0644 "$APP/systemd/research-ledger-healthcheck.service" /etc/systemd/system/research-ledger-healthcheck.service
+install -o root -g root -m 0644 "$APP/systemd/research-ledger-healthcheck.timer" /etc/systemd/system/research-ledger-healthcheck.timer
+install -o root -g root -m 0644 "$APP/systemd/research-ledger-backup.service" /etc/systemd/system/research-ledger-backup.service
+install -o root -g root -m 0644 "$APP/systemd/research-ledger-backup.timer" /etc/systemd/system/research-ledger-backup.timer
+install -o root -g root -m 0644 "$APP/systemd/research-ledger-alert@.service" /etc/systemd/system/research-ledger-alert@.service
+install -o root -g root -m 0644 "$APP/systemd/research-ledger-pipeline-health.service" /etc/systemd/system/research-ledger-pipeline-health.service
+install -o root -g root -m 0644 "$APP/systemd/research-ledger-pipeline-health.timer" /etc/systemd/system/research-ledger-pipeline-health.timer
+for unit in research-system-phase2-producer.service research-system-phase2-settler.service research-ledger-phase2-import.service; do
+  install -d -o root -g root -m 0755 "/etc/systemd/system/$unit.d"
+  install -o root -g root -m 0644 "$APP/systemd/research-ledger-on-failure.conf" "/etc/systemd/system/$unit.d/alert.conf"
+done
 systemctl daemon-reload
+systemctl enable --now research-ledger-backup.timer research-ledger-healthcheck.timer research-ledger-pipeline-health.timer
 
 printf 'SETUP_STATUS=success\n'
 printf 'APP=%s\nDATA=%s\nBACKUP=%s\nDB=research_ledger\nTEST_DB_DROPPED=%s\n' "$APP" "$DATA" "$BACKUP" "$TEST_DB"

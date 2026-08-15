@@ -1,6 +1,7 @@
 [Unit]
 Description=Research Ledger deterministic calibration worker
 After=postgresql.service research-ledger.service
+OnFailure=research-ledger-alert@%n.service
 
 [Service]
 Type=oneshot
