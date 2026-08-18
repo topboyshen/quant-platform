@@ -1,11 +1,11 @@
 [Unit]
-Description=Research Ledger Telegram alert for %I
+Description=Research Ledger Telegram alert for %i
 
 [Service]
 Type=oneshot
 User=ubuntu
 Group=ubuntu
-ExecStart=/opt/research-ledger/scripts/research-ledger-alert.sh %I
+ExecStart=/opt/research-ledger/scripts/research-ledger-alert.sh %i
 StateDirectory=research-ledger-alert
 StateDirectoryMode=0700
 UMask=0077

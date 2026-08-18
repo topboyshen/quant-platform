@@ -56,7 +56,7 @@ install -o root -g root -m 0644 "$APP/systemd/research-ledger-backup.timer" /etc
 install -o root -g root -m 0644 "$APP/systemd/research-ledger-alert@.service" /etc/systemd/system/research-ledger-alert@.service
 install -o root -g root -m 0644 "$APP/systemd/research-ledger-pipeline-health.service" /etc/systemd/system/research-ledger-pipeline-health.service
 install -o root -g root -m 0644 "$APP/systemd/research-ledger-pipeline-health.timer" /etc/systemd/system/research-ledger-pipeline-health.timer
-for unit in research-system-phase2-producer.service research-system-phase2-settler.service research-ledger-phase2-import.service; do
+for unit in research-system-phase2.service research-system-phase2-producer.service research-system-phase2-settler.service research-ledger-phase2-import.service; do
   install -d -o root -g root -m 0755 "/etc/systemd/system/$unit.d"
   install -o root -g root -m 0644 "$APP/systemd/research-ledger-on-failure.conf" "/etc/systemd/system/$unit.d/alert.conf"
 done
