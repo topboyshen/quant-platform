@@ -228,6 +228,52 @@ def lhb_official(date):
     return out
 
 
+def mootdx_quotes(codes):
+    from mootdx.quotes import Quotes
+    client = Quotes.factory(market="std")
+    df = client.quotes(symbol=codes)
+    result = {}
+    if df is not None and not df.empty:
+        for _, r in df.iterrows():
+            code = str(r.get("code", ""))
+            result[code] = {
+                "price": r.get("price"),
+                "bid1": r.get("bid1"), "ask1": r.get("ask1"),
+                "bid_vol1": r.get("bid_vol1"), "ask_vol1": r.get("ask_vol1"),
+            }
+    return result
+
+
+def tencent_quote(codes):
+    import urllib.request
+    prefixed = []
+    for c in codes:
+        if c.startswith(("92", "8")):
+            p = "bj" + c
+        elif c.startswith(("6", "9", "5")):
+            p = "sh" + c
+        else:
+            p = "sz" + c
+        prefixed.append(p)
+    url = "https://qt.gtimg.cn/q=" + ",".join(prefixed)
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    data = urllib.request.urlopen(req, timeout=10).read().decode("gbk")
+    result = {}
+    for line in data.strip().split(";"):
+        if "=" not in line or '"' not in line:
+            continue
+        key = line.split("=")[0].split("_")[-1]
+        vals = line.split('"')[1].split("~")
+        if len(vals) < 53:
+            continue
+        result[key[2:]] = {
+            "name": vals[1], "price": vals[3], "pe_ttm": vals[39], "pb": vals[46],
+            "mcap_yi": vals[45], "float_mcap_yi": vals[44], "turnover_pct": vals[38],
+            "limit_up": vals[47], "limit_down": vals[48],
+        }
+    return result
+
+
 def main():
     date = sys.argv[1] if len(sys.argv) > 1 else None
     q = qlib_market(date)
@@ -259,6 +305,14 @@ def main():
         lhb_off = lhb_official(q["date"])
     except Exception as e:
         lhb_off = {"date": q["date"], "error": str(e)}
+    try:
+        mq = mootdx_quotes(watch_codes)
+    except Exception as e:
+        mq = {"error": str(e)}
+    try:
+        tq = tencent_quote(watch_codes)
+    except Exception as e:
+        tq = {"error": str(e)}
     snapshot = {
         "date": q["date"],
         "generatedAt": datetime.datetime.now().isoformat(),
@@ -268,6 +322,8 @@ def main():
         "spot": spot,
         "fundFlow": ff,
         "lhbOfficial": lhb_off,
+        "mootdx": mq,
+        "tencent": tq,
     }
     os.makedirs(os.path.dirname(DB), exist_ok=True)
     conn = sqlite3.connect(DB)
