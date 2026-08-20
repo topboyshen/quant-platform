@@ -96,6 +96,26 @@ def _show_news(news):
         print(f"  {n.get('title', '')[:60]}")
 
 
+def _show_northbound(nb):
+    if isinstance(nb, dict) and "error" not in nb:
+        print(f"【北向资金】沪股通{nb.get('hgt')}亿 深股通{nb.get('sgt')}亿 总{nb.get('total')}亿")
+
+
+def _show_hot_stocks(hot):
+    if isinstance(hot, list) and hot:
+        print(f"【涨停题材归因】({len(hot)}只)")
+        for h in hot[:10]:
+            print(f"  {h['code']} {h['name']} {h['reason'][:40]}")
+
+
+def _show_concepts(concepts):
+    if isinstance(concepts, dict):
+        print("【概念板块】(watchlist)")
+        for code, blocks in concepts.items():
+            if isinstance(blocks, dict):
+                print(f"  {code}: {'/'.join(blocks.get('概念', [])[:5])}")
+
+
 def show_current(d):
     spot = d.get("spot", {})
     a = d.get("akshare", {})
@@ -113,6 +133,12 @@ def show_current(d):
     _show_lhb(l)
     print()
     _show_fundflow(d.get("fundFlow", {}))
+    print()
+    _show_northbound(d.get("northbound", {}))
+    print()
+    _show_hot_stocks(d.get("hotStocks", []))
+    print()
+    _show_concepts(d.get("concepts", {}))
     print()
     _show_baostock(d.get("baostock", {}))
     print()
