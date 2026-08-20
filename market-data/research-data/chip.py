@@ -99,7 +99,7 @@ def baostock_ohlc_turn(code, days=120):
 
 
 def main():
-    cfg = json.load(open(os.path.expanduser("~/AStock_AI_System/config/stocks.json")))
+    cfg = json.load(open(os.path.expanduser("~/research-data/config/stocks.json")))
     watch = [s["code"] for s in cfg.get("corePool", [])]
     for code in watch:
         rows = baostock_ohlc_turn(code, days=120)

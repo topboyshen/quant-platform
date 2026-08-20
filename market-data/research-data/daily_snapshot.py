@@ -361,7 +361,7 @@ def main():
         spot = {"date": "current", "error": str(e)}
     # 资金流: watchlist + 涨停股
     try:
-        cfg = json.load(open(os.path.expanduser("~/AStock_AI_System/config/stocks.json")))
+        cfg = json.load(open(os.path.expanduser("~/research-data/config/stocks.json")))
         watch_codes = [s["code"] for s in cfg.get("corePool", [])]
     except Exception:
         watch_codes = []
