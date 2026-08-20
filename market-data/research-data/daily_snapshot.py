@@ -274,6 +274,31 @@ def tencent_quote(codes):
     return result
 
 
+def baostock_valuation(codes, days=30):
+    import baostock as bs
+    import datetime
+    import contextlib, io
+    end = datetime.date.today().strftime("%Y-%m-%d")
+    start = (datetime.date.today() - datetime.timedelta(days=days * 2)).strftime("%Y-%m-%d")
+    result = {}
+    with contextlib.redirect_stdout(io.StringIO()):  # 抑制 baostock login/logout 的 stdout 输出
+        bs.login()
+        for code in codes:
+            pre = ("sh." if code.startswith(("6", "9", "5")) else "sz." if code.startswith(("0", "3")) else "bj.") + code
+            try:
+                rs = bs.query_history_k_data_plus(pre, "date,code,close,peTTM,pbMRQ,psTTM,turn",
+                                                  start_date=start, end_date=end, frequency="d", adjustflag="3")
+                rows = []
+                while rs.next():
+                    r = rs.get_row_data()
+                    rows.append({"date": r[0], "close": r[2], "pe_ttm": r[3], "pb": r[4], "ps": r[5], "turn": r[6]})
+                result[code] = rows
+            except Exception as e:
+                result[code] = {"error": str(e)}
+        bs.logout()
+    return result
+
+
 def main():
     date = sys.argv[1] if len(sys.argv) > 1 else None
     q = qlib_market(date)
@@ -313,6 +338,10 @@ def main():
         tq = tencent_quote(watch_codes)
     except Exception as e:
         tq = {"error": str(e)}
+    try:
+        bv = baostock_valuation(watch_codes, days=30)
+    except Exception as e:
+        bv = {"error": str(e)}
     snapshot = {
         "date": q["date"],
         "generatedAt": datetime.datetime.now().isoformat(),
@@ -324,6 +353,7 @@ def main():
         "lhbOfficial": lhb_off,
         "mootdx": mq,
         "tencent": tq,
+        "baostock": bv,
     }
     os.makedirs(os.path.dirname(DB), exist_ok=True)
     conn = sqlite3.connect(DB)

@@ -70,6 +70,16 @@ def _show_fundflow(ff):
             print(f"  {code} {data}")
 
 
+def _show_baostock(bv):
+    print("【估值】(watchlist, 最新 PE/PB/PS)")
+    for code, data in bv.items():
+        if isinstance(data, list) and data:
+            latest = data[-1]
+            print(f"  {code} PE={latest.get('pe_ttm')} PB={latest.get('pb')} PS={latest.get('ps')} 换手={latest.get('turn')}%")
+        else:
+            print(f"  {code} {data}")
+
+
 def show_current(d):
     spot = d.get("spot", {})
     a = d.get("akshare", {})
@@ -87,6 +97,8 @@ def show_current(d):
     _show_lhb(l)
     print()
     _show_fundflow(d.get("fundFlow", {}))
+    print()
+    _show_baostock(d.get("baostock", {}))
     print()
     _show_sectors(a)
     print()
