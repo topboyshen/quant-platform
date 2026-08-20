@@ -344,6 +344,30 @@ def cls_telegraph(page_size=20):
     return [{"title": n.get("title", ""), "time": n.get("ctime")} for n in rolls]
 
 
+def northbound_flow():
+    import urllib.request, json
+    req = urllib.request.Request("https://data.hexin.cn/market/hsgtApi/method/dayChart/",
+                                 headers={"User-Agent": "Mozilla/5.0", "Host": "data.hexin.cn",
+                                          "Referer": "https://data.hexin.cn/"})
+    d = json.loads(urllib.request.urlopen(req, timeout=10).read())
+    hgt = d.get("hgt", [])
+    sgt = d.get("sgt", [])
+    return {"hgt": hgt[-1] if hgt else None, "sgt": sgt[-1] if sgt else None,
+            "total": (hgt[-1] + sgt[-1]) if hgt and sgt else None}
+
+
+def concept_blocks(code):
+    import urllib.request, json
+    url = ('https://finance.pae.baidu.com/api/getrelatedblock'
+           f'?stock=[{{"code":"{code}","market":"ab","type":"stock"}}]&finClientType=pc')
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0",
+                                               "Host": "finance.pae.baidu.com",
+                                               "Referer": "https://gushitong.baidu.com/"})
+    d = json.loads(urllib.request.urlopen(req, timeout=10).read())
+    result = d.get("Result", {}).get(code, [])
+    return {cat.get("name", ""): [i.get("name") for i in cat.get("list", [])] for cat in result}
+
+
 def main():
     date = sys.argv[1] if len(sys.argv) > 1 else None
     q = qlib_market(date)
@@ -395,6 +419,14 @@ def main():
         news = cls_telegraph(20)
     except Exception as e:
         news = {"error": str(e)}
+    try:
+        nb = northbound_flow()
+    except Exception as e:
+        nb = {"error": str(e)}
+    try:
+        concepts = {code: concept_blocks(code) for code in watch_codes}
+    except Exception as e:
+        concepts = {"error": str(e)}
     snapshot = {
         "date": q["date"],
         "generatedAt": datetime.datetime.now().isoformat(),
@@ -409,6 +441,8 @@ def main():
         "baostock": bv,
         "announcements": anns,
         "news": news,
+        "northbound": nb,
+        "concepts": concepts,
     }
     os.makedirs(os.path.dirname(DB), exist_ok=True)
     conn = sqlite3.connect(DB)
