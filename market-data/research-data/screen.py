@@ -89,6 +89,13 @@ def get_hot_stocks():
     return {r.get("code"): r.get("reason", "") for r in rows}
 
 
+def chip_profit_ratio(code):
+    from chip import baostock_ohlc_turn, chip_distribution
+    rows = baostock_ohlc_turn(code, days=120)
+    r = chip_distribution(rows)
+    return r["profit_ratio"] if r else None
+
+
 def main():
     import sys
     args = sys.argv[1:]
@@ -150,7 +157,9 @@ def main():
     value.sort(key=lambda r: r["pe"])
     print(f"\n=== 净流入>0 且 PE<30 (价值型, {len(value)} 只) ===")
     for r in value[:10]:
-        print(f"  {r['code']} {r['name']} PE={r['pe']:.1f} PB={r['pb']:.2f} 换手{r['turnover']:.1f}% 量比{r['vol_ratio']:.1f} 连板{r['lianban']} 净流入{r['net_flow']/1e4:.0f}万")
+        pr = chip_profit_ratio(r["code"])
+        pr_s = f"获利{pr*100:.0f}%" if pr is not None else "获利?"
+        print(f"  {r['code']} {r['name']} PE={r['pe']:.1f} PB={r['pb']:.2f} {pr_s} 净流入{r['net_flow']/1e4:.0f}万")
 
 
 if __name__ == "__main__":
