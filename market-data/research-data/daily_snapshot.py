@@ -183,6 +183,51 @@ def spot_market():
     }
 
 
+def fund_flow_sina(codes, days=5):
+    import urllib.request, json
+    results = {}
+    for code in codes:
+        pre = ("bj" if code.startswith(("92", "8")) else "sh" if code.startswith(("6", "9")) else "sz") + code
+        u = ("https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+             f"MoneyFlow.ssl_qsfx_zjlrqs?page=1&num={days}&sort=opendate&asc=0&daima={pre}")
+        req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn/"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                t = r.read().decode("utf-8", "ignore")
+            arr = json.loads(t[t.index("["):t.rindex("]") + 1])
+            results[code] = [{"date": x.get("opendate"), "close": x.get("trade"),
+                              "net_amount": x.get("netamount"), "turnover": x.get("turnover")} for x in arr]
+        except Exception as e:
+            results[code] = {"error": str(e)}
+    return results
+
+
+def lhb_official(date):
+    import urllib.request, json, ssl
+    ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
+    out = {"date": date, "szse": [], "sse": ""}
+    su = (f"https://www.szse.cn/api/report/ShowReport/data?SHOWTYPE=JSON"
+          f"&CATALOGID=1842_xxpl&TABKEY=tab1&txtStart={date}&txtEnd={date}&random=0.9")
+    req = urllib.request.Request(su, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.szse.cn/disclosure/supervision/dealinfo/index.html"})
+    try:
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as r:
+            d = json.loads(r.read())
+        for row in d[0].get("data", []):
+            out["szse"].append({"code": row.get("zqdm"), "name": row.get("zqjc"), "amount": row.get("cjje"), "reason": row.get("plyy")})
+    except Exception as e:
+        out["szse_error"] = str(e)
+    eu = (f"https://query.sse.com.cn/infodisplay/showTradePublicFile.do?"
+          f"jsonCallBack=cb&isPagination=false&dateTx={date}")
+    req = urllib.request.Request(eu, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.sse.com.cn/disclosure/diclosure/public/"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            t = r.read().decode("utf-8", "ignore")
+        out["sse"] = "\n".join(json.loads(t[t.index("(") + 1:t.rindex(")")]).get("fileContents", []))
+    except Exception as e:
+        out["sse_error"] = str(e)
+    return out
+
+
 def main():
     date = sys.argv[1] if len(sys.argv) > 1 else None
     q = qlib_market(date)
@@ -198,6 +243,22 @@ def main():
         spot = spot_market()
     except Exception as e:
         spot = {"date": "current", "error": str(e)}
+    # 资金流: watchlist + 涨停股
+    try:
+        cfg = json.load(open(os.path.expanduser("~/AStock_AI_System/config/stocks.json")))
+        watch_codes = [s["code"] for s in cfg.get("corePool", [])]
+    except Exception:
+        watch_codes = []
+    limit_codes = [x["sym"][2:] for x in spot.get("limitUp", [])[:10]]
+    ff_codes = list(dict.fromkeys(watch_codes + limit_codes))
+    try:
+        ff = fund_flow_sina(ff_codes, days=5)
+    except Exception as e:
+        ff = {"error": str(e)}
+    try:
+        lhb_off = lhb_official(q["date"])
+    except Exception as e:
+        lhb_off = {"date": q["date"], "error": str(e)}
     snapshot = {
         "date": q["date"],
         "generatedAt": datetime.datetime.now().isoformat(),
@@ -205,6 +266,8 @@ def main():
         "akshare": a,
         "lhb": lhb,
         "spot": spot,
+        "fundFlow": ff,
+        "lhbOfficial": lhb_off,
     }
     os.makedirs(os.path.dirname(DB), exist_ok=True)
     conn = sqlite3.connect(DB)

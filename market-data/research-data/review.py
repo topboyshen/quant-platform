@@ -54,6 +54,22 @@ def _show_activity(a):
           f"涨停{act.get('涨停', '?')} 跌停{act.get('跌停', '?')}")
 
 
+def _show_fundflow(ff):
+    print("【资金流】(watchlist+涨停股, 最新日净流入)")
+    for code, data in ff.items():
+        if isinstance(data, list) and data:
+            na = _f(data[0].get("net_amount"))
+            if abs(na) >= 1e8:
+                s = f"{na/1e8:.2f}亿"
+            elif abs(na) >= 1e4:
+                s = f"{na/1e4:.0f}万"
+            else:
+                s = f"{na:.0f}"
+            print(f"  {code} 净流入 {s}")
+        else:
+            print(f"  {code} {data}")
+
+
 def show_current(d):
     spot = d.get("spot", {})
     a = d.get("akshare", {})
@@ -69,6 +85,8 @@ def show_current(d):
         print("【领跌】", [(x["sym"], x["chg"]) for x in spot["topLosers"][:5]])
     print()
     _show_lhb(l)
+    print()
+    _show_fundflow(d.get("fundFlow", {}))
     print()
     _show_sectors(a)
     print()
