@@ -90,6 +90,14 @@ def get_hot_stocks():
 
 
 def main():
+    import sys
+    args = sys.argv[1:]
+    theme_filter = None
+    show_themes = "--themes" in args
+    if "--theme" in args:
+        i = args.index("--theme")
+        if i + 1 < len(args):
+            theme_filter = args[i + 1]
     limit_up = get_limit_up()
     try:
         reasons = get_hot_stocks()
@@ -112,6 +120,25 @@ def main():
                      "turnover": pp["turnover"], "vol_ratio": pp["vol_ratio"], "lianban": lb,
                      "reason": reasons.get(s["code"], "")})
         time.sleep(0.03)
+    # 题材主线模式: 按题材分组
+    if show_themes:
+        theme_stocks = {}
+        for r in rows:
+            for t in (r["reason"] or "").split("+"):
+                t = t.strip()
+                if t:
+                    theme_stocks.setdefault(t, []).append(r)
+        print(f"\n=== 题材主线(涨停股按题材分组) ===")
+        for t, stocks in sorted(theme_stocks.items(), key=lambda x: -len(x[1])):
+            if len(stocks) >= 2:
+                print(f"\n【{t}】({len(stocks)}只)")
+                for s in stocks[:6]:
+                    print(f"  {s['code']} {s['name']} 净流入{s['net_flow']/1e4:.0f}万 PE={s['pe']:.1f} 连板{s['lianban']}")
+        return
+    # 题材筛选模式
+    if theme_filter:
+        rows = [r for r in rows if theme_filter in (r["reason"] or "")]
+        print(f"\n=== 题材筛选: {theme_filter} ({len(rows)}只) ===")
     inflow = [r for r in rows if r["net_flow"] > 0]
     inflow.sort(key=lambda r: -r["net_flow"])
     print(f"\n=== 涨停股中主力净流入 > 0 ({len(inflow)}/{len(rows)} 只) ===")
