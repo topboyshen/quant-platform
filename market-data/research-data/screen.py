@@ -79,8 +79,22 @@ def lianban(code):
     return streak
 
 
+def get_hot_stocks():
+    import urllib.request, json, datetime
+    date = datetime.datetime.now().strftime("%Y-%m-%d")
+    url = f"http://zx.10jqka.com.cn/event/api/getharden/date/{date}/orderby/date/orderway/desc/charset/GBK/"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    d = json.loads(urllib.request.urlopen(req, timeout=10).read())
+    rows = d.get("data") or []
+    return {r.get("code"): r.get("reason", "") for r in rows}
+
+
 def main():
     limit_up = get_limit_up()
+    try:
+        reasons = get_hot_stocks()
+    except Exception:
+        reasons = {}
     print(f"涨停股 {len(limit_up)} 只, 逐个查资金流+估值...")
     rows = []
     for s in limit_up:
@@ -95,14 +109,15 @@ def main():
         lb = lianban(s["code"])
         rows.append({"code": s["code"], "name": s["name"], "chg": s["chg"],
                      "net_flow": ff, "pe": pp["pe"], "pb": pp["pb"],
-                     "turnover": pp["turnover"], "vol_ratio": pp["vol_ratio"], "lianban": lb})
+                     "turnover": pp["turnover"], "vol_ratio": pp["vol_ratio"], "lianban": lb,
+                     "reason": reasons.get(s["code"], "")})
         time.sleep(0.03)
     inflow = [r for r in rows if r["net_flow"] > 0]
     inflow.sort(key=lambda r: -r["net_flow"])
     print(f"\n=== 涨停股中主力净流入 > 0 ({len(inflow)}/{len(rows)} 只) ===")
-    print(f"{'代码':<8}{'名称':<10}{'涨幅%':>7}{'净流入(万)':>12}{'PE':>8}{'PB':>7}{'换手%':>7}{'量比':>6}{'连板':>4}")
+    print(f"{'代码':<8}{'名称':<10}{'涨幅%':>7}{'净流入(万)':>12}{'PE':>8}{'PB':>7}{'换手%':>7}{'量比':>6}{'连板':>4} 题材")
     for r in inflow[:20]:
-        print(f"{r['code']:<8}{r['name']:<10}{r['chg']:>7.2f}{r['net_flow']/1e4:>12.0f}{r['pe']:>8.1f}{r['pb']:>7.2f}{r['turnover']:>7.2f}{r['vol_ratio']:>6.2f}{r['lianban']:>4}")
+        print(f"{r['code']:<8}{r['name']:<10}{r['chg']:>7.2f}{r['net_flow']/1e4:>12.0f}{r['pe']:>8.1f}{r['pb']:>7.2f}{r['turnover']:>7.2f}{r['vol_ratio']:>6.2f}{r['lianban']:>4} {r['reason'][:20]}")
     # 低估值 + 净流入 的"价值型"信号
     value = [r for r in inflow if 0 < r["pe"] < 30]
     value.sort(key=lambda r: r["pe"])

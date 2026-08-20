@@ -116,11 +116,42 @@ def _show_concepts(concepts):
                 print(f"  {code}: {'/'.join(blocks.get('概念', [])[:5])}")
 
 
+def _show_sentiment(spot, nb):
+    b = spot.get("breadth", {})
+    up, down = b.get("up", 0), b.get("down", 0)
+    total_nb = nb.get("total", 0) or 0
+    limit_up = spot.get("limitUpCount", 0)
+    if up > down * 2 and total_nb > 0:
+        mood = "强势(普涨+北向流入)"
+    elif down > up * 2:
+        mood = "弱势(普跌)"
+    else:
+        mood = "震荡"
+    print(f"【市场情绪】{mood} | 涨{up}/跌{down} | 涨停{limit_up} | 北向{total_nb:.0f}亿")
+
+
+def _show_theme_mainline(hot):
+    if not isinstance(hot, list) or not hot:
+        return
+    from collections import Counter
+    themes = Counter()
+    for h in hot:
+        for t in (h.get("reason", "") or "").split("+"):
+            t = t.strip()
+            if t:
+                themes[t] += 1
+    top = themes.most_common(10)
+    print(f"【题材主线】(涨停股题材聚合)")
+    print("  " + " | ".join(f"{t}({c})" for t, c in top))
+
+
 def show_current(d):
     spot = d.get("spot", {})
     a = d.get("akshare", {})
     l = d.get("lhb", {})
     print("=== A股每日复盘 (实时) ===")
+    _show_sentiment(spot, d.get("northbound", {}))
+    print()
     if "error" in spot:
         print(f"实时量价获取失败: {spot['error']}")
     else:
@@ -137,6 +168,8 @@ def show_current(d):
     _show_northbound(d.get("northbound", {}))
     print()
     _show_hot_stocks(d.get("hotStocks", []))
+    print()
+    _show_theme_mainline(d.get("hotStocks", []))
     print()
     _show_concepts(d.get("concepts", {}))
     print()
