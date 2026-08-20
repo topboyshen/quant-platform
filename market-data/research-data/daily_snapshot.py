@@ -144,6 +144,45 @@ def akshare_lhb(date):
     return {"date": date, "count": len(rows), "rows": rows}
 
 
+def spot_market():
+    import akshare as ak
+    df = ak.stock_zh_a_spot()  # sina 全A现货(实时)
+    up = down = flat = 0
+    limit_up = []
+    rows = []
+    for _, r in df.iterrows():
+        code = str(r.get("代码"))
+        name = r.get("名称")
+        try:
+            chg = float(r.get("涨跌幅"))
+        except (TypeError, ValueError):
+            chg = 0.0
+        if chg > 0.01:
+            up += 1
+        elif chg < -0.01:
+            down += 1
+        else:
+            flat += 1
+        lim = 30 if code.startswith("bj") else (20 if code[2:].startswith(("30", "68")) else 10)
+        if chg >= lim - 0.5:
+            limit_up.append({"sym": code, "name": name, "chg": chg})
+        try:
+            amt = float(r.get("成交额"))
+        except (TypeError, ValueError):
+            amt = 0.0
+        rows.append((code, name, chg, amt))
+    rows.sort(key=lambda r: -r[2])
+    return {
+        "date": "current",
+        "breadth": {"up": up, "down": down, "flat": flat, "total": up + down + flat},
+        "limitUpCount": len(limit_up),
+        "limitUp": limit_up[:30],
+        "topGainers": [{"sym": r[0], "name": r[1], "chg": r[2]} for r in rows[:10]],
+        "topLosers": [{"sym": r[0], "name": r[1], "chg": r[2]} for r in rows[-10:][::-1]],
+        "topAmount": [{"sym": r[0], "name": r[1], "amount": r[3]} for r in sorted(rows, key=lambda r: -r[3])[:10]],
+    }
+
+
 def main():
     date = sys.argv[1] if len(sys.argv) > 1 else None
     q = qlib_market(date)
@@ -155,12 +194,17 @@ def main():
         lhb = akshare_lhb(q["date"])
     except Exception as e:
         lhb = {"date": q["date"], "count": 0, "rows": [], "error": str(e)}
+    try:
+        spot = spot_market()
+    except Exception as e:
+        spot = {"date": "current", "error": str(e)}
     snapshot = {
         "date": q["date"],
         "generatedAt": datetime.datetime.now().isoformat(),
         "qlib": q,
         "akshare": a,
         "lhb": lhb,
+        "spot": spot,
     }
     os.makedirs(os.path.dirname(DB), exist_ok=True)
     conn = sqlite3.connect(DB)
@@ -177,6 +221,7 @@ def main():
         "sectors": len(a["sectors"]),
         "activity": a.get("activity", {}),
         "lhb": lhb.get("count", 0),
+        "spot": {"limitUp": spot.get("limitUpCount", 0), "breadth": spot.get("breadth", {})},
     }, ensure_ascii=False, indent=2))
 
 
