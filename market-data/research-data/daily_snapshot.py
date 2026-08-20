@@ -368,6 +368,13 @@ def concept_blocks(code):
     return {cat.get("name", ""): [i.get("name") for i in cat.get("list", [])] for cat in result}
 
 
+def insider_transactions(code):
+    from mootdx.quotes import Quotes
+    client = Quotes.factory(market="std")
+    text = client.F10(symbol=code, name="股东研究")
+    return (text or "")[:3000]  # 截断, 供 LLM 分析用
+
+
 def main():
     date = sys.argv[1] if len(sys.argv) > 1 else None
     q = qlib_market(date)
@@ -427,6 +434,10 @@ def main():
         concepts = {code: concept_blocks(code) for code in watch_codes}
     except Exception as e:
         concepts = {"error": str(e)}
+    try:
+        insiders = {code: insider_transactions(code) for code in watch_codes}
+    except Exception as e:
+        insiders = {"error": str(e)}
     snapshot = {
         "date": q["date"],
         "generatedAt": datetime.datetime.now().isoformat(),
@@ -443,6 +454,7 @@ def main():
         "news": news,
         "northbound": nb,
         "concepts": concepts,
+        "insiders": insiders,
     }
     os.makedirs(os.path.dirname(DB), exist_ok=True)
     conn = sqlite3.connect(DB)
