@@ -375,6 +375,16 @@ def insider_transactions(code):
     return (text or "")[:3000]  # 截断, 供 LLM 分析用
 
 
+def hot_stocks():
+    import urllib.request, json, datetime
+    date = datetime.datetime.now().strftime("%Y-%m-%d")
+    url = f"http://zx.10jqka.com.cn/event/api/getharden/date/{date}/orderby/date/orderway/desc/charset/GBK/"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    d = json.loads(urllib.request.urlopen(req, timeout=10).read())
+    rows = d.get("data") or []
+    return [{"code": r.get("code"), "name": r.get("name"), "reason": r.get("reason", "")} for r in rows]
+
+
 def main():
     date = sys.argv[1] if len(sys.argv) > 1 else None
     q = qlib_market(date)
@@ -438,6 +448,10 @@ def main():
         insiders = {code: insider_transactions(code) for code in watch_codes}
     except Exception as e:
         insiders = {"error": str(e)}
+    try:
+        hot = hot_stocks()
+    except Exception as e:
+        hot = {"error": str(e)}
     snapshot = {
         "date": q["date"],
         "generatedAt": datetime.datetime.now().isoformat(),
@@ -455,6 +469,7 @@ def main():
         "northbound": nb,
         "concepts": concepts,
         "insiders": insiders,
+        "hotStocks": hot,
     }
     os.makedirs(os.path.dirname(DB), exist_ok=True)
     conn = sqlite3.connect(DB)
