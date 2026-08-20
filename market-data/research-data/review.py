@@ -80,6 +80,22 @@ def _show_baostock(bv):
             print(f"  {code} {data}")
 
 
+def _show_announcements(anns):
+    print("【公告】(watchlist)")
+    for code, items in anns.items():
+        if isinstance(items, list):
+            for a in items[:3]:
+                print(f"  {code} {a.get('date', '')} {a.get('title', '')[:40]}")
+        else:
+            print(f"  {code} {items}")
+
+
+def _show_news(news):
+    print("【财联社快讯】")
+    for n in news[:8]:
+        print(f"  {n.get('title', '')[:60]}")
+
+
 def show_current(d):
     spot = d.get("spot", {})
     a = d.get("akshare", {})
@@ -99,6 +115,10 @@ def show_current(d):
     _show_fundflow(d.get("fundFlow", {}))
     print()
     _show_baostock(d.get("baostock", {}))
+    print()
+    _show_announcements(d.get("announcements", {}))
+    print()
+    _show_news(d.get("news", []))
     print()
     _show_sectors(a)
     print()

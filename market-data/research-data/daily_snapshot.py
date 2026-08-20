@@ -299,6 +299,51 @@ def baostock_valuation(codes, days=30):
     return result
 
 
+_CNINFO_ORGID_MAP = None
+
+
+def cninfo_announcements(code, page_size=10):
+    global _CNINFO_ORGID_MAP
+    import requests
+    if _CNINFO_ORGID_MAP is None:
+        r = requests.get("http://www.cninfo.com.cn/new/data/szse_stock.json", headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        _CNINFO_ORGID_MAP = {s["code"]: s["orgId"] for s in r.json().get("stockList", [])}
+    org_id = _CNINFO_ORGID_MAP.get(code, f"gssz0{code}")
+    payload = {"stock": f"{code},{org_id}", "tabName": "fulltext", "pageSize": str(page_size), "pageNum": "1",
+               "column": "", "category": "", "plate": "", "seDate": "", "searchkey": "", "secid": "",
+               "sortName": "", "sortType": "", "isHLtitle": "true"}
+    r = requests.post("https://www.cninfo.com.cn/new/hisAnnouncement/query", data=payload,
+                      headers={"User-Agent": "Mozilla/5.0", "Content-Type": "application/x-www-form-urlencoded",
+                               "Referer": "https://www.cninfo.com.cn/new/disclosure", "Origin": "https://www.cninfo.com.cn"}, timeout=15)
+    anns = r.json().get("announcements") or []
+    import datetime
+    out = []
+    for a in anns:
+        ts = a.get("announcementTime")
+        date = ""
+        if ts:
+            try:
+                ts = int(ts)
+                if ts > 1e12:
+                    ts = ts // 1000
+                date = datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+            except Exception:
+                date = str(ts)[:10]
+        out.append({"title": a.get("announcementTitle"), "date": date})
+    return out
+
+
+def cls_telegraph(page_size=20):
+    import requests, hashlib
+    params = {"appName": "CailianpressWeb", "os": "web", "sv": "7.7.5", "last_time": "", "refresh_type": "1", "rn": str(page_size)}
+    qs = "&".join(f"{k}={params[k]}" for k in sorted(params))
+    sign = hashlib.md5(hashlib.sha1(qs.encode()).hexdigest().encode()).hexdigest()
+    r = requests.get(f"https://www.cls.cn/v1/roll/get_roll_list?{qs}&sign={sign}",
+                     headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.cls.cn/"}, timeout=10)
+    rolls = (r.json().get("data") or {}).get("roll_data") or []
+    return [{"title": n.get("title", ""), "time": n.get("ctime")} for n in rolls]
+
+
 def main():
     date = sys.argv[1] if len(sys.argv) > 1 else None
     q = qlib_market(date)
@@ -342,6 +387,14 @@ def main():
         bv = baostock_valuation(watch_codes, days=30)
     except Exception as e:
         bv = {"error": str(e)}
+    try:
+        anns = {code: cninfo_announcements(code) for code in watch_codes}
+    except Exception as e:
+        anns = {"error": str(e)}
+    try:
+        news = cls_telegraph(20)
+    except Exception as e:
+        news = {"error": str(e)}
     snapshot = {
         "date": q["date"],
         "generatedAt": datetime.datetime.now().isoformat(),
@@ -354,6 +407,8 @@ def main():
         "mootdx": mq,
         "tencent": tq,
         "baostock": bv,
+        "announcements": anns,
+        "news": news,
     }
     os.makedirs(os.path.dirname(DB), exist_ok=True)
     conn = sqlite3.connect(DB)
