@@ -98,7 +98,31 @@ def _show_news(news):
 
 def _show_northbound(nb):
     if isinstance(nb, dict) and "error" not in nb:
-        print(f"【北向资金】沪股通{nb.get('hgt')}亿 深股通{nb.get('sgt')}亿 总{nb.get('total')}亿")
+        hgt_trend = nb.get("hgt_trend")
+        sgt_trend = nb.get("sgt_trend")
+        trend_s = ""
+        if hgt_trend is not None and sgt_trend is not None:
+            t = hgt_trend + sgt_trend
+            trend_s = f" 盘中{'流入' if t > 0 else '流出'}{abs(t):.0f}亿"
+        print(f"【北向资金】沪股通{nb.get('hgt')}亿 深股通{nb.get('sgt')}亿 总{nb.get('total')}亿{trend_s}")
+
+
+def _show_history_compare(conn, current):
+    prev = conn.execute("select payload from snapshot where date < ? order by date desc limit 1",
+                        (current["date"],)).fetchone()
+    if not prev:
+        print("【历史对比】无历史快照(等 cron 累积几天)")
+        return
+    p = json.loads(prev[0])
+    cur_spot = current.get("spot", {})
+    prev_spot = p.get("spot", {})
+    cur_lu = cur_spot.get("limitUpCount", 0)
+    prev_lu = prev_spot.get("limitUpCount", 0)
+    cur_nb = current.get("northbound", {}).get("total", 0) or 0
+    prev_nb = p.get("northbound", {}).get("total", 0) or 0
+    print(f"【历史对比】vs {p['date']}")
+    print(f"  涨停: {prev_lu} → {cur_lu} ({'+' if cur_lu >= prev_lu else ''}{cur_lu - prev_lu})")
+    print(f"  北向: {prev_nb:.0f}亿 → {cur_nb:.0f}亿 ({'+' if cur_nb >= prev_nb else ''}{cur_nb - prev_nb:.0f}亿)")
 
 
 def _show_hot_stocks(hot):
@@ -213,6 +237,7 @@ def main():
             print("无快照, 先跑 daily_snapshot.py")
             return 1
         show_current(json.loads(row[0]))
+        _show_history_compare(conn, json.loads(row[0]))
     return 0
 
 

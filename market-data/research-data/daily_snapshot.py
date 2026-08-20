@@ -352,8 +352,14 @@ def northbound_flow():
     d = json.loads(urllib.request.urlopen(req, timeout=10).read())
     hgt = d.get("hgt", [])
     sgt = d.get("sgt", [])
-    return {"hgt": hgt[-1] if hgt else None, "sgt": sgt[-1] if sgt else None,
-            "total": (hgt[-1] + sgt[-1]) if hgt and sgt else None}
+    hgt_close = hgt[-1] if hgt else None
+    sgt_close = sgt[-1] if sgt else None
+    hgt_open = hgt[0] if hgt else None
+    sgt_open = sgt[0] if sgt else None
+    return {"hgt": hgt_close, "sgt": sgt_close,
+            "total": (hgt_close + sgt_close) if hgt and sgt else None,
+            "hgt_trend": (hgt_close - hgt_open) if hgt else None,
+            "sgt_trend": (sgt_close - sgt_open) if sgt else None}
 
 
 def concept_blocks(code):
