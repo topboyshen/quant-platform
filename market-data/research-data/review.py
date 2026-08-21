@@ -169,11 +169,24 @@ def _show_theme_mainline(hot):
     print("  " + " | ".join(f"{t}({c})" for t, c in top))
 
 
+def _show_global_markets(gm):
+    if isinstance(gm, dict) and gm and "error" not in gm:
+        parts = []
+        for name, v in gm.items():
+            if isinstance(v, dict):
+                chg = v.get("chg", 0)
+                sign = "+" if chg >= 0 else ""
+                parts.append(f"{name}{sign}{chg}%")
+        if parts:
+            print(f"【隔夜外盘】{' | '.join(parts)}")
+
+
 def show_current(d):
     spot = d.get("spot", {})
     a = d.get("akshare", {})
     l = d.get("lhb", {})
     print("=== A股每日复盘 (实时) ===")
+    _show_global_markets(d.get("globalMarkets", {}))
     _show_sentiment(spot, d.get("northbound", {}))
     print()
     if "error" in spot:

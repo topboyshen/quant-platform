@@ -391,6 +391,21 @@ def hot_stocks():
     return [{"code": r.get("code"), "name": r.get("name"), "reason": r.get("reason", "")} for r in rows]
 
 
+def global_markets():
+    import akshare as ak
+    result = {}
+    for sym, name in [(".DJI", "道指"), (".IXIC", "纳指"), (".INX", "标普")]:
+        try:
+            df = ak.index_us_stock_sina(symbol=sym)
+            close = df["close"].tolist()
+            if len(close) >= 2:
+                chg = (close[-1] - close[-2]) / close[-2] * 100
+                result[name] = {"close": round(close[-1], 2), "chg": round(chg, 2)}
+        except Exception:
+            pass
+    return result
+
+
 def main():
     date = sys.argv[1] if len(sys.argv) > 1 else None
     q = qlib_market(date)
@@ -458,6 +473,10 @@ def main():
         hot = hot_stocks()
     except Exception as e:
         hot = {"error": str(e)}
+    try:
+        global_mkts = global_markets()
+    except Exception as e:
+        global_mkts = {"error": str(e)}
     snapshot = {
         "date": q["date"],
         "generatedAt": datetime.datetime.now().isoformat(),
@@ -476,6 +495,7 @@ def main():
         "concepts": concepts,
         "insiders": insiders,
         "hotStocks": hot,
+        "globalMarkets": global_mkts,
     }
     os.makedirs(os.path.dirname(DB), exist_ok=True)
     conn = sqlite3.connect(DB)
