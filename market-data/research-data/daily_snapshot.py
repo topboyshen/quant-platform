@@ -87,11 +87,20 @@ def qlib_market(date):
                     j -= 1
                 else:
                     break
-            limit_up.append({"sym": sym, "chg": round(chg * 100, 2), "streak": streak, "close": round(close[li], 2)})
+            limit_up.append({
+                "sym": sym,
+                "chg": round(float(chg) * 100, 2),
+                "streak": streak,
+                "close": round(float(close[li]), 2),
+            })
         lpd = round(close[li - 1] * (1 - lim), 2)
         if abs(close[li] - lpd) < 0.005 and abs(low[li] - close[li]) < 0.005:
-            limit_down.append({"sym": sym, "chg": round(chg * 100, 2), "close": round(close[li], 2)})
-        rows.append((sym, chg, amount[li], close[li]))
+            limit_down.append({
+                "sym": sym,
+                "chg": round(float(chg) * 100, 2),
+                "close": round(float(close[li]), 2),
+            })
+        rows.append((sym, float(chg), float(amount[li]), float(close[li])))
     rows.sort(key=lambda r: -r[1])
     return {
         "date": date,
