@@ -2,30 +2,26 @@
 """移植 Sequoia-X 的 6 个选股策略, 用 qlib 数据(26年历史)。
 
 策略: 海龟突破 / 均线放量 / 高窄旗形 / 涨停洗盘 / 上升跌停 / RPS突破
-注: qlib 特征滞后3天, 策略基于最新可用数据(非当天)。
 """
-import os, struct
+import os
 import numpy as np
+
+from qlib_io import load_qlib_features, read_qlib_day_bin
 
 QLIB = os.path.expanduser("~/qlib/data/cn_data")
 
 
 def read_bin(path):
-    with open(path, "rb") as f:
-        hdr = f.read(16)
-        start = int(struct.unpack("<f", hdr[:4])[0])
-        data = f.read()
-    return start, np.frombuffer(data, dtype="<f4")
+    return read_qlib_day_bin(path)
 
 
 def load_stock(sym):
-    fields = {}
-    for fld in ["open", "high", "low", "close", "volume", "amount"]:
-        try:
-            _, v = read_bin(os.path.join(QLIB, "features", sym, fld + ".day.bin"))
-            fields[fld] = v
-        except FileNotFoundError:
-            return None
+    try:
+        _, fields = load_qlib_features(
+            QLIB, sym, ("open", "high", "low", "close", "volume", "amount")
+        )
+    except FileNotFoundError:
+        return None
     return fields
 
 

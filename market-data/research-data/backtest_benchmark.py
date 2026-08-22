@@ -4,32 +4,27 @@
 对每个交易, 计算策略收益和同期沪深300收益, 超额收益 = 策略 - 基准。
 超额收益≈0 = 纯beta(无alpha); 超额>0 = 有alpha。
 """
-import os, struct, contextlib, io
+import os, contextlib, io
 import numpy as np
 import pandas as pd
+
+from qlib_io import load_qlib_features, read_qlib_day_bin
 
 QLIB = os.path.expanduser("~/qlib/data/cn_data")
 
 
 def read_bin(path):
-    with open(path, "rb") as f:
-        hdr = f.read(16)
-        start = int(struct.unpack("<f", hdr[:4])[0])
-        return start, np.frombuffer(f.read(), dtype="<f4")
+    return read_qlib_day_bin(path)
 
 
 def load_df(sym):
-    cols = {}
-    start = None
-    for fld in ["open", "high", "low", "close", "volume", "amount"]:
-        try:
-            s, v = read_bin(os.path.join(QLIB, "features", sym, fld + ".day.bin"))
-            cols[fld] = v
-            start = s
-        except FileNotFoundError:
-            return None, None
-    n = len(cols["close"])
-    return pd.DataFrame({k: v[:n] for k, v in cols.items()}), start
+    try:
+        start, cols = load_qlib_features(
+            QLIB, sym, ("open", "high", "low", "close", "volume", "amount")
+        )
+    except FileNotFoundError:
+        return None, None
+    return pd.DataFrame(cols), start
 
 
 def limit_pct(sym):

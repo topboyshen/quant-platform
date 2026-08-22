@@ -4,32 +4,27 @@
 前13年(2000-2012) vs 后13年(2013-2026), 各自算超额收益。
 两半都正 = 稳健; 一半正一半负 = 过拟合/偶然。
 """
-import os, struct, contextlib, io
+import os, contextlib, io
 import numpy as np
 import pandas as pd
+
+from qlib_io import load_qlib_features, read_qlib_day_bin
 
 QLIB = os.path.expanduser("~/qlib/data/cn_data")
 
 
 def read_bin(path):
-    with open(path, "rb") as f:
-        hdr = f.read(16)
-        start = int(struct.unpack("<f", hdr[:4])[0])
-        return start, np.frombuffer(f.read(), dtype="<f4")
+    return read_qlib_day_bin(path)
 
 
 def load_df(sym):
-    cols = {}
-    start = None
-    for fld in ["open", "high", "low", "close", "volume", "amount"]:
-        try:
-            s, v = read_bin(os.path.join(QLIB, "features", sym, fld + ".day.bin"))
-            cols[fld] = v
-            start = s
-        except FileNotFoundError:
-            return None, None
-    n = len(cols["close"])
-    return pd.DataFrame({k: v[:n] for k, v in cols.items()}), start
+    try:
+        start, cols = load_qlib_features(
+            QLIB, sym, ("open", "high", "low", "close", "volume", "amount")
+        )
+    except FileNotFoundError:
+        return None, None
+    return pd.DataFrame(cols), start
 
 
 def limit_pct(sym):

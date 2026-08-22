@@ -6,6 +6,8 @@
 """
 import os, json, time, sys
 
+from qlib_io import load_qlib_features
+
 for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
     os.environ.pop(k, None)
 
@@ -51,21 +53,14 @@ def pe_pb(code):
 
 
 def lianban(code):
-    import struct
     QLIB = os.path.expanduser("~/qlib/data/cn_data")
-    def readbin(path):
-        with open(path, "rb") as f:
-            hdr = f.read(16)
-            start = int(struct.unpack("<f", hdr[:4])[0])
-            data = f.read()
-        n = len(data) // 4
-        return start, struct.unpack("<%df" % n, data)
     sym = ("sh" if code.startswith(("6", "9", "5")) else "sz" if code.startswith(("0", "3")) else "bj") + code
     try:
-        s, close = readbin(os.path.join(QLIB, "features", sym, "close.day.bin"))
-        _, high = readbin(os.path.join(QLIB, "features", sym, "high.day.bin"))
+        _, features = load_qlib_features(QLIB, sym, ("close", "high"))
     except FileNotFoundError:
         return 0
+    close = features["close"]
+    high = features["high"]
     lim = 0.30 if code.startswith(("92", "8")) else (0.20 if code.startswith(("30", "68")) else 0.10)
     li = len(close) - 1
     streak = 0

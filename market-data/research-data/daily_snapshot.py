@@ -4,7 +4,9 @@
 用法: python3 daily_snapshot.py [YYYY-MM-DD]   (缺省用 qlib 日历最新交易日)
 输出: 打印摘要 JSON; 全量快照写入 ~/research-data/snapshot.db (表 snapshot, date 主键)
 """
-import os, json, struct, sqlite3, datetime, sys
+import os, json, sqlite3, datetime, sys
+
+from qlib_io import load_qlib_features, read_qlib_day_bin
 
 # akshare 需直连中国源, 去掉代理环境变量
 for _k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
@@ -15,12 +17,7 @@ DB = os.path.expanduser("~/research-data/snapshot.db")
 
 
 def read_bin(path):
-    with open(path, "rb") as f:
-        hdr = f.read(16)
-        start = int(struct.unpack("<f", hdr[:4])[0])
-        data = f.read()
-    n = len(data) // 4
-    return start, struct.unpack("<%df" % n, data)
+    return read_qlib_day_bin(path)
 
 
 def limit_pct(sym):
@@ -62,12 +59,13 @@ def qlib_market(date):
     for sym, sd, ed in insts:
         sym = sym.lower()  # all.txt 大写, feature 目录小写
         try:
-            s, close = read_bin(os.path.join(QLIB, "features", sym, "close.day.bin"))
-            _, high = read_bin(os.path.join(QLIB, "features", sym, "high.day.bin"))
-            _, low = read_bin(os.path.join(QLIB, "features", sym, "low.day.bin"))
-            _, amount = read_bin(os.path.join(QLIB, "features", sym, "amount.day.bin"))
+            s, features = load_qlib_features(QLIB, sym, ("close", "high", "low", "amount"))
         except FileNotFoundError:
             continue
+        close = features["close"]
+        high = features["high"]
+        low = features["low"]
+        amount = features["amount"]
         li = di - s
         if li < 1 or li >= len(close):
             continue

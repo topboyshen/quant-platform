@@ -3,28 +3,27 @@
 
 涨停信号 = screen.py 的核心(涨停打板), 资金流/PE 无法历史回测(仅当日有)。
 """
-import os, struct
+import os
 import numpy as np
 import pandas as pd
+
+from qlib_io import load_qlib_features, read_qlib_day_bin
 
 QLIB = os.path.expanduser("~/qlib/data/cn_data")
 
 
 def read_bin(path):
-    with open(path, "rb") as f:
-        f.read(16)
-        return np.frombuffer(f.read(), dtype="<f4")
+    return read_qlib_day_bin(path)[1]
 
 
 def load_df(sym):
-    cols = {}
-    for fld in ["open", "high", "low", "close", "volume", "amount"]:
-        try:
-            cols[fld] = read_bin(os.path.join(QLIB, "features", sym, fld + ".day.bin"))
-        except FileNotFoundError:
-            return None
-    n = len(cols["close"])
-    return pd.DataFrame({k: v[:n] for k, v in cols.items()})
+    try:
+        _, cols = load_qlib_features(
+            QLIB, sym, ("open", "high", "low", "close", "volume", "amount")
+        )
+    except FileNotFoundError:
+        return None
+    return pd.DataFrame(cols)
 
 
 def limit_pct(sym):
