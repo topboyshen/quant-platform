@@ -1,2 +1,4 @@
 snapshot.db
 __pycache__/
+/.venv/
+/snapshot.log
