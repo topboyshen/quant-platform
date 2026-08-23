@@ -1,0 +1,16 @@
+/.venv/
+__pycache__/
+*.py[cod]
+/.coverage
+/.pytest_cache/
+/htmlcov/
+/releases/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+/*.log
+.env
+.env.*
+*.token
+manual-role-provisioning.status

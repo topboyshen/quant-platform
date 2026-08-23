@@ -1,0 +1,10 @@
+[Unit]
+Description=Phase 2 after-close prospective producer timer
+
+[Timer]
+OnCalendar=*-*-* 15:22:00 Asia/Shanghai
+Persistent=true
+Unit=research-system-phase2-producer.service
+
+[Install]
+WantedBy=timers.target

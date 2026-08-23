@@ -1,0 +1,10 @@
+[Unit]
+Description=Phase 2 after-close outcome settler timer
+
+[Timer]
+OnCalendar=*-*-* 15:42:00 Asia/Shanghai
+Persistent=true
+Unit=research-system-phase2-settler.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,83 @@
+{
+  "calibration": {
+    "adjustment_rule": "任何校准调整仅可生成 PENDING_HUMAN_APPROVAL 建议；不得由 producer、settler、timer 或服务自动批准或激活。",
+    "provisional_rule": "至少 1 个已结算 batch 时可显示 operational provisional；PENDING_REVIEW outcome 不进入正式 Brier/正式校准，必须单独标明审核状态。",
+    "stable_rule": "至少 10 个不同交易日 batch、至少 300 个已审核通过的 binary forecasts，且每个展示概率桶至少 20 个已审核通过样本，才显示 stable/formal calibration；不足 20 的桶必须合并或不展示为稳定结论。"
+  },
+  "correlation": {
+    "batch_id_rule": "protocol_id + target_session",
+    "cohort_id_rule": "protocol_id + data_cutoff",
+    "correlation_group_rule": "同一 data_cutoff 的全部 30 个成分共享一个 correlation_group。",
+    "reporting_rule": "所有统计同时报告 nominal_forecast_count 与 independent_batch_count；单日 cohort 不得被叙述为独立机构级证据。"
+  },
+  "data": {
+    "primary_source": "https://quotes.sina.cn/cn/api/openapi.php/CN_MarketDataService.getKLineData",
+    "source_fields": [
+      "day",
+      "close",
+      "volume"
+    ],
+    "source_snapshot": "每个 symbol、每次运行保存完整公开响应 SHA-256、规范化历史行 hash、抓取时间和来源 URL。"
+  },
+  "forecast": {
+    "data_cutoff_rule": "仅在交易日 15:20 Asia/Shanghai 之后，来源返回当日收盘 K 线且最近交易日等于 data_cutoff 时生成；registered_at、created_at 和 sealed_at 必须早于 target_session。",
+    "invalidation_conditions": "非交易日、停牌/缺数、来源时间戳未来、数据源返回日不等于 cutoff、重复批次、协议 hash 不匹配、概率分散不足、任何 cohort 成分不合格。",
+    "settlement_rule": "目标交易日 15:40 Asia/Shanghai 后，来源返回目标日终态收盘且带内容 hash 时才可结算；否则保持 BLOCKED/PENDING，绝不猜测。",
+    "target_definition": "目标交易日的公开来源终态收盘价严格大于前一交易日的公开来源终态收盘价。",
+    "target_session_rule": "由本地官方休市表与工作日规则计算的下一交易日。",
+    "type": "binary_event"
+  },
+  "frozen_at": "2026-08-13T10:14:13+08:00",
+  "market": "CN_A_SHARE",
+  "model": {
+    "distinguishability_gate": "30 个概率的标准差至少 0.01，且至少覆盖 3 个 0.10 概率桶；否则 BLOCKED，不允许 0.5 占位。",
+    "feature_snapshot_hash_rule": "每个预测以标准化输入历史行、协议 hash、model_version 和计算特征形成 SHA-256。",
+    "feature_window_sessions": 20,
+    "features": "预先固定的透明 heuristic baseline（并非已训练模型）：r1=close[t]/close[t-1]-1；r5=close[t]/close[t-5]-1；volume_ratio=volume[t]/mean(volume[t-20:t-1])；raw=0.65*r5+0.35*r1+0.15*ln(volume_ratio)；p=clamp(sigmoid(35*raw),0.05,0.95)。该方法不被表述为具有预测优势。任何训练版必须使用新 model_version，仅生成建议并与旧版本并行对照。",
+    "model_status": "precommitted_transparent_heuristic_baseline_not_trained",
+    "model_version": "liquidity_momentum_logistic_v1"
+  },
+  "protocol_id": "a_share_liquid_public_cohort_v1",
+  "protocol_version": "1.0.0",
+  "roles": {
+    "forecast_producer": "仅可创建 SEALED 前瞻预测 batch；不得结算、审批、否决或激活。",
+    "outcome_settler": "仅可写入来源 hash 完整的 PENDING_REVIEW outcomes；不得生成预测、审批、否决或激活。",
+    "reviewer_risk_calibration": "不由 Phase 2 systemd 任务持有；保留在独立人工治理流程中。"
+  },
+  "universe": {
+    "exclude_rule": "停牌、无 20 个有效历史观测、ST 风险标记不可验证、上市不足 60 个自然日、非普通 A 股、缺少来源 snapshot 或流动性不足均对该标的 fail closed，并在 exclusion ledger 记录原因；不得临时补位或使用私人 watchlist。",
+    "public_symbols": [
+      "600000.SH",
+      "600036.SH",
+      "600030.SH",
+      "600519.SH",
+      "601318.SH",
+      "601888.SH",
+      "601166.SH",
+      "601398.SH",
+      "601288.SH",
+      "601857.SH",
+      "600900.SH",
+      "600276.SH",
+      "600309.SH",
+      "600009.SH",
+      "600050.SH",
+      "600104.SH",
+      "600111.SH",
+      "600028.SH",
+      "600048.SH",
+      "600585.SH",
+      "000001.SZ",
+      "000333.SZ",
+      "000858.SZ",
+      "002594.SZ",
+      "300750.SZ",
+      "000568.SZ",
+      "000725.SZ",
+      "002475.SZ",
+      "002230.SZ",
+      "300059.SZ"
+    ],
+    "selection_rule": "固定公开流动性 cohort：预先枚举 30 个沪深上市普通 A 股代码；运行日仅保留过去 20 个可得交易日中至少 15 日存在且平均 close*volume 不低于 10000000 CNY 的代码。不得以私人 watchlist 补位；逐标的 fail closed 并记录排除原因；合格覆盖至少 25/30 才可 SEALED，低于 25 则整批 BLOCKED。实际合格数为 nominal n；协议不自动更换成分。"
+  }
+}
