@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+  is-active)
+    [[ "${FAKE_TIMER_ACTIVE_STATE:-active}" == "active" ]]
+    ;;
+  show)
+    unit="${2:-}"
+    shift 2
+    property=""
+    while (( $# > 0 )); do
+      case "$1" in
+        -p|--property)
+          property="${2:-}"
+          shift 2
+          ;;
+        --property=*)
+          property="${1#--property=}"
+          shift
+          ;;
+        *)
+          shift
+          ;;
+      esac
+    done
+    case "$property" in
+      LoadState) printf 'loaded\n' ;;
+      UnitFileState) printf '%s\n' "${FAKE_TIMER_UNIT_FILE_STATE:-enabled}" ;;
+      ActiveState)
+        if [[ "$unit" == *.timer ]]; then
+          printf '%s\n' "${FAKE_TIMER_ACTIVE_STATE:-active}"
+        else
+          printf '%s\n' "${FAKE_SERVICE_ACTIVE_STATE:-inactive}"
+        fi
+        ;;
+      Result) printf 'success\n' ;;
+      ExecMainStatus) printf '0\n' ;;
+      InactiveEnterTimestamp) LC_ALL=C date '+%a %Y-%m-%d 12:00:00 %Z' ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  *)
+    exit 2
+    ;;
+esac
