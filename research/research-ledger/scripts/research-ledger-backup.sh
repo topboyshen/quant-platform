@@ -4,8 +4,8 @@ umask 077
 
 readonly APP_ROOT="${LEDGER_APP_ROOT:-/opt/research-ledger}"
 readonly PG_DATABASE="${LEDGER_DB_NAME:-research_ledger}"
-readonly PHASE2_DB="${PHASE2_DB_PATH:-/var/lib/research-system-phase2/phase2.db}"
-readonly PROTOCOL="${PHASE2_PROTOCOL_PATH:-/opt/research-system-phase2/protocol/calibration_protocol_v1.json}"
+# Phase2 data is backed up by research-system-phase2-backup.sh. Keep the jobs
+# independent so a missing Phase2 input cannot suppress a valid Ledger backup.
 readonly LEDGER_STATE="${LEDGER_STATE_ROOT:-/var/lib/research-ledger}"
 readonly BACKUP_ROOT="${LEDGER_BACKUP_ROOT:-/var/backups/research-ledger}"
 readonly HOURLY="$BACKUP_ROOT/hourly"
@@ -16,7 +16,7 @@ readonly FINAL="$HOURLY/$NAME"
 readonly TMP_ARCHIVE="$HOURLY/.$NAME.tmp"
 
 [[ "$(id -u)" == "0" ]] || { printf 'backup must run as root\n' >&2; exit 1; }
-for required in "$APP_ROOT/.git" "$APP_ROOT/app/ledger_app.py" "$PHASE2_DB" "$PROTOCOL" "$LEDGER_STATE/cas" "$LEDGER_STATE/manifests"; do
+for required in "$APP_ROOT/.git" "$APP_ROOT/app/ledger_app.py" "$LEDGER_STATE/cas" "$LEDGER_STATE/manifests"; do
   [[ -e "$required" && ! -L "$required" ]] || { printf 'required backup input missing or symlinked: %s\n' "$required" >&2; exit 1; }
 done
 if [[ -n "$(find "$LEDGER_STATE" -type l -print -quit)" ]]; then
@@ -39,20 +39,6 @@ trap cleanup EXIT
 runuser -u postgres -- pg_dump -Fc --no-owner --no-privileges "$PG_DATABASE" > "$stage/research_ledger.dump"
 runuser -u postgres -- pg_dumpall --globals-only --no-role-passwords > "$stage/postgres-globals.sql"
 
-/usr/bin/python3 - "$PHASE2_DB" "$stage/phase2.db" <<'PY'
-import sqlite3
-import sys
-
-source, target = sys.argv[1:]
-with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as src:
-    with sqlite3.connect(target) as dst:
-        src.backup(dst)
-        result = dst.execute("PRAGMA quick_check").fetchone()[0]
-        if result != "ok":
-            raise SystemExit(f"phase2 sqlite quick_check failed: {result}")
-PY
-
-install -m 0644 "$PROTOCOL" "$stage/calibration_protocol_v1.json"
 install -d -m 0700 "$stage/ledger-state"
 cp -a --no-preserve=ownership "$LEDGER_STATE/." "$stage/ledger-state/"
 

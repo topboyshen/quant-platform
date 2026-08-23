@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly Research System Phase2 backup
+
+[Timer]
+OnCalendar=*-*-* *:15:00
+RandomizedDelaySec=300
+Persistent=true
+Unit=research-system-phase2-backup.service
+
+[Install]
+WantedBy=timers.target
