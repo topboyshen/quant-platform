@@ -1,8 +1,10 @@
+import gc
 import json
 from pathlib import Path
 import tempfile
 import unittest
 from unittest import mock
+import warnings
 
 import numpy as np
 
@@ -46,10 +48,20 @@ class QlibMarketJsonTests(unittest.TestCase):
             with mock.patch.object(daily_snapshot, "QLIB", str(qlib_root)), mock.patch.object(
                 daily_snapshot, "load_qlib_features", side_effect=fake_load
             ):
-                result = daily_snapshot.qlib_market("2026-08-21")
+                with warnings.catch_warnings(record=True) as caught_warnings:
+                    warnings.simplefilter("always", ResourceWarning)
+                    result = daily_snapshot.qlib_market("2026-08-21")
+                    gc.collect()
+
+        resource_warnings = [
+            str(item.message)
+            for item in caught_warnings
+            if issubclass(item.category, ResourceWarning)
+        ]
 
         encoded = json.dumps(result, ensure_ascii=False)
 
+        self.assertEqual(resource_warnings, [])
         self.assertIn('"date": "2026-08-21"', encoded)
         self.assertIsInstance(result["limitUp"][0]["chg"], float)
         self.assertIsInstance(result["limitUp"][0]["close"], float)

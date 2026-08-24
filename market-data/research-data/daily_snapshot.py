@@ -30,7 +30,8 @@ def limit_pct(sym):
 
 
 def qlib_market(date):
-    cal = [l.strip() for l in open(os.path.join(QLIB, "calendars/day.txt")) if l.strip()]
+    with open(os.path.join(QLIB, "calendars/day.txt"), encoding="utf-8") as calendar_file:
+        cal = [line.strip() for line in calendar_file if line.strip()]
     if date is None:
         # 日历可能领先特征数据 3-5 天; 用参考股票的实际最新数据日期
         ref_syms = ["sh600000", "sz000001", "sh600519", "sz300750"]
@@ -50,10 +51,11 @@ def qlib_market(date):
         date = cal[-1]
     di = cal.index(date)
     insts = []
-    for line in open(os.path.join(QLIB, "instruments/all.txt")):
-        p = line.split()
-        if len(p) >= 3:
-            insts.append((p[0], p[1], p[2]))
+    with open(os.path.join(QLIB, "instruments/all.txt"), encoding="utf-8") as instruments_file:
+        for line in instruments_file:
+            p = line.split()
+            if len(p) >= 3:
+                insts.append((p[0], p[1], p[2]))
     up = down = flat = 0
     limit_up, limit_down, rows = [], [], []
     for sym, sd, ed in insts:
