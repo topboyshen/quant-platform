@@ -12,7 +12,7 @@
 
 - **无凭据存储**: 使用 PostgreSQL 本地对等认证
 - **仅本地访问**: 监听 `127.0.0.1:18769`，不暴露公网
-- **只读适配器**: 所有导入负载来自 root 拥有的只读源适配器
+- **只读适配器**: 所有导入负载来自 root 所有、服务只读的源适配器
 - **仅追加**: 预测一经封存不可修改，结果审核产生新版本
 
 ### 📊 预测生命周期
@@ -148,19 +148,37 @@ curl http://127.0.0.1:18769/health
 ls -lh /var/backups/research-ledger/hourly/
 ```
 
+### 测试数据库安全边界
+
+无状态单元测试可以直接运行。有状态集成测试必须由运维人员预先准备一次性测试库，并显式
+传入 `LEDGER_TEST_DSN`；数据库名必须以 `_test` 结尾。测试脚本不会继承生产默认库名，
+也会拒绝 `research_ledger`：
+
+```bash
+sudo -u researchledger env \
+  LEDGER_TEST_DSN='dbname=research_ledger_test host=/var/run/postgresql' \
+  /opt/research-ledger/venv/bin/python \
+  /opt/research-ledger/tests/test_ledger_integration.py
+```
+
 ## API 端点
 
-```
-GET  /health                    # 健康检查
-GET  /version                   # 版本信息
-POST /import/astock             # 导入 AStock 预测
-POST /import/phase2             # 导入 Phase2 结果
-POST /import/models             # 导入模型预测
-GET  /forecasts                 # 查询预测
-GET  /outcomes                  # 查询结果
-POST /review                    # 提交审核
-GET  /calibration               # 校准统计
-```
+服务仅监听 loopback。健康与校准状态无需 capability；其余治理端点通过
+`X-Ledger-Capability` 执行角色或管理员权限检查。
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/health` | 健康、版本和迁移状态 |
+| GET | `/v1/calibration/status` | 双队列校准状态 |
+| GET | `/v1/review-rounds/{uuid}/submissions` | 按 capability 返回当前角色可见的盲审提交 |
+| POST | `/v1/cases` | 创建研究 case（ADMIN） |
+| POST | `/v1/review-rounds` | 创建盲审轮次（ADMIN） |
+| POST | `/v1/review-submissions` | 提交 BULL/BEAR 等角色评审 |
+| POST | `/v1/risk-vetoes` | 提交风险否决 |
+| POST | `/v1/daily-candidate-runs` | 导入执行上限为 0 的每日候选包 |
+
+AStock、Phase2 与模型 manifest 通过受控 CLI 适配器导入，不提供旧版
+`/import/*` HTTP 路由。
 
 ## 正式化门槛
 
@@ -196,7 +214,7 @@ FORMAL_MIN_BIN = 20          # 每个概率桶最少样本数
 ## 安全注意事项
 
 1. ⚠️ **仅本地访问**: 服务绑定 `127.0.0.1`，不可远程访问
-2. ⚠️ **root 运行**: 当前以 root 运行，建议降权至 `researchledger` 用户
+2. **独立低权限运行**: 服务以 `researchledger:researchledger` 运行；systemd 将文件系统设为只读，仅 `/var/lib/research-ledger` 与 `/run/research-ledger` 可写
 3. ⚠️ **数据完整性**: 所有预测和结果经 SHA-256 哈希验证
 4. ⚠️ **审计日志**: 所有操作记录时间戳和来源
 
