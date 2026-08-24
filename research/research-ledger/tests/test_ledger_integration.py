@@ -7,6 +7,8 @@ import uuid
 from datetime import timedelta
 from pathlib import Path
 
+from integration_guard import require_test_database
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 import ledger_app as app  # noqa: E402
 
@@ -38,6 +40,7 @@ def add_source(conn) -> uuid.UUID:
 
 
 def main() -> int:
+    require_test_database()
     app.apply_migration()
     # P2 governance: independent blind roles, risk evidence-gap veto, and sealed snapshot immutability.
     with app.connect() as conn:

@@ -6,6 +6,8 @@ import sys
 import uuid
 from pathlib import Path
 
+from integration_guard import require_test_database
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 import ledger_app as app  # noqa: E402
@@ -161,6 +163,7 @@ def insert_settlement(conn, prefix: str, outcome_id, status: str):
 
 
 def main() -> int:
+    require_test_database()
     app.apply_migration()
     threshold_rows = [
         {
