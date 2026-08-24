@@ -42,12 +42,18 @@
   → RESEARCH_FINDINGS(结论) → 治理层裁决(无edge→不交易)
 ```
 
+## 运行环境
+
+- Python 3.12，运行环境位于 `.venv/`，不纳入 Git。
+- `requirements.txt` 固定本项目直接导入的第三方包版本；安装后必须运行 `python -m pip check`。
+- qlib 数据集由独立的 22:00 更新任务维护，22:30 快照任务只消费本地数据并写入 SQLite。
+
 ## 关键决策
 
 1. **治理层并入**: EDGE_POLICY 从 candidate-engine 并入 research-data/policy/，研究系统受同一政策约束。
 2. **配置自包含**: watchlist(config/stocks.json) 从 AStock 移入，解除对旧系统的依赖。
 3. **结算层独立**: ledger 保留在 /opt，作为"盈亏真相层"待命——将来真 edge 出现时，用它做封存+前瞻结算。
-4. **旧一代冻结**: AStock 晨报(停)、candidate-engine(冻结)、旧 forecast 链(冻结) 不再扩建。
+4. **受限运行边界**: AStock 工作日晨报与离线小红书草稿定时任务继续运行，但通知、自动发布与自动交易均禁用并要求人工批准；candidate-engine 与旧 forecast 链保持冻结。
 
 ## 系统定位
 
