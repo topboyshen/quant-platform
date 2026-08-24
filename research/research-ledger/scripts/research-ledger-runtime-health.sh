@@ -6,6 +6,8 @@ readonly LEDGER_BACKUP_STATE="${RUNTIME_HEALTH_LEDGER_BACKUP_STATE:-/var/lib/res
 readonly PHASE2_BACKUP_STATE="${RUNTIME_HEALTH_PHASE2_BACKUP_STATE:-/var/lib/research-system-phase2-backup/last-success.json}"
 readonly PHASE2_BACKUP_ROOT="${RUNTIME_HEALTH_PHASE2_BACKUP_ROOT:-/var/backups/research-system-phase2}"
 readonly MAX_BACKUP_AGE_SECONDS="${RUNTIME_HEALTH_MAX_BACKUP_AGE_SECONDS:-9000}"
+readonly ROOT_DISK_PATH="${RUNTIME_HEALTH_ROOT_DISK_PATH:-/}"
+readonly MAX_ROOT_DISK_USED_PERCENT="${RUNTIME_HEALTH_MAX_ROOT_DISK_USED_PERCENT:-85}"
 
 readonly BUSINESS_TIMERS=(
   research-system-phase2-producer.timer
@@ -44,6 +46,19 @@ case "$expected_mode" in
   RUNNING|FROZEN) ;;
   *) fail "mode_invalid" ;;
 esac
+
+if [[ ! "$MAX_ROOT_DISK_USED_PERCENT" =~ ^[0-9]+$ ]] \
+  || (( MAX_ROOT_DISK_USED_PERCENT < 1 || MAX_ROOT_DISK_USED_PERCENT > 100 )); then
+  fail "root_disk_threshold_invalid"
+fi
+
+root_disk_used_raw="$(LC_ALL=C df -P -- "$ROOT_DISK_PATH" | awk 'NR == 2 { print $5 }')" \
+  || fail "root_disk_usage_unavailable"
+root_disk_used_percent="${root_disk_used_raw%\%}"
+[[ "$root_disk_used_raw" == "${root_disk_used_percent}%" && "$root_disk_used_percent" =~ ^[0-9]+$ ]] \
+  || fail "root_disk_usage_invalid"
+(( root_disk_used_percent <= MAX_ROOT_DISK_USED_PERCENT )) \
+  || fail "root_disk_usage_high used_percent=$root_disk_used_percent max_percent=$MAX_ROOT_DISK_USED_PERCENT"
 
 health_payload="$(curl --fail --silent --show-error --max-time 5 http://127.0.0.1:18769/health)" \
   || fail "ledger_api_unreachable"
@@ -172,5 +187,5 @@ IFS=$'\t' read -r phase2_backup_age phase2_backup_file <<< "$phase2_backup_summa
   || fail "phase2_backup_summary_invalid"
 
 timer_state_summary="$(IFS=,; printf '%s' "${timer_states[*]}")"
-printf 'RUNTIME_HEALTH=ok business_mode=%s ledger_backup_age_seconds=%s phase2_backup_age_seconds=%s phase2_backup_file=%s timers=%s\n' \
-  "$expected_mode" "$ledger_backup_age" "$phase2_backup_age" "$phase2_backup_file" "$timer_state_summary"
+printf 'RUNTIME_HEALTH=ok business_mode=%s root_disk_used_percent=%s root_disk_max_percent=%s ledger_backup_age_seconds=%s phase2_backup_age_seconds=%s phase2_backup_file=%s timers=%s\n' \
+  "$expected_mode" "$root_disk_used_percent" "$MAX_ROOT_DISK_USED_PERCENT" "$ledger_backup_age" "$phase2_backup_age" "$phase2_backup_file" "$timer_state_summary"

@@ -62,7 +62,14 @@ printf '%s\n' \
   '#!/usr/bin/env bash' \
   'printf "{\"status\":\"ok\"}\n"' \
   > "$FIXTURE_PATH/curl"
-chmod 0755 "$FIXTURE_PATH/systemctl" "$FIXTURE_PATH/curl"
+
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'printf "Filesystem 1024-blocks Used Available Capacity Mounted on\n"' \
+  'printf "/dev/fake 100 50 50 %s%% /\n" "${FAKE_ROOT_DISK_USED_PERCENT:-50}"' \
+  > "$FIXTURE_PATH/df"
+chmod 0755 "$FIXTURE_PATH/systemctl" "$FIXTURE_PATH/curl" "$FIXTURE_PATH/df"
 
 write_state() {
   local created_at="$1"
@@ -80,6 +87,8 @@ run_health() {
   RUNTIME_HEALTH_PHASE2_BACKUP_STATE="$PHASE2_STATE" \
   RUNTIME_HEALTH_PHASE2_BACKUP_ROOT="$PHASE2_ROOT" \
   RUNTIME_HEALTH_MAX_BACKUP_AGE_SECONDS=9000 \
+  RUNTIME_HEALTH_ROOT_DISK_PATH="$TEST_TMP" \
+  RUNTIME_HEALTH_MAX_ROOT_DISK_USED_PERCENT=85 \
   bash "$SUBJECT"
 }
 
@@ -87,7 +96,19 @@ write_state "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 healthy_output="$(run_health)"
 [[ "$healthy_output" == *'RUNTIME_HEALTH=ok'* ]]
 [[ "$healthy_output" == *'business_mode=FROZEN'* ]]
+[[ "$healthy_output" == *'root_disk_used_percent=50'* ]]
+[[ "$healthy_output" == *'root_disk_max_percent=85'* ]]
 [[ "$healthy_output" == *"phase2_backup_file=$ARCHIVE_NAME"* ]]
+
+if FAKE_ROOT_DISK_USED_PERCENT=86 run_health >/dev/null 2>&1; then
+  printf 'high root disk usage unexpectedly passed runtime health\n' >&2
+  exit 1
+fi
+
+if FAKE_ROOT_DISK_USED_PERCENT=invalid run_health >/dev/null 2>&1; then
+  printf 'invalid root disk usage unexpectedly passed runtime health\n' >&2
+  exit 1
+fi
 
 write_state '2000-01-01T00:00:00Z'
 if run_health >/dev/null 2>&1; then
