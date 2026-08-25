@@ -5,7 +5,16 @@ APP=/opt/research-ledger
 DATA=/var/lib/research-ledger
 BACKUP=/var/backups/research-ledger
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-TEST_DB="research_ledger_test_${STAMP,,}"
+RUN_ID="${STAMP,,}_$$"
+INTEGRATION_TEST_DB="research_ledger_integration_${RUN_ID}_test"
+REVISION_TEST_DB="research_ledger_revision_${RUN_ID}_test"
+declare -a CREATED_TEST_DATABASES=()
+
+if [[ ! "$INTEGRATION_TEST_DB" =~ ^research_ledger_integration_[0-9]{8}t[0-9]{6}z_[0-9]+_test$ ]] ||
+   [[ ! "$REVISION_TEST_DB" =~ ^research_ledger_revision_[0-9]{8}t[0-9]{6}z_[0-9]+_test$ ]]; then
+  printf 'Refusing unsafe disposable database names\n' >&2
+  exit 1
+fi
 
 if ! getent group researchledger >/dev/null; then
   groupadd --system researchledger
@@ -33,14 +42,60 @@ if ! sudo -n -u postgres psql -Atqc "SELECT 1 FROM pg_database WHERE datname='re
   sudo -n -u postgres createdb --owner=researchledger --encoding=UTF8 --template=template0 research_ledger
 fi
 
-# Validate the schema and governance implementation in a disposable database before production migration.
-sudo -n -u postgres createdb --owner=researchledger --encoding=UTF8 --template=template0 "$TEST_DB"
-cleanup() {
-  sudo -n -u postgres dropdb --if-exists "$TEST_DB" >/dev/null 2>&1 || true
+# Validate the schema and governance implementation in two isolated disposable databases
+# before production migration. Each stateful test receives an explicit local DSN.
+cleanup_test_databases() {
+  local failed=0
+  local database
+  for database in "${CREATED_TEST_DATABASES[@]}"; do
+    if ! sudo -n -u postgres dropdb --host=/var/run/postgresql --username=postgres --if-exists "$database" >/dev/null; then
+      printf 'Failed to drop disposable database: %s\n' "$database" >&2
+      failed=1
+    fi
+  done
+  return "$failed"
 }
-trap cleanup EXIT
-sudo -n -u researchledger env LEDGER_DB_NAME="$TEST_DB" "$APP/venv/bin/python" "$APP/app/ledger_app.py" migrate > "$DATA/import-reports/test-migration-${STAMP}.json"
-sudo -n -u researchledger env LEDGER_DB_NAME="$TEST_DB" "$APP/venv/bin/python" "$APP/tests/test_ledger_integration.py" > "$DATA/import-reports/test-integration-${STAMP}.txt"
+
+cleanup_on_exit() {
+  local status=$?
+  trap - EXIT
+  if ! cleanup_test_databases; then
+    status=1
+  fi
+  exit "$status"
+}
+
+trap cleanup_on_exit EXIT
+for database in "$INTEGRATION_TEST_DB" "$REVISION_TEST_DB"; do
+  sudo -n -u postgres createdb --host=/var/run/postgresql --username=postgres \
+    --owner=researchledger --encoding=UTF8 --template=template0 "$database"
+  CREATED_TEST_DATABASES+=("$database")
+  sudo -n -u postgres psql --host=/var/run/postgresql --username=postgres --dbname=postgres \
+    --set=ON_ERROR_STOP=1 --quiet \
+    --command="REVOKE ALL ON DATABASE \"$database\" FROM PUBLIC; GRANT CONNECT, CREATE, TEMPORARY ON DATABASE \"$database\" TO researchledger;"
+  binding=$(sudo -n -u researchledger psql --host=/var/run/postgresql --username=researchledger \
+    --dbname="$database" --no-psqlrc --tuples-only --no-align \
+    --command='SELECT current_database(), current_user, inet_server_addr() IS NULL')
+  if [[ "$binding" != "$database|researchledger|t" ]]; then
+    printf 'Unsafe disposable database binding: %s\n' "$binding" >&2
+    exit 1
+  fi
+done
+
+INTEGRATION_TEST_DSN="dbname=$INTEGRATION_TEST_DB host=/var/run/postgresql user=researchledger"
+REVISION_TEST_DSN="dbname=$REVISION_TEST_DB host=/var/run/postgresql user=researchledger"
+sudo -n -u researchledger env PYTHONDONTWRITEBYTECODE=1 LEDGER_DSN="$INTEGRATION_TEST_DSN" \
+  "$APP/venv/bin/python" "$APP/app/ledger_app.py" migrate > "$DATA/import-reports/test-migration-integration-${STAMP}.json"
+sudo -n -u researchledger env PYTHONDONTWRITEBYTECODE=1 LEDGER_TEST_DSN="$INTEGRATION_TEST_DSN" \
+  "$APP/venv/bin/python" "$APP/tests/test_ledger_integration.py" > "$DATA/import-reports/test-integration-${STAMP}.txt"
+sudo -n -u researchledger env PYTHONDONTWRITEBYTECODE=1 LEDGER_DSN="$REVISION_TEST_DSN" \
+  "$APP/venv/bin/python" "$APP/app/ledger_app.py" migrate > "$DATA/import-reports/test-migration-revision-${STAMP}.json"
+sudo -n -u researchledger env PYTHONDONTWRITEBYTECODE=1 LEDGER_TEST_DSN="$REVISION_TEST_DSN" \
+  "$APP/venv/bin/python" "$APP/tests/test_phase2_import_revisions.py" > "$DATA/import-reports/test-revisions-${STAMP}.txt"
+
+# Production migration starts only after both tests pass and their databases are gone.
+cleanup_test_databases
+trap - EXIT
 
 # Apply the exact same verified migration to the production Ledger database.
 sudo -n -u researchledger env LEDGER_DB_NAME=research_ledger "$APP/venv/bin/python" "$APP/app/ledger_app.py" migrate > "$DATA/import-reports/production-migration-${STAMP}.json"
@@ -64,4 +119,5 @@ systemctl daemon-reload
 systemctl enable --now research-ledger-backup.timer research-ledger-healthcheck.timer research-ledger-pipeline-health.timer
 
 printf 'SETUP_STATUS=success\n'
-printf 'APP=%s\nDATA=%s\nBACKUP=%s\nDB=research_ledger\nTEST_DB_DROPPED=%s\n' "$APP" "$DATA" "$BACKUP" "$TEST_DB"
+printf 'APP=%s\nDATA=%s\nBACKUP=%s\nDB=research_ledger\nTEST_DATABASES_DROPPED=%s,%s\n' \
+  "$APP" "$DATA" "$BACKUP" "$INTEGRATION_TEST_DB" "$REVISION_TEST_DB"

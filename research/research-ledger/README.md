@@ -123,7 +123,17 @@ sudo ./setup_ledger.sh
 2. 设置目录权限
 3. 创建 Python 虚拟环境并安装依赖
 4. 创建 PostgreSQL 角色和数据库
-5. 运行数据库迁移
+5. 为两组有状态测试分别创建名称唯一、以 `_test` 结尾的一次性数据库
+6. 核验测试连接为本机 Unix socket 和 `researchledger`，两组测试全部通过后删除测试库
+7. 仅在测试库清理成功后运行生产数据库迁移
+8. 安装并启用 systemd 单元和定时器
+
+`setup_ledger.sh` 是完整部署脚本，会安装依赖、迁移生产库并管理 systemd；不要把它当作日常测试命令。
+修改脚本后可先运行不接触数据库的安全约束测试：
+
+```bash
+bash /opt/research-ledger/tests/test_setup_ledger_safety.sh
+```
 
 ### 健康检查
 
@@ -158,22 +168,41 @@ ls -lh /var/backups/research-ledger/hourly/
 `researchledger`：
 
 ```bash
-sudo -u postgres createdb --owner=researchledger --template=template0 \
+sudo -u postgres createdb --host=/var/run/postgresql --username=postgres \
+  --owner=researchledger --template=template0 \
   research_ledger_integration_test
-sudo -u postgres createdb --owner=researchledger --template=template0 \
+sudo -u postgres createdb --host=/var/run/postgresql --username=postgres \
+  --owner=researchledger --template=template0 \
   research_ledger_revision_test
+
+sudo -u postgres psql --host=/var/run/postgresql --username=postgres --dbname=postgres \
+  --command='REVOKE ALL ON DATABASE research_ledger_integration_test FROM PUBLIC'
+sudo -u postgres psql --host=/var/run/postgresql --username=postgres --dbname=postgres \
+  --command='REVOKE ALL ON DATABASE research_ledger_revision_test FROM PUBLIC'
+```
+
+分别连接并核对 `current_database()`、`current_user` 和 Unix socket 标志；结果必须对应目标库、
+`researchledger` 和 `t`：
+
+```bash
+sudo -u researchledger psql --host=/var/run/postgresql --username=researchledger \
+  --dbname=research_ledger_integration_test --tuples-only --no-align \
+  --command='SELECT current_database(), current_user, inet_server_addr() IS NULL'
+sudo -u researchledger psql --host=/var/run/postgresql --username=researchledger \
+  --dbname=research_ledger_revision_test --tuples-only --no-align \
+  --command='SELECT current_database(), current_user, inet_server_addr() IS NULL'
 ```
 
 分别运行两个脚本，不要复用同一个数据库：
 
 ```bash
 sudo -u researchledger env \
-  LEDGER_TEST_DSN='dbname=research_ledger_integration_test host=/var/run/postgresql' \
+  LEDGER_TEST_DSN='dbname=research_ledger_integration_test host=/var/run/postgresql user=researchledger' \
   /opt/research-ledger/venv/bin/python \
   /opt/research-ledger/tests/test_ledger_integration.py
 
 sudo -u researchledger env \
-  LEDGER_TEST_DSN='dbname=research_ledger_revision_test host=/var/run/postgresql' \
+  LEDGER_TEST_DSN='dbname=research_ledger_revision_test host=/var/run/postgresql user=researchledger' \
   /opt/research-ledger/venv/bin/python \
   /opt/research-ledger/tests/test_phase2_import_revisions.py
 ```
@@ -181,8 +210,10 @@ sudo -u researchledger env \
 测试结束且确认没有活动连接后，删除这两个精确测试库：
 
 ```bash
-sudo -u postgres dropdb research_ledger_integration_test
-sudo -u postgres dropdb research_ledger_revision_test
+sudo -u postgres dropdb --host=/var/run/postgresql --username=postgres \
+  research_ledger_integration_test
+sudo -u postgres dropdb --host=/var/run/postgresql --username=postgres \
+  research_ledger_revision_test
 ```
 
 PostgreSQL 16 的 `pg_dump` 会为每次导出生成随机的 `\restrict` / `\unrestrict` 标记，不能
