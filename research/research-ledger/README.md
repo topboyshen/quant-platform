@@ -142,17 +142,17 @@ bash /opt/research-ledger/tests/test_setup_ledger_safety.sh
 curl http://127.0.0.1:18769/health
 
 # 运行时健康
-/opt/research-ledger/scripts/research-ledger-runtime-health.sh
+sudo /opt/research-ledger/scripts/research-ledger-runtime-health.sh
 
 # 管道健康
-/opt/research-ledger/scripts/research-ledger-pipeline-health.sh
+sudo /opt/research-ledger/scripts/research-ledger-pipeline-health.sh
 ```
 
 ### 备份
 
 ```bash
 # 手动备份
-/opt/research-ledger/scripts/research-ledger-backup.sh
+sudo /opt/research-ledger/scripts/research-ledger-backup.sh
 
 # 备份位置
 ls -lh /var/backups/research-ledger/hourly/
