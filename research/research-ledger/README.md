@@ -150,15 +150,48 @@ ls -lh /var/backups/research-ledger/hourly/
 
 ### 测试数据库安全边界
 
-无状态单元测试可以直接运行。有状态集成测试必须由运维人员预先准备一次性测试库，并显式
-传入 `LEDGER_TEST_DSN`；数据库名必须以 `_test` 结尾。测试脚本不会继承生产默认库名，
-也会拒绝 `research_ledger`：
+无状态单元测试可以直接运行。有状态集成测试会提交夹具，因此每个脚本必须使用一个独立、
+全新的一次性空库，并显式传入 `LEDGER_TEST_DSN`；数据库名必须以 `_test` 结尾。测试脚本
+不会继承生产默认库名，也会拒绝 `research_ledger`。
+
+以下流程已在 PostgreSQL 16 上验证。先由管理员创建两个空库，并将所有者限制为非超级用户
+`researchledger`：
+
+```bash
+sudo -u postgres createdb --owner=researchledger --template=template0 \
+  research_ledger_integration_test
+sudo -u postgres createdb --owner=researchledger --template=template0 \
+  research_ledger_revision_test
+```
+
+分别运行两个脚本，不要复用同一个数据库：
 
 ```bash
 sudo -u researchledger env \
-  LEDGER_TEST_DSN='dbname=research_ledger_test host=/var/run/postgresql' \
+  LEDGER_TEST_DSN='dbname=research_ledger_integration_test host=/var/run/postgresql' \
   /opt/research-ledger/venv/bin/python \
   /opt/research-ledger/tests/test_ledger_integration.py
+
+sudo -u researchledger env \
+  LEDGER_TEST_DSN='dbname=research_ledger_revision_test host=/var/run/postgresql' \
+  /opt/research-ledger/venv/bin/python \
+  /opt/research-ledger/tests/test_phase2_import_revisions.py
+```
+
+测试结束且确认没有活动连接后，删除这两个精确测试库：
+
+```bash
+sudo -u postgres dropdb research_ledger_integration_test
+sudo -u postgres dropdb research_ledger_revision_test
+```
+
+PostgreSQL 16 的 `pg_dump` 会为每次导出生成随机的 `\restrict` / `\unrestrict` 标记，不能
+直接把原始 dump 的 SHA-256 当作稳定 schema 指纹。需要比较时，应排除这两类行：
+
+```bash
+sudo -u researchledger pg_dump --schema-only --no-owner --no-privileges research_ledger \
+  | grep -v -E '^\\(un)?restrict ' \
+  | sha256sum
 ```
 
 ## API 端点
