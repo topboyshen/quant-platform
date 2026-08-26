@@ -2,3 +2,6 @@ snapshot.db
 __pycache__/
 /.venv/
 /snapshot.log
+
+# Local third-party skills
+/a-stock-data/
