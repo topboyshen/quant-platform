@@ -50,6 +50,8 @@ systemctl status research-system-phase2.service --no-pager
 - `app/worker.py`: producer and settler command-line entry point.
 - `app/provision_manual_roles.py`: root-only manual capability provisioning.
 - `protocol/`: frozen calibration protocol.
+- `docs/DATABASE_SCHEMA.md`: authoritative table/constraint inventory and schema-change boundary.
+- `docs/RESTORE_RUNBOOK.md`: checksum-first, fail-closed local recovery procedure.
 - `tests/`: standard-library unit and HTTP endpoint tests.
 - `systemd/`: source copies of the currently deployed Phase2 units and dashboard drop-ins.
 
@@ -65,6 +67,24 @@ PYTHONPATH=app .venv/bin/python -m unittest discover -s tests -v
 ```
 
 The test suite uses temporary SQLite databases and does not touch production state.
+
+## Schema and recovery
+
+The database schema is documented in [`docs/DATABASE_SCHEMA.md`](docs/DATABASE_SCHEMA.md). The
+source of truth remains `init()` in `app/phase2.py`; the project currently has no versioned
+migration framework and does not set SQLite `PRAGMA user_version`. A schema change therefore needs
+an explicit, reviewed migration before deployment. Starting the server is not a migration plan.
+
+The production recovery procedure is documented in
+[`docs/RESTORE_RUNBOOK.md`](docs/RESTORE_RUNBOOK.md). Hourly archives are created by the independent
+`research-system-phase2-backup.timer`, whose canonical script and unit live in
+`/opt/research-ledger`. Archives under `/var/backups/research-system-phase2` are on the same VPS as
+the live database. They are useful local recovery points, but they are **not off-host disaster
+recovery** and provide no protection from loss of the VPS, account, region, or attached storage.
+
+Never exercise the production restore steps as a health check. A real restore requires an approved
+maintenance window, a selected immutable archive, a stopped/quiescent database, and completion of
+all acceptance checks before normal service is declared restored.
 
 ## Operational boundaries
 
