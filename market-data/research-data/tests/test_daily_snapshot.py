@@ -1,16 +1,57 @@
+from contextlib import ExitStack
 import gc
+import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
+import stat
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
 import daily_snapshot
+
+
+def sample_akshare_market(trade_date, sector_name="technology"):
+    return {
+        "sectors": [
+            {
+                "name": f"{sector_name}-{index}",
+                "chg": 1.0,
+                "netInflow": 1.0,
+                "upCount": 20,
+                "downCount": 10,
+                "leader": "sample",
+            }
+            for index in range(60)
+        ],
+        "activity": {
+            "上涨": 3000,
+            "下跌": 2000,
+            "平盘": 100,
+            "涨停": 50,
+            "跌停": 5,
+            "统计日期": f"{trade_date} 15:00:00",
+        },
+    }
+
+
+def sample_qlib_market(trade_date):
+    return {
+        "date": trade_date,
+        "generation": {"tag": f"release-{trade_date}", "inode": 10},
+        "coverage": {"valid": 5500, "eligible": 5501, "invalid": 1, "ratio": 0.9998},
+        "breadth": {"up": 3000, "down": 2000, "flat": 500, "total": 5500},
+        "limitUpCount": 10,
+        "limitDownCount": 2,
+    }
 
 
 class QlibMarketJsonTests(unittest.TestCase):
@@ -250,6 +291,398 @@ class QlibMarketJsonTests(unittest.TestCase):
                     "coverage is incomplete",
                 ):
                     daily_snapshot.qlib_market("2026-08-21")
+
+
+class AkShareStageTests(unittest.TestCase):
+    started_at = "2026-09-02T22:30:00+08:00"
+    completed_at = "2026-09-02T22:30:02+08:00"
+
+    def test_stage_is_private_immutable_and_idempotent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage_dir = str(Path(directory) / "akshare-market")
+            payload = sample_akshare_market("2026-09-02")
+
+            stored = daily_snapshot.seal_akshare_market_stage(
+                payload, self.started_at, self.completed_at, stage_dir
+            )
+            path = Path(stored["path"])
+            before = path.read_bytes()
+            retried = daily_snapshot.seal_akshare_market_stage(
+                payload,
+                "2026-09-02T22:31:00+08:00",
+                "2026-09-02T22:31:02+08:00",
+                stage_dir,
+            )
+            loaded = daily_snapshot.load_akshare_market_stage(
+                "2026-09-02", stage_dir
+            )
+
+            self.assertEqual(stored["status"], "stored")
+            self.assertEqual(retried["status"], "idempotent")
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(loaded["akshare"], payload)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(path.parent.stat().st_mode), 0o700)
+
+    def test_same_date_different_payload_conflicts_without_overwrite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage_dir = str(Path(directory) / "akshare-market")
+            first = daily_snapshot.seal_akshare_market_stage(
+                sample_akshare_market("2026-09-02", "first"),
+                self.started_at,
+                self.completed_at,
+                stage_dir,
+            )
+            path = Path(first["path"])
+            before = hashlib.sha256(path.read_bytes()).hexdigest()
+
+            with self.assertRaisesRegex(
+                daily_snapshot.SnapshotValidationError, "immutable payload"
+            ):
+                daily_snapshot.seal_akshare_market_stage(
+                    sample_akshare_market("2026-09-02", "changed"),
+                    self.started_at,
+                    self.completed_at,
+                    stage_dir,
+                )
+
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), before)
+
+    def test_tampered_stage_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage_dir = str(Path(directory) / "akshare-market")
+            stored = daily_snapshot.seal_akshare_market_stage(
+                sample_akshare_market("2026-09-02"),
+                self.started_at,
+                self.completed_at,
+                stage_dir,
+            )
+            path = Path(stored["path"])
+            document = json.loads(path.read_text(encoding="utf-8"))
+            document["akshare"]["sectors"][0]["name"] = "tampered"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            path.chmod(0o600)
+
+            with self.assertRaisesRegex(
+                daily_snapshot.SnapshotValidationError, "payload hash mismatch"
+            ):
+                daily_snapshot.load_akshare_market_stage("2026-09-02", stage_dir)
+
+    def test_wrong_file_mode_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage_dir = str(Path(directory) / "akshare-market")
+            stored = daily_snapshot.seal_akshare_market_stage(
+                sample_akshare_market("2026-09-02"),
+                self.started_at,
+                self.completed_at,
+                stage_dir,
+            )
+            Path(stored["path"]).chmod(0o644)
+
+            with self.assertRaisesRegex(
+                daily_snapshot.SnapshotValidationError, "mode must be 0600"
+            ):
+                daily_snapshot.load_akshare_market_stage("2026-09-02", stage_dir)
+
+    def test_wrong_directory_mode_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage_dir = str(Path(directory) / "akshare-market")
+            stored = daily_snapshot.seal_akshare_market_stage(
+                sample_akshare_market("2026-09-02"),
+                self.started_at,
+                self.completed_at,
+                stage_dir,
+            )
+            Path(stage_dir).chmod(0o777)
+
+            with self.assertRaisesRegex(
+                daily_snapshot.SnapshotValidationError,
+                "directory mode must be 0700",
+            ):
+                daily_snapshot.load_akshare_market_stage("2026-09-02", stage_dir)
+            self.assertTrue(Path(stored["path"]).is_file())
+
+    def test_stage_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stage_dir = root / "akshare-market"
+            stage_dir.mkdir(mode=0o700)
+            outside = root / "outside.json"
+            outside.write_text("{}", encoding="utf-8")
+            (stage_dir / "2026-09-02.json").symlink_to(outside)
+
+            with self.assertRaisesRegex(
+                daily_snapshot.SnapshotValidationError, "cannot be opened"
+            ):
+                daily_snapshot.load_akshare_market_stage(
+                    "2026-09-02", str(stage_dir)
+                )
+
+    def test_record_metadata_tampering_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage_dir = str(Path(directory) / "akshare-market")
+            stored = daily_snapshot.seal_akshare_market_stage(
+                sample_akshare_market("2026-09-02"),
+                self.started_at,
+                self.completed_at,
+                stage_dir,
+            )
+            path = Path(stored["path"])
+            document = json.loads(path.read_text(encoding="utf-8"))
+            document["collectionWindow"]["completedAt"] = (
+                "2026-09-02T22:30:03+08:00"
+            )
+            path.write_text(json.dumps(document), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                daily_snapshot.SnapshotValidationError, "record hash mismatch"
+            ):
+                daily_snapshot.load_akshare_market_stage("2026-09-02", stage_dir)
+
+    def test_restrictive_umask_still_creates_private_readable_stage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage_dir = str(Path(directory) / "akshare-market")
+            old_umask = os.umask(0o777)
+            try:
+                stored = daily_snapshot.seal_akshare_market_stage(
+                    sample_akshare_market("2026-09-02"),
+                    self.started_at,
+                    self.completed_at,
+                    stage_dir,
+                )
+            finally:
+                os.umask(old_umask)
+
+            self.assertEqual(stat.S_IMODE(Path(stage_dir).stat().st_mode), 0o700)
+            self.assertEqual(
+                stat.S_IMODE(Path(stored["path"]).stat().st_mode), 0o600
+            )
+            self.assertIsNotNone(
+                daily_snapshot.load_akshare_market_stage("2026-09-02", stage_dir)
+            )
+
+    def test_concurrent_same_payload_publish_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage_dir = str(Path(directory) / "akshare-market")
+            payload = sample_akshare_market("2026-09-02")
+
+            def seal_once(_index):
+                return daily_snapshot.seal_akshare_market_stage(
+                    payload,
+                    self.started_at,
+                    self.completed_at,
+                    stage_dir,
+                )["status"]
+
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                statuses = list(executor.map(seal_once, range(8)))
+
+            self.assertEqual(statuses.count("stored"), 1)
+            self.assertEqual(statuses.count("idempotent"), 7)
+
+    def test_directory_fsync_failure_leaves_a_valid_idempotent_stage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage_dir = str(Path(directory) / "akshare-market")
+            payload = sample_akshare_market("2026-09-02")
+            real_fsync = os.fsync
+
+            def fail_directory_fsync(fd):
+                if stat.S_ISDIR(os.fstat(fd).st_mode):
+                    raise OSError("simulated directory fsync failure")
+                return real_fsync(fd)
+
+            with mock.patch.object(os, "fsync", side_effect=fail_directory_fsync):
+                with self.assertRaisesRegex(
+                    daily_snapshot.SnapshotValidationError, "stage write failed"
+                ):
+                    daily_snapshot.seal_akshare_market_stage(
+                        payload,
+                        self.started_at,
+                        self.completed_at,
+                        stage_dir,
+                    )
+
+            loaded = daily_snapshot.load_akshare_market_stage(
+                "2026-09-02", stage_dir
+            )
+            retried = daily_snapshot.seal_akshare_market_stage(
+                payload,
+                self.started_at,
+                self.completed_at,
+                stage_dir,
+            )
+            self.assertEqual(loaded["akshare"], payload)
+            self.assertEqual(retried["status"], "idempotent")
+
+    def test_incomplete_current_payload_is_not_sealed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            payload = sample_akshare_market("2026-09-02")
+            payload["sectors"] = payload["sectors"][:1]
+
+            with self.assertRaisesRegex(
+                daily_snapshot.SnapshotValidationError,
+                "sector summary is incomplete",
+            ):
+                daily_snapshot.seal_akshare_market_stage(
+                    payload,
+                    self.started_at,
+                    self.completed_at,
+                    str(Path(directory) / "akshare-market"),
+                )
+
+    def test_collection_window_must_be_ordered(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                daily_snapshot.SnapshotValidationError, "ends before it starts"
+            ):
+                daily_snapshot.seal_akshare_market_stage(
+                    sample_akshare_market("2026-09-02"),
+                    "2026-09-02T22:31:00+08:00",
+                    "2026-09-02T22:30:00+08:00",
+                    str(Path(directory) / "akshare-market"),
+                )
+
+    def test_existing_snapshot_fast_path_still_stages_current_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = str(Path(directory) / "state")
+            emitted = []
+            with mock.patch.object(
+                daily_snapshot, "STATE_DIR", state_dir
+            ), mock.patch.object(
+                daily_snapshot, "AKSHARE_STAGE_DIR", None
+            ), mock.patch.object(
+                daily_snapshot,
+                "akshare_market",
+                return_value=sample_akshare_market("2026-09-02"),
+            ), mock.patch.object(
+                daily_snapshot,
+                "qlib_market",
+                return_value=sample_qlib_market("2026-09-01"),
+            ), mock.patch.object(
+                daily_snapshot,
+                "existing_snapshot",
+                return_value={"generatedAt": "old", "payloadSha256": "abc"},
+            ), mock.patch.object(
+                daily_snapshot, "emit_status", side_effect=emitted.append
+            ), mock.patch.object(
+                sys, "argv", ["daily_snapshot.py"]
+            ):
+                result = daily_snapshot.run_snapshot("run", time.monotonic())
+
+            self.assertEqual(result, 0)
+            self.assertEqual(emitted[0]["status"], "skipped_existing")
+            self.assertEqual(emitted[0]["akshareStage"]["tradeDate"], "2026-09-02")
+            self.assertTrue(
+                (Path(state_dir) / "akshare-market" / "2026-09-02.json").is_file()
+            )
+
+    def test_existing_snapshot_is_not_blocked_by_current_staging_failure(self):
+        emitted = []
+        with mock.patch.object(
+            daily_snapshot,
+            "qlib_market",
+            return_value=sample_qlib_market("2026-09-01"),
+        ), mock.patch.object(
+            daily_snapshot,
+            "existing_snapshot",
+            return_value={"generatedAt": "old", "payloadSha256": "abc"},
+        ), mock.patch.object(
+            daily_snapshot,
+            "capture_current_akshare_market",
+            side_effect=daily_snapshot.SnapshotDeferredError("network unavailable"),
+        ), mock.patch.object(
+            daily_snapshot, "emit_status", side_effect=emitted.append
+        ), mock.patch.object(sys, "argv", ["daily_snapshot.py"]):
+            result = daily_snapshot.run_snapshot("run", time.monotonic())
+
+        self.assertEqual(result, 0)
+        self.assertEqual(emitted[0]["status"], "skipped_existing")
+        self.assertEqual(emitted[0]["akshareStage"]["status"], "unavailable")
+        self.assertIn("network unavailable", emitted[0]["warnings"][0])
+
+    def test_two_day_sequence_defers_then_uses_exact_staged_day(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_dir = root / "research-data" / "config"
+            config_dir.mkdir(parents=True)
+            (config_dir / "stocks.json").write_text(
+                json.dumps({"corePool": [{"code": "002617"}]}),
+                encoding="utf-8",
+            )
+            db_path = str(root / "snapshot.db")
+            state_dir = str(root / "state")
+            qlib_days = iter(
+                [sample_qlib_market("2026-09-01"), sample_qlib_market("2026-09-02")]
+            )
+            akshare_days = iter(
+                [
+                    sample_akshare_market("2026-09-02"),
+                    RuntimeError("network unavailable"),
+                    RuntimeError("network unavailable"),
+                ]
+            )
+
+            with ExitStack() as stack:
+                stack.enter_context(mock.patch.object(daily_snapshot, "DB", db_path))
+                stack.enter_context(mock.patch.object(daily_snapshot, "STATE_DIR", state_dir))
+                stack.enter_context(mock.patch.object(daily_snapshot, "AKSHARE_STAGE_DIR", None))
+                stack.enter_context(mock.patch.object(daily_snapshot, "qlib_market", side_effect=qlib_days))
+                stack.enter_context(mock.patch.object(daily_snapshot, "akshare_market", side_effect=akshare_days))
+                stack.enter_context(mock.patch.object(daily_snapshot, "akshare_lhb", return_value={"date": "2026-09-02", "count": 0, "rows": []}))
+                stack.enter_context(mock.patch.object(daily_snapshot, "spot_market", return_value={"date": "current", "breadth": {"total": 2000}, "limitUp": []}))
+                stack.enter_context(mock.patch.object(daily_snapshot, "fund_flow_sina", return_value={"002617": [1]}))
+                stack.enter_context(mock.patch.object(daily_snapshot, "lhb_official", return_value={"date": "2026-09-02", "szse": [], "sse": ""}))
+                stack.enter_context(mock.patch.object(daily_snapshot, "mootdx_quotes", return_value={"002617": {"price": 10}}))
+                stack.enter_context(mock.patch.object(daily_snapshot, "tencent_quote", return_value={"002617": {"price": "10"}}))
+                stack.enter_context(mock.patch.object(daily_snapshot, "baostock_valuation", return_value={"002617": [{"date": "2026-09-02"}]}))
+                stack.enter_context(mock.patch.object(daily_snapshot, "cninfo_announcements", return_value=[]))
+                stack.enter_context(mock.patch.object(daily_snapshot, "cls_telegraph", return_value=[{"title": "news"}]))
+                stack.enter_context(mock.patch.object(daily_snapshot, "northbound_flow", return_value={"hgt": 1.0, "sgt": 2.0, "total": 3.0}))
+                stack.enter_context(mock.patch.object(daily_snapshot, "concept_blocks", return_value={}))
+                stack.enter_context(mock.patch.object(daily_snapshot, "insider_transactions", return_value=""))
+                stack.enter_context(mock.patch.object(daily_snapshot, "hot_stocks", return_value=[{"code": "002617"}]))
+                stack.enter_context(mock.patch.object(daily_snapshot, "global_markets", return_value={"道指": {}, "纳指": {}, "标普": {}}))
+                stack.enter_context(mock.patch.object(sys, "argv", ["daily_snapshot.py"]))
+                stack.enter_context(mock.patch.dict(os.environ, {"HOME": directory}))
+
+                with self.assertRaisesRegex(
+                    daily_snapshot.SnapshotDeferredError,
+                    "qlib=2026-09-01, captured=2026-09-02",
+                ):
+                    daily_snapshot.run_snapshot("day-one", time.monotonic())
+
+                result = daily_snapshot.run_snapshot("day-two", time.monotonic())
+
+            self.assertEqual(result, 0)
+            self.assertTrue(
+                (Path(state_dir) / "akshare-market" / "2026-09-02.json").is_file()
+            )
+            self.assertFalse(
+                (Path(state_dir) / "akshare-market" / "2026-09-03.json").exists()
+            )
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute("SELECT date, payload FROM snapshot").fetchall()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0][0], "2026-09-02")
+            stored_payload = json.loads(rows[0][1])
+            self.assertEqual(
+                stored_payload["akshare"]["activity"]["统计日期"][:10],
+                "2026-09-02",
+            )
+            self.assertEqual(
+                stored_payload["sourceAsOf"]["akshareActivity"]["kind"],
+                "trade_date",
+            )
+            self.assertEqual(
+                stored_payload["sourceAsOf"]["akshareActivity"]["provenance"],
+                "immutable_stage",
+            )
+            last_run = json.loads(
+                (Path(state_dir) / "last-run.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(last_run["status"], "inserted")
+            self.assertEqual(last_run["akshareStage"]["status"], "unavailable")
+            self.assertIn("network unavailable", last_run["warnings"][0])
 
 
 class SnapshotSafetyTests(unittest.TestCase):
@@ -518,7 +951,7 @@ class SnapshotSafetyTests(unittest.TestCase):
                 blocker.rollback()
                 blocker.close()
 
-    def test_date_mismatch_in_main_does_not_write(self):
+    def test_missing_historical_stage_in_main_defers_without_write(self):
         with tempfile.TemporaryDirectory() as directory:
             db_path = str(Path(directory) / "snapshot.db")
             qlib_payload = {
@@ -534,13 +967,11 @@ class SnapshotSafetyTests(unittest.TestCase):
             ), mock.patch.object(
                 daily_snapshot,
                 "akshare_market",
-                return_value={
-                    "sectors": [1],
-                    "activity": {"统计日期": "2026-08-28 15:00:00"},
-                },
+                return_value=sample_akshare_market("2026-08-28"),
             ), mock.patch.object(sys, "argv", ["daily_snapshot.py"]):
                 with self.assertRaisesRegex(
-                    daily_snapshot.SnapshotValidationError, "trade-date mismatch"
+                    daily_snapshot.SnapshotDeferredError,
+                    "qlib=2026-08-26, captured=2026-08-28",
                 ):
                     daily_snapshot.main()
             with sqlite3.connect(db_path) as conn:

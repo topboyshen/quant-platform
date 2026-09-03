@@ -13,6 +13,7 @@ import math
 import numbers
 import os
 import sqlite3
+import stat
 import sys
 import syslog
 import time
@@ -34,6 +35,18 @@ STATE_DIR = os.environ.get(
     "RESEARCH_DATA_STATE_DIR",
     os.path.expanduser("~/.local/state/research-data"),
 )
+AKSHARE_STAGE_DIR = os.environ.get("RESEARCH_DATA_AKSHARE_STAGE_DIR")
+AKSHARE_STAGE_SCHEMA_VERSION = 1
+AKSHARE_STAGE_MAX_BYTES = 4 * 1024 * 1024
+AKSHARE_STAGE_MIN_SECTORS = 50
+AKSHARE_STAGE_REQUIRED_ACTIVITY_COUNTS = (
+    "上涨",
+    "下跌",
+    "平盘",
+    "涨停",
+    "跌停",
+)
+SNAPSHOT_DEFERRED_EXIT = 69
 QLIB_MIN_ELIGIBLE = 5000
 QLIB_MIN_COVERAGE = 0.999
 SQLITE_TIMEOUT = 30
@@ -53,6 +66,10 @@ class SnapshotUsageError(RuntimeError):
 
 class SnapshotTemporaryError(RuntimeError):
     """A transient lock or database-busy condition blocked the run."""
+
+
+class SnapshotDeferredError(RuntimeError):
+    """Required same-trade-date source material has not arrived yet."""
 
 
 def _snapshot_payload(snapshot):
@@ -298,6 +315,352 @@ def validate_daily_source_dates(target_trade_date, akshare_payload):
             f"qlib={target_trade_date}, akshare_activity={activity_date}"
         )
     return activity_date
+
+
+def _akshare_stage_directory(stage_dir=None):
+    return stage_dir or AKSHARE_STAGE_DIR or os.path.join(STATE_DIR, "akshare-market")
+
+
+def _validate_iso_timestamp(value, field):
+    if not isinstance(value, str):
+        raise SnapshotValidationError(f"AkShare stage {field} is not a timestamp")
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise SnapshotValidationError(
+            f"AkShare stage {field} is not a valid timestamp"
+        ) from exc
+    if parsed.tzinfo is None:
+        raise SnapshotValidationError(
+            f"AkShare stage {field} must include a timezone"
+        )
+    return parsed
+
+
+def validate_akshare_market_payload(akshare_payload, expected_date=None):
+    if not isinstance(akshare_payload, dict):
+        raise SnapshotValidationError("AkShare market payload is not an object")
+    errors = source_error_paths(akshare_payload)
+    if errors:
+        raise SnapshotValidationError(
+            f"AkShare market payload contains errors: {', '.join(errors[:5])}"
+        )
+    sectors = akshare_payload.get("sectors")
+    if not isinstance(sectors, list) or len(sectors) < AKSHARE_STAGE_MIN_SECTORS:
+        raise SnapshotValidationError(
+            "AkShare sector summary is incomplete: "
+            f"rows={len(sectors) if isinstance(sectors, list) else 'invalid'}, "
+            f"minimum={AKSHARE_STAGE_MIN_SECTORS}"
+        )
+    required_sector_fields = {
+        "name", "chg", "netInflow", "upCount", "downCount", "leader",
+    }
+    for index, sector in enumerate(sectors):
+        if not isinstance(sector, dict) or not required_sector_fields.issubset(sector):
+            raise SnapshotValidationError(
+                f"AkShare sector row {index} has invalid fields"
+            )
+        if not isinstance(sector["name"], str) or not sector["name"].strip():
+            raise SnapshotValidationError(
+                f"AkShare sector row {index} has no valid name"
+            )
+    activity = akshare_payload.get("activity")
+    if not isinstance(activity, dict):
+        raise SnapshotValidationError("AkShare market activity is not an object")
+    for field in AKSHARE_STAGE_REQUIRED_ACTIVITY_COUNTS:
+        value = activity.get(field)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, numbers.Real)
+            or not math.isfinite(float(value))
+            or float(value) < 0
+        ):
+            raise SnapshotValidationError(
+                f"AkShare market activity field is invalid: {field}"
+            )
+    breadth_total = sum(float(activity[field]) for field in ("上涨", "下跌", "平盘"))
+    if breadth_total < 1000:
+        raise SnapshotValidationError(
+            f"AkShare market activity coverage is too low: {breadth_total:g}"
+        )
+    activity_date = activity_trade_date(akshare_payload)
+    if activity_date is None:
+        raise SnapshotValidationError("AkShare market activity has no valid 统计日期")
+    if expected_date is not None and activity_date != expected_date:
+        raise SnapshotValidationError(
+            "trade-date mismatch: "
+            f"expected={expected_date}, akshare_activity={activity_date}"
+        )
+    _snapshot_payload(akshare_payload)
+    return activity_date
+
+
+def _akshare_stage_filename(trade_date):
+    try:
+        normalized = datetime.date.fromisoformat(str(trade_date)).isoformat()
+    except (TypeError, ValueError) as exc:
+        raise SnapshotValidationError(
+            f"invalid AkShare stage trade date: {trade_date}"
+        ) from exc
+    if normalized != trade_date:
+        raise SnapshotValidationError(
+            f"non-canonical AkShare stage trade date: {trade_date}"
+        )
+    return f"{normalized}.json"
+
+
+def _akshare_stage_path(trade_date, stage_dir=None):
+    return os.path.join(
+        _akshare_stage_directory(stage_dir), _akshare_stage_filename(trade_date)
+    )
+
+
+def _open_private_stage_directory(stage_dir, create=False):
+    existed = os.path.lexists(stage_dir)
+    if create:
+        try:
+            os.makedirs(stage_dir, mode=0o700, exist_ok=True)
+            if not existed:
+                os.chmod(stage_dir, 0o700, follow_symlinks=False)
+        except OSError as exc:
+            raise SnapshotValidationError(
+                f"AkShare stage directory is unavailable: {exc}"
+            ) from exc
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        directory_fd = os.open(stage_dir, flags)
+    except FileNotFoundError:
+        if not create:
+            return None
+        raise SnapshotValidationError("AkShare stage directory was not created")
+    except OSError as exc:
+        raise SnapshotValidationError(
+            f"AkShare stage directory cannot be opened: {exc}"
+        ) from exc
+    try:
+        if create and not existed:
+            os.fchmod(directory_fd, 0o700)
+        stage_stat = os.fstat(directory_fd)
+        if not stat.S_ISDIR(stage_stat.st_mode):
+            raise SnapshotValidationError(
+                "AkShare stage path is not a regular directory"
+            )
+        if stage_stat.st_uid != os.geteuid():
+            raise SnapshotValidationError(
+                "AkShare stage directory owner is not the current user"
+            )
+        if stat.S_IMODE(stage_stat.st_mode) != 0o700:
+            raise SnapshotValidationError(
+                "AkShare stage directory mode must be 0700"
+            )
+        return directory_fd
+    except Exception:
+        os.close(directory_fd)
+        raise
+
+
+def _validate_akshare_stage_document(document, expected_date):
+    required_keys = {
+        "schemaVersion",
+        "tradeDate",
+        "collectionWindow",
+        "akshare",
+        "payloadSha256",
+        "recordSha256",
+    }
+    if not isinstance(document, dict) or set(document) != required_keys:
+        raise SnapshotValidationError("AkShare stage schema fields are invalid")
+    if document["schemaVersion"] != AKSHARE_STAGE_SCHEMA_VERSION:
+        raise SnapshotValidationError(
+            f"unsupported AkShare stage schema: {document['schemaVersion']}"
+        )
+    if document["tradeDate"] != expected_date:
+        raise SnapshotValidationError(
+            "AkShare stage filename/date mismatch: "
+            f"expected={expected_date}, stored={document['tradeDate']}"
+        )
+    window = document["collectionWindow"]
+    if not isinstance(window, dict) or set(window) != {"startedAt", "completedAt"}:
+        raise SnapshotValidationError("AkShare stage collection window is invalid")
+    started_at = _validate_iso_timestamp(window["startedAt"], "startedAt")
+    completed_at = _validate_iso_timestamp(window["completedAt"], "completedAt")
+    if completed_at < started_at:
+        raise SnapshotValidationError(
+            "AkShare stage collection window ends before it starts"
+        )
+    validate_akshare_market_payload(document["akshare"], expected_date)
+    payload_sha256 = _payload_sha256(_snapshot_payload(document["akshare"]))
+    if document["payloadSha256"] != payload_sha256:
+        raise SnapshotValidationError("AkShare stage payload hash mismatch")
+    unsigned = dict(document)
+    record_sha256 = unsigned.pop("recordSha256")
+    expected_record_sha256 = _payload_sha256(_snapshot_payload(unsigned))
+    if record_sha256 != expected_record_sha256:
+        raise SnapshotValidationError("AkShare stage record hash mismatch")
+    return document
+
+
+def _load_akshare_market_stage_from_fd(trade_date, directory_fd):
+    filename = _akshare_stage_filename(trade_date)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(filename, flags, dir_fd=directory_fd)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise SnapshotValidationError(f"AkShare stage cannot be opened: {exc}") from exc
+    try:
+        stage_stat = os.fstat(fd)
+        if not stat.S_ISREG(stage_stat.st_mode):
+            raise SnapshotValidationError("AkShare stage is not a regular file")
+        if stage_stat.st_uid != os.geteuid():
+            raise SnapshotValidationError("AkShare stage owner is not the current user")
+        if stat.S_IMODE(stage_stat.st_mode) != 0o600:
+            raise SnapshotValidationError("AkShare stage mode must be 0600")
+        if stage_stat.st_size <= 0 or stage_stat.st_size > AKSHARE_STAGE_MAX_BYTES:
+            raise SnapshotValidationError(
+                f"AkShare stage size is invalid: {stage_stat.st_size}"
+            )
+        with os.fdopen(fd, "rb") as stage_file:
+            fd = -1
+            raw_bytes = stage_file.read(AKSHARE_STAGE_MAX_BYTES + 1)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+    if len(raw_bytes) > AKSHARE_STAGE_MAX_BYTES:
+        raise SnapshotValidationError("AkShare stage exceeds the size limit")
+    try:
+        raw = raw_bytes.decode("utf-8")
+        document = json.loads(raw, parse_constant=_reject_json_constant)
+    except (UnicodeDecodeError, TypeError, ValueError) as exc:
+        raise SnapshotValidationError(f"AkShare stage is invalid JSON: {exc}") from exc
+    return _validate_akshare_stage_document(document, trade_date)
+
+
+def load_akshare_market_stage(trade_date, stage_dir=None):
+    _akshare_stage_filename(trade_date)
+    stage_dir = _akshare_stage_directory(stage_dir)
+    directory_fd = _open_private_stage_directory(stage_dir, create=False)
+    if directory_fd is None:
+        return None
+    try:
+        return _load_akshare_market_stage_from_fd(trade_date, directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def seal_akshare_market_stage(
+    akshare_payload, collection_started_at, collection_completed_at, stage_dir=None
+):
+    trade_date = validate_akshare_market_payload(akshare_payload)
+    started_at = _validate_iso_timestamp(collection_started_at, "startedAt")
+    completed_at = _validate_iso_timestamp(collection_completed_at, "completedAt")
+    if completed_at < started_at:
+        raise SnapshotValidationError(
+            "AkShare stage collection window ends before it starts"
+        )
+    stage_dir = _akshare_stage_directory(stage_dir)
+    path = _akshare_stage_path(trade_date, stage_dir)
+    payload_sha256 = _payload_sha256(_snapshot_payload(akshare_payload))
+    document = {
+        "schemaVersion": AKSHARE_STAGE_SCHEMA_VERSION,
+        "tradeDate": trade_date,
+        "collectionWindow": {
+            "startedAt": collection_started_at,
+            "completedAt": collection_completed_at,
+        },
+        "akshare": akshare_payload,
+        "payloadSha256": payload_sha256,
+    }
+    document["recordSha256"] = _payload_sha256(_snapshot_payload(document))
+    encoded = (_snapshot_payload(document) + "\n").encode("utf-8")
+    if len(encoded) > AKSHARE_STAGE_MAX_BYTES:
+        raise SnapshotValidationError("AkShare stage exceeds the size limit")
+
+    directory_fd = _open_private_stage_directory(stage_dir, create=True)
+    try:
+        existing = _load_akshare_market_stage_from_fd(trade_date, directory_fd)
+    except Exception:
+        os.close(directory_fd)
+        raise
+    if existing is not None:
+        os.close(directory_fd)
+        if existing["payloadSha256"] != payload_sha256:
+            raise SnapshotValidationError(
+                "AkShare stage conflict for "
+                f"{trade_date}: immutable payload already exists"
+            )
+        return {**existing, "status": "idempotent", "path": path}
+
+    temporary_name = f".{trade_date}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    filename = _akshare_stage_filename(trade_date)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    fd = -1
+    try:
+        fd = os.open(temporary_name, flags, 0o600, dir_fd=directory_fd)
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "wb") as stage_file:
+            fd = -1
+            stage_file.write(encoded)
+            stage_file.flush()
+            os.fsync(stage_file.fileno())
+        try:
+            os.link(
+                temporary_name,
+                filename,
+                src_dir_fd=directory_fd,
+                dst_dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+            published = _load_akshare_market_stage_from_fd(
+                trade_date, directory_fd
+            )
+            if published["recordSha256"] != document["recordSha256"]:
+                raise SnapshotValidationError(
+                    "AkShare stage post-publish verification failed"
+                )
+            document = published
+            status = "stored"
+        except FileExistsError:
+            existing = _load_akshare_market_stage_from_fd(
+                trade_date, directory_fd
+            )
+            if existing is None or existing["payloadSha256"] != payload_sha256:
+                raise SnapshotValidationError(
+                    "AkShare stage conflict for "
+                    f"{trade_date}: immutable payload already exists"
+                )
+            document = existing
+            status = "idempotent"
+        os.fsync(directory_fd)
+    except OSError as exc:
+        raise SnapshotValidationError(f"AkShare stage write failed: {exc}") from exc
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            os.unlink(temporary_name, dir_fd=directory_fd)
+        except FileNotFoundError:
+            pass
+        os.close(directory_fd)
+    return {**document, "status": status, "path": path}
+
+
+def capture_current_akshare_market(stage_dir=None):
+    collection_started_at = datetime.datetime.now().astimezone().isoformat()
+    try:
+        akshare_payload = collect_source(akshare_market)
+    except Exception as exc:
+        raise SnapshotDeferredError(
+            f"current AkShare market staging failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    collection_completed_at = datetime.datetime.now().astimezone().isoformat()
+    return seal_akshare_market_stage(
+        akshare_payload,
+        collection_started_at,
+        collection_completed_at,
+        stage_dir,
+    )
 
 
 def validate_source_completeness(sources, watch_codes, fund_flow_codes):
@@ -856,8 +1219,30 @@ def run_snapshot(run_id, started_monotonic):
     date = requested_trade_date(sys.argv[1:])
     q = qlib_market(date)
     prior = existing_snapshot(q["date"])
+    target_stage = None
+    if prior is None:
+        target_stage = load_akshare_market_stage(q["date"])
+
+    current_stage = None
+    staging_warning = None
+    try:
+        current_stage = capture_current_akshare_market()
+    except (SnapshotDeferredError, SnapshotValidationError) as exc:
+        staging_warning = f"{type(exc).__name__}: {exc}"
+    if current_stage is None:
+        current_stage_summary = {
+            "status": "unavailable",
+            "reason": staging_warning,
+        }
+    else:
+        current_stage_summary = {
+            "status": current_stage["status"],
+            "tradeDate": current_stage["tradeDate"],
+            "payloadSha256": current_stage["payloadSha256"],
+        }
+
     if prior is not None:
-        emit_status({
+        status_record = {
             "runId": run_id,
             "status": "skipped_existing",
             "target": q["date"],
@@ -865,16 +1250,31 @@ def run_snapshot(run_id, started_monotonic):
             "coverage": q["coverage"],
             "generatedAt": prior["generatedAt"],
             "payloadSha256": prior["payloadSha256"],
+            "akshareStage": current_stage_summary,
             "durationSeconds": round(time.monotonic() - started_monotonic, 3),
-        })
+        }
+        if staging_warning:
+            status_record["warnings"] = [staging_warning]
+        emit_status(status_record)
         return 0
 
-    collection_started_at = datetime.datetime.now().astimezone().isoformat()
-    try:
-        a = collect_source(akshare_market)
-    except Exception as e:
-        a = {"sectors": [], "activity": {}, "error": str(e)}
+    if target_stage is None and current_stage is not None:
+        target_stage = load_akshare_market_stage(q["date"])
+    if target_stage is None:
+        captured = (
+            current_stage["tradeDate"] if current_stage is not None else "unavailable"
+        )
+        warning_suffix = (
+            f"; current staging unavailable: {staging_warning}"
+            if staging_warning else ""
+        )
+        raise SnapshotDeferredError(
+            "waiting for immutable AkShare market stage: "
+            f"qlib={q['date']}, captured={captured}{warning_suffix}"
+        )
+    a = target_stage["akshare"]
     activity_date = validate_daily_source_dates(q["date"], a)
+    collection_started_at = datetime.datetime.now().astimezone().isoformat()
     try:
         lhb = collect_source(akshare_lhb, q["date"])
     except Exception as e:
@@ -979,7 +1379,21 @@ def run_snapshot(run_id, started_monotonic):
             },
             "qlib": {"status": "ok", "kind": "trade_date", "value": q["date"]},
             "akshareActivity": {
-                "status": "ok", "kind": "trade_date", "value": activity_date,
+                "status": "ok",
+                "kind": "trade_date",
+                "value": activity_date,
+                "provenance": "immutable_stage",
+                "payloadSha256": target_stage["payloadSha256"],
+                "window": target_stage["collectionWindow"],
+            },
+            "akshareStage": {
+                "status": "ok",
+                "kind": "immutable_stage",
+                "tradeDate": activity_date,
+                "payloadSha256": target_stage["payloadSha256"],
+                "recordSha256": target_stage["recordSha256"],
+                "window": target_stage["collectionWindow"],
+                "sources": ["akshareActivity", "akshareSectors"],
             },
             "lhb": {"status": "ok", "kind": "trade_date", "value": q["date"]},
             "lhbOfficial": {
@@ -1017,7 +1431,7 @@ def run_snapshot(run_id, started_monotonic):
         "globalMarkets": global_mkts,
     }
     stored = store_snapshot(snapshot)
-    emit_status({
+    status_record = {
         "runId": run_id,
         "status": stored["status"],
         "target": q["date"],
@@ -1030,8 +1444,16 @@ def run_snapshot(run_id, started_monotonic):
         "coverage": q["coverage"],
         "payloadSha256": stored["payloadSha256"],
         "quickCheck": stored.get("quickCheck"),
+        "akshareStage": {
+            **current_stage_summary,
+            "usedTradeDate": target_stage["tradeDate"],
+            "usedPayloadSha256": target_stage["payloadSha256"],
+        },
         "durationSeconds": round(time.monotonic() - started_monotonic, 3),
-    })
+    }
+    if staging_warning:
+        status_record["warnings"] = [staging_warning]
+    emit_status(status_record)
     return 0
 
 
@@ -1063,6 +1485,14 @@ if __name__ == "__main__":
             "durationSeconds": round(time.monotonic() - _started_monotonic, 3),
         }, stream=sys.stderr)
         raise SystemExit(75)
+    except SnapshotDeferredError as exc:
+        emit_status({
+            "runId": _run_id,
+            "status": "deferred",
+            "reason": str(exc),
+            "durationSeconds": round(time.monotonic() - _started_monotonic, 3),
+        }, stream=sys.stderr)
+        raise SystemExit(SNAPSHOT_DEFERRED_EXIT)
     except (QlibDateError, SnapshotValidationError) as exc:
         emit_status({
             "runId": _run_id,
