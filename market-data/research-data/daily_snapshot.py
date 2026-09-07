@@ -21,6 +21,7 @@ import uuid
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
 from qlib_io import load_qlib_features, read_qlib_day_bin
+from cninfo_source import CninfoClient, CninfoError, safe_diagnostic
 
 # akshare 需直连中国源, 去掉代理环境变量
 for _k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
@@ -58,6 +59,10 @@ class QlibDateError(ValueError):
 
 class SnapshotValidationError(RuntimeError):
     """The candidate snapshot is unsafe to persist."""
+
+    def __init__(self, message, *, details=None):
+        super().__init__(message)
+        self.details = details or {}
 
 
 class SnapshotUsageError(RuntimeError):
@@ -666,8 +671,16 @@ def capture_current_akshare_market(stage_dir=None):
 def validate_source_completeness(sources, watch_codes, fund_flow_codes):
     errors = source_error_paths(sources)
     if errors:
+        source_details = []
+        announcements = sources.get("announcements")
+        if isinstance(announcements, dict):
+            for value in announcements.values():
+                detail = safe_diagnostic(value.get("error")) if isinstance(value, dict) else None
+                if detail is not None:
+                    source_details.append(detail)
         raise SnapshotValidationError(
-            f"source collection contains errors: {', '.join(errors[:8])}"
+            f"source collection contains errors: {', '.join(errors[:8])}",
+            details={"sourceErrors": source_details[:8]} if source_details else {},
         )
 
     akshare_payload = sources["akshare"]
@@ -1103,38 +1116,23 @@ def baostock_valuation(codes, days=30):
     return result
 
 
-_CNINFO_ORGID_MAP = None
+def cninfo_announcements(code, page_size=10, *, client=None):
+    if client is not None:
+        return client.announcements(code, page_size)
+    with CninfoClient() as owned_client:
+        return owned_client.announcements(code, page_size)
 
 
-def cninfo_announcements(code, page_size=10):
-    global _CNINFO_ORGID_MAP
-    import requests
-    if _CNINFO_ORGID_MAP is None:
-        r = requests.get("http://www.cninfo.com.cn/new/data/szse_stock.json", headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-        _CNINFO_ORGID_MAP = {s["code"]: s["orgId"] for s in r.json().get("stockList", [])}
-    org_id = _CNINFO_ORGID_MAP.get(code, f"gssz0{code}")
-    payload = {"stock": f"{code},{org_id}", "tabName": "fulltext", "pageSize": str(page_size), "pageNum": "1",
-               "column": "", "category": "", "plate": "", "seDate": "", "searchkey": "", "secid": "",
-               "sortName": "", "sortType": "", "isHLtitle": "true"}
-    r = requests.post("https://www.cninfo.com.cn/new/hisAnnouncement/query", data=payload,
-                      headers={"User-Agent": "Mozilla/5.0", "Content-Type": "application/x-www-form-urlencoded",
-                               "Referer": "https://www.cninfo.com.cn/new/disclosure", "Origin": "https://www.cninfo.com.cn"}, timeout=15)
-    anns = r.json().get("announcements") or []
-    import datetime
-    out = []
-    for a in anns:
-        ts = a.get("announcementTime")
-        date = ""
-        if ts:
+def collect_cninfo_announcements(codes):
+    """Retry only a failed request; keep successful securities within this run."""
+    result = {}
+    with CninfoClient() as client:
+        for code in codes:
             try:
-                ts = int(ts)
-                if ts > 1e12:
-                    ts = ts // 1000
-                date = datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
-            except Exception:
-                date = str(ts)[:10]
-        out.append({"title": a.get("announcementTitle"), "date": date})
-    return out
+                result[code] = cninfo_announcements(code, client=client)
+            except CninfoError as exc:
+                result[code] = {"error": exc.diagnostic}
+    return result
 
 
 def cls_telegraph(page_size=20):
@@ -1316,12 +1314,7 @@ def run_snapshot(run_id, started_monotonic):
         bv = collect_source(baostock_valuation, watch_codes, days=30)
     except Exception as e:
         bv = {"error": str(e)}
-    try:
-        anns = collect_source(
-            lambda: {code: cninfo_announcements(code) for code in watch_codes}
-        )
-    except Exception as e:
-        anns = {"error": str(e)}
+    anns = collect_cninfo_announcements(watch_codes)
     try:
         news = collect_source(cls_telegraph, 20)
     except Exception as e:
@@ -1367,7 +1360,11 @@ def run_snapshot(run_id, started_monotonic):
         "hotStocks": hot,
         "globalMarkets": global_mkts,
     }
-    validate_source_completeness(sources, watch_codes, ff_codes)
+    try:
+        validate_source_completeness(sources, watch_codes, ff_codes)
+    except SnapshotValidationError as exc:
+        exc.details.update({"target": q["date"], "qlibTag": q["generation"]["tag"]})
+        raise
     collection_completed_at = datetime.datetime.now().astimezone().isoformat()
     snapshot = {
         "date": q["date"],
@@ -1498,6 +1495,7 @@ if __name__ == "__main__":
             "runId": _run_id,
             "status": "rejected",
             "reason": str(exc),
+            **getattr(exc, "details", {}),
             "durationSeconds": round(time.monotonic() - _started_monotonic, 3),
         }, stream=sys.stderr)
         raise SystemExit(2)
