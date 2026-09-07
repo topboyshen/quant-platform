@@ -22,6 +22,7 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
 from qlib_io import load_qlib_features, read_qlib_day_bin
 from cninfo_source import CninfoClient, CninfoError, safe_diagnostic
+from concept_source import ConceptClient, ConceptError, safe_concept_diagnostic
 
 # akshare 需直连中国源, 去掉代理环境变量
 for _k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
@@ -672,12 +673,14 @@ def validate_source_completeness(sources, watch_codes, fund_flow_codes):
     errors = source_error_paths(sources)
     if errors:
         source_details = []
-        announcements = sources.get("announcements")
-        if isinstance(announcements, dict):
-            for value in announcements.values():
-                detail = safe_diagnostic(value.get("error")) if isinstance(value, dict) else None
-                if detail is not None:
-                    source_details.append(detail)
+        for source_name, sanitize in (("announcements", safe_diagnostic),
+                                      ("concepts", safe_concept_diagnostic)):
+            records = sources.get(source_name)
+            if isinstance(records, dict):
+                for value in records.values():
+                    detail = sanitize(value.get("error")) if isinstance(value, dict) else None
+                    if detail is not None:
+                        source_details.append(detail)
         raise SnapshotValidationError(
             f"source collection contains errors: {', '.join(errors[:8])}",
             details={"sourceErrors": source_details[:8]} if source_details else {},
@@ -1164,16 +1167,23 @@ def northbound_flow():
             "sgt_trend": (sgt_close - sgt_open) if sgt else None}
 
 
-def concept_blocks(code):
-    import urllib.request, json
-    url = ('https://finance.pae.baidu.com/api/getrelatedblock'
-           f'?stock=[{{"code":"{code}","market":"ab","type":"stock"}}]&finClientType=pc')
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0",
-                                               "Host": "finance.pae.baidu.com",
-                                               "Referer": "https://gushitong.baidu.com/"})
-    d = json.loads(urllib.request.urlopen(req, timeout=10).read())
-    result = d.get("Result", {}).get(code, [])
-    return {cat.get("name", ""): [i.get("name") for i in cat.get("list", [])] for cat in result}
+def concept_blocks(code, *, client=None):
+    if client is not None:
+        return client.concepts(code)
+    with ConceptClient() as owned_client:
+        return owned_client.concepts(code)
+
+
+def collect_concepts(codes):
+    """Preserve successful securities while retaining explicit failures for the gate."""
+    result = {}
+    with ConceptClient() as client:
+        for code in codes:
+            try:
+                result[code] = concept_blocks(code, client=client)
+            except ConceptError as exc:
+                result[code] = {"error": exc.diagnostic}
+    return result
 
 
 def insider_transactions(code):
@@ -1323,12 +1333,7 @@ def run_snapshot(run_id, started_monotonic):
         nb = collect_source(northbound_flow)
     except Exception as e:
         nb = {"error": str(e)}
-    try:
-        concepts = collect_source(
-            lambda: {code: concept_blocks(code) for code in watch_codes}
-        )
-    except Exception as e:
-        concepts = {"error": str(e)}
+    concepts = collect_concepts(watch_codes)
     try:
         insiders = collect_source(
             lambda: {code: insider_transactions(code) for code in watch_codes}
@@ -1395,6 +1400,13 @@ def run_snapshot(run_id, started_monotonic):
             "lhb": {"status": "ok", "kind": "trade_date", "value": q["date"]},
             "lhbOfficial": {
                 "status": "ok", "kind": "trade_date", "value": q["date"],
+            },
+            "announcements": {
+                "status": "ok",
+                "dateKind": "source_disclosure_date",
+                "observedAtLocation": "announcements[code][].observedAt",
+                "dateIsFirstObservedTime": False,
+                "nextDayPolicy": "one_calendar_day_with_verified_midnight_label_and_attachment_identity",
             },
             "liveAndRollingSources": {
                 "status": "ok",

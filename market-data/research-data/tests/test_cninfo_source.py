@@ -1,4 +1,5 @@
 import copy
+import datetime as dt
 from contextlib import ExitStack
 import hashlib
 import json
@@ -37,15 +38,31 @@ def announcements(code="002617"):
             "totalAnnouncement": 1}
 
 
+OBSERVED_AT = dt.datetime(2026, 9, 7, 22, 30, 2, tzinfo=source.CST)
+
+
+def next_day_announcements(code="002617", day="2026-09-08"):
+    result = announcements(code)
+    row = result["announcements"][0]
+    row.update({"orgId": "9900021308", "announcementId": "1220000001",
+                "announcementTime": int(dt.datetime.fromisoformat(day).replace(
+                    tzinfo=source.CST).timestamp() * 1000),
+                "adjunctUrl": f"finalpage/{day}/1220000001.PDF"})
+    return result
+
+
 class CninfoTests(unittest.TestCase):
     def setUp(self):
         self.session = mock.Mock(headers={}, trust_env=True)
         self.patch_session = mock.patch.object(source.requests, "Session", return_value=self.session)
         self.patch_sleep = mock.patch.object(source.time, "sleep")
+        self.patch_now = mock.patch.object(source, "_now_cst", return_value=OBSERVED_AT)
         self.patch_session.start()
         self.sleep = self.patch_sleep.start()
+        self.now = self.patch_now.start()
         self.addCleanup(self.patch_session.stop)
         self.addCleanup(self.patch_sleep.stop)
+        self.addCleanup(self.patch_now.stop)
 
     def fetch(self, effects, code="002617"):
         self.session.request.side_effect = effects
@@ -54,7 +71,10 @@ class CninfoTests(unittest.TestCase):
 
     def test_success_keeps_query_scope_and_closes_session(self):
         rows = self.fetch([response(mapping()), response(announcements())])
-        self.assertEqual(rows, [{"title": "sample", "date": "2026-09-04"}])
+        self.assertEqual(rows, [{"title": "sample", "date": "2026-09-04",
+                                "dateKind": "source_disclosure_date",
+                                "observedAt": OBSERVED_AT.isoformat(),
+                                "nextDayDisclosure": False}])
         self.assertFalse(self.session.trust_env)
         self.session.close.assert_called_once()
         get_call, post_call = self.session.request.call_args_list
@@ -142,6 +162,123 @@ class CninfoTests(unittest.TestCase):
             data["announcements"][0][field] = value
             with self.subTest(field=field, value=value), self.assertRaises(source.CninfoError):
                 self.fetch([response(mapping()), response(data)])
+
+    def test_next_day_disclosure_label_is_preserved_not_backdated(self):
+        data = next_day_announcements()
+        rows = self.fetch([response(mapping()), response(data)])
+        self.assertEqual(rows, [{"title": "sample", "date": "2026-09-08",
+                                "dateKind": "source_disclosure_date",
+                                "observedAt": "2026-09-07T22:30:02+08:00",
+                                "nextDayDisclosure": True,
+                                "disclosureEvidence": {
+                                    "orgId": "9900021308", "announcementId": "1220000001",
+                                    "adjunctUrl": "finalpage/2026-09-08/1220000001.PDF"}}])
+        # This response necessarily failed the old date <= observation-day condition.
+        self.assertGreater(dt.date.fromisoformat(rows[0]["date"]), OBSERVED_AT.date())
+
+    def test_next_day_complete_300033_page_keeps_all_ten_rows(self):
+        stocks = mapping()
+        stocks["stockList"].append({"code": "300033", "orgId": "9900008300"})
+        data = next_day_announcements("300033")
+        data["announcements"][0]["orgId"] = "9900008300"
+        data["announcements"] *= 10
+        data["totalAnnouncement"] = 1397
+        rows = self.fetch([response(stocks), response(data)], code="300033")
+        self.assertEqual(len(rows), 10)
+        self.assertTrue(all(row["nextDayDisclosure"] for row in rows))
+        self.now.assert_called_once_with()
+        post = self.session.request.call_args_list[-1]
+        self.assertEqual(post.kwargs["data"]["stock"], "300033,9900008300")
+        self.assertEqual(post.kwargs["data"]["seDate"], "")
+
+    def test_millisecond_string_and_seconds_retain_next_day_semantics(self):
+        original = next_day_announcements()["announcements"][0]["announcementTime"]
+        for value in (original, str(original), original // 1000, str(original // 1000)):
+            data = next_day_announcements()
+            data["announcements"][0]["announcementTime"] = value
+            with self.subTest(value=value):
+                rows = self.fetch([response(mapping()), response(data)])
+                self.assertEqual(rows[0]["date"], "2026-09-08")
+                self.assertTrue(rows[0]["nextDayDisclosure"])
+
+    def test_same_day_disclosure_not_misclassified_after_midnight(self):
+        self.now.return_value = dt.datetime(2026, 9, 8, 0, 0, 1, tzinfo=source.CST)
+        rows = self.fetch([response(mapping()), response(next_day_announcements())])
+        self.assertFalse(rows[0]["nextDayDisclosure"])
+        self.assertNotIn("disclosureEvidence", rows[0])
+        self.assertEqual(rows[0]["observedAt"], "2026-09-08T00:00:01+08:00")
+
+    def test_two_or_more_days_ahead_remain_rejected_even_with_valid_attachment(self):
+        for observed, day in ((OBSERVED_AT, "2026-09-09"),
+                              (dt.datetime(2026, 9, 4, 22, 30, tzinfo=source.CST),
+                               "2026-09-07")):
+            self.now.return_value = observed
+            with self.subTest(day=day), self.assertRaises(source.CninfoError) as caught:
+                self.fetch([response(mapping()), response(next_day_announcements(day=day))])
+            self.assertEqual(caught.exception.diagnostic["validationReason"], "date_out_of_range")
+
+    def test_future_non_midnight_timestamp_is_not_a_disclosure_date_label(self):
+        data = next_day_announcements()
+        data["announcements"][0]["announcementTime"] += 1000
+        with self.assertRaises(source.CninfoError) as caught:
+            self.fetch([response(mapping()), response(data)])
+        self.assertEqual(caught.exception.diagnostic["validationReason"],
+                         "future_disclosure_evidence")
+
+    def test_wrong_organization_is_rejected_even_with_right_security_code(self):
+        for data in (announcements(), next_day_announcements()):
+            data["announcements"][0]["orgId"] = "wrong"
+            with self.subTest(nextDay="adjunctUrl" in data["announcements"][0]), \
+                    self.assertRaises(source.CninfoError) as caught:
+                self.fetch([response(mapping()), response(data)])
+            self.assertEqual(caught.exception.diagnostic["errorType"], "SecurityMismatch")
+
+    def test_next_day_requires_org_and_attachment_identity(self):
+        for field in ("orgId", "announcementId", "adjunctUrl"):
+            data = next_day_announcements()
+            del data["announcements"][0][field]
+            with self.subTest(field=field), self.assertRaises(source.CninfoError):
+                self.fetch([response(mapping()), response(data)])
+
+    def test_next_day_wrong_attachment_domain_path_date_or_id_is_rejected(self):
+        for path in ("https://evil.example/finalpage/2026-09-08/1220000001.PDF",
+                     "//evil.example/finalpage/2026-09-08/1220000001.PDF",
+                     "finalpage/2026-09-07/1220000001.PDF",
+                     "finalpage/2026-09-08/1220000002.PDF",
+                     "finalpage/2026-09-08/../1220000001.PDF",
+                     "finalpage/2026-09-08/1220000001.PDF?token=secret",
+                     None, {"token": "secret"}):
+            data = next_day_announcements()
+            data["announcements"][0]["adjunctUrl"] = path
+            with self.subTest(path=path), self.assertRaises(source.CninfoError) as caught:
+                self.fetch([response(mapping()), response(data)])
+            self.assertEqual(caught.exception.diagnostic["validationReason"],
+                             "future_disclosure_evidence")
+            self.assertNotIn("secret", str(caught.exception))
+
+    def test_next_day_does_not_permit_incomplete_page(self):
+        data = next_day_announcements()
+        data["totalAnnouncement"] = 10
+        with self.assertRaises(source.CninfoError) as caught:
+            self.fetch([response(mapping()), response(data)])
+        self.assertEqual(caught.exception.diagnostic["validationReason"], "page_incomplete")
+
+    def test_schema_reason_survives_allowlist_without_untrusted_details(self):
+        diagnostic = source.CninfoError("announcements", "InvalidSchema", "300033",
+            validation_reason="future_disclosure_evidence").diagnostic
+        diagnostic.update({"body": "secret", "url": "https://example.test/?token=secret"})
+        self.assertEqual(source.safe_diagnostic(diagnostic)["validationReason"],
+                         "future_disclosure_evidence")
+        self.assertNotIn("secret", json.dumps(source.safe_diagnostic(diagnostic)))
+        for value in ("secret", None, [], {}, True):
+            diagnostic["validationReason"] = value
+            self.assertNotIn("validationReason", source.safe_diagnostic(diagnostic))
+
+    def test_untrusted_stage_or_error_type_is_rejected_without_type_error(self):
+        for field in ("stage", "errorType"):
+            diagnostic = source.CninfoError("announcements", "InvalidSchema", "300033").diagnostic
+            diagnostic[field] = ["secret"]
+            self.assertIsNone(source.safe_diagnostic(diagnostic))
 
     def test_unknown_security_does_not_guess_an_org_id(self):
         with self.assertRaises(source.CninfoError) as caught:
