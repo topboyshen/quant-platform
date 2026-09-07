@@ -1,0 +1,12 @@
+[Unit]
+Description=Audit research data locally after the nightly snapshot window
+
+[Timer]
+OnCalendar=*-*-* 22:45:00 Asia/Shanghai
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+Unit=research-data-health.service
+
+[Install]
+WantedBy=timers.target

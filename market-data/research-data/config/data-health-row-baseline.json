@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-07T20:12:45+08:00",
+  "purpose": "Read-only historical row byte-hash baseline; not a backup or proof of semantic validity.",
+  "knownInvalidRows": ["2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26"],
+  "rowHashes": {
+    "2026-08-21": "e05cd0200881f6da5ef994cfe20d6f1ee4713f8a0604af13c73b3657f238eb48",
+    "2026-08-24": "5da2ddfe5f5b62ff01da204b28c81e55e355475d73d9fda2b957de5c71597f52",
+    "2026-08-25": "4c57f903a868a39dd6f8b020babecb0f7e571ae9168880646deae570af4e6ef5",
+    "2026-08-26": "a67614a1a81141b76f9dc5f9f44488b387e7799fcbe8988fa6e1a3d4eb0b5f42",
+    "2026-08-28": "a7b364efc22c22e341b471cedc2075d917ef18be4d6aa1a389fdfd4ff3871410"
+  }
+}
