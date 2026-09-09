@@ -8,6 +8,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import sqlite3
 import stat
 import struct
@@ -17,6 +18,7 @@ CST = dt.timezone(dt.timedelta(hours=8))
 REFERENCES = ("sh600000", "sz000001", "sh600519", "sz300750")
 FIELDS = ("close", "high", "low", "amount")
 FAILURES = {"rejected", "deferred", "failed", "temporary_failure", "usage_error"}
+INCREMENTAL_MANIFEST = ".qlib-dolt-incremental.json"
 
 
 class EvidenceError(ValueError):
@@ -80,24 +82,303 @@ def read_file(path, limit=4 * 1024 * 1024, private=False):
         return raw
 
 
+def incremental_quality(document):
+    """Validate producer claims and their arithmetic, not underlying market rows."""
+    absence, price = document["sourceAbsence"], document["priceValidation"]
+    if (not isinstance(absence, dict) or set(absence) != {"sourceCommit", "dates"}
+            or absence["sourceCommit"] != document["sourceCommit"]
+            or not isinstance(absence["dates"], dict)):
+        raise EvidenceError("incremental_source_absence_invalid")
+    missing = {}
+    for symbol, dates in absence["dates"].items():
+        if (not isinstance(symbol, str) or re.fullmatch(r"(?:SH|SZ|BJ)[0-9]{6}", symbol) is None
+                or not isinstance(dates, list) or not dates):
+            raise EvidenceError("incremental_source_absence_invalid")
+        for day in dates:
+            iso_date(day)
+        if dates != sorted(set(dates)) or dates[-1] > document["targetDate"]:
+            raise EvidenceError("incremental_source_absence_invalid")
+        missing[symbol] = list(dates)
+    fields = {"target_date", "eligible", "valid", "invalid", "coverage", "invalid_symbols",
+              "invalid_reasons", "first_day_listings_checked", "reference_dates"}
+    if (not isinstance(price, dict) or not fields | {"status", "daily_coverage", "sourceAbsentDates", "lastQuotedDate", "historical_tail_gaps"} <= set(price)
+            or not isinstance(price["daily_coverage"], list)
+            or len(price["daily_coverage"]) != len(document["calendarAdded"])):
+        raise EvidenceError("incremental_price_claim_invalid")
+    if (price.get("source_commit", document["sourceCommit"]) != document["sourceCommit"]
+            or price.get("base_date", document["baseDate"]) != document["baseDate"]):
+        raise EvidenceError("incremental_price_source_disagrees")
+    if (price["sourceAbsentDates"] != missing or not isinstance(price["lastQuotedDate"], dict)
+            or set(price["lastQuotedDate"]) != set(missing)):
+        raise EvidenceError("incremental_source_absence_disagrees")
+    for symbol, day in price["lastQuotedDate"].items():
+        if not isinstance(symbol, str) or re.fullmatch(r"(?:SH|SZ|BJ)[0-9]{6}", symbol) is None:
+            raise EvidenceError("incremental_last_quote_claim_invalid")
+        iso_date(day)
+        if day > document["targetDate"] or day in missing.get(symbol, []):
+            raise EvidenceError("incremental_last_quote_claim_invalid")
+    gaps = price["historical_tail_gaps"]
+    if not isinstance(gaps, dict):
+        raise EvidenceError("incremental_historical_tail_claim_invalid")
+    for symbol, dates in gaps.items():
+        if (not isinstance(symbol, str) or re.fullmatch(r"(?:SH|SZ|BJ)[0-9]{6}", symbol) is None
+                or not isinstance(dates, list) or not 1 <= len(dates) <= 10):
+            raise EvidenceError("incremental_historical_tail_claim_invalid")
+        for day in dates:
+            iso_date(day)
+        if dates != sorted(set(dates)) or dates[-1] > document["baseDate"]:
+            raise EvidenceError("incremental_historical_tail_claim_invalid")
+    stored = {}
+    if "storedShortHistoryEvidence" in document:
+        evidence = document["storedShortHistoryEvidence"]
+        if (not isinstance(evidence, dict) or set(evidence) != {"sourceCommit", "dates"}
+                or evidence["sourceCommit"] != document["sourceCommit"] or not isinstance(evidence["dates"], dict)):
+            raise EvidenceError("incremental_stored_short_history_invalid")
+        for symbol, dates in evidence["dates"].items():
+            if (symbol not in missing or not isinstance(dates, list) or not 1 <= len(dates) <= 10):
+                raise EvidenceError("incremental_stored_short_history_invalid")
+            for day in dates:
+                iso_date(day)
+            if (dates != sorted(set(dates)) or dates[-1] > document["baseDate"]
+                    or not set(dates) <= set(missing[symbol]) or price["lastQuotedDate"][symbol] in dates):
+                raise EvidenceError("incremental_stored_short_history_invalid")
+            stored[symbol] = list(dates)
+    days = []
+    for expected_day, row in zip(document["calendarAdded"], price["daily_coverage"]):
+        if (not isinstance(row, dict) or not fields | {"status"} <= set(row)
+                or row["target_date"] != expected_day):
+            raise EvidenceError("incremental_daily_coverage_invalid")
+        for field in ("eligible", "valid", "invalid", "first_day_listings_checked"):
+            if type(row[field]) is not int or row[field] < 0:
+                raise EvidenceError("incremental_daily_coverage_invalid")
+        if (row["eligible"] <= 0 or row["valid"] + row["invalid"] != row["eligible"]
+                or type(row["coverage"]) not in (int, float) or not math.isfinite(row["coverage"])
+                or not 0 <= row["coverage"] <= 1
+                or not math.isclose(row["coverage"], row["valid"] / row["eligible"], rel_tol=0, abs_tol=1e-12)):
+            raise EvidenceError("incremental_daily_coverage_invalid")
+        symbols, reasons, refs = row["invalid_symbols"], row["invalid_reasons"], row["reference_dates"]
+        if (not isinstance(symbols, list) or any(not isinstance(symbol, str)
+                or re.fullmatch(r"(?:SH|SZ|BJ)[0-9]{6}", symbol) is None for symbol in symbols)
+                or len(set(symbols)) != len(symbols) or len(symbols) != row["invalid"]
+                or not isinstance(reasons, dict) or set(reasons) != set(symbols)
+                or row["status"] != ("partial" if symbols else "complete")
+                or not isinstance(refs, dict) or not {symbol.upper() for symbol in REFERENCES} <= set(refs)):
+            raise EvidenceError("incremental_daily_coverage_invalid")
+        for symbol, date in refs.items():
+            if (not isinstance(symbol, str) or re.fullmatch(r"(?:SH|SZ|BJ)[0-9]{6}", symbol) is None
+                    or date != expected_day or symbol in reasons):
+                raise EvidenceError("incremental_reference_claim_invalid")
+        for symbol, codes in reasons.items():
+            if (not isinstance(codes, list) or not codes or any(not isinstance(code, str) or code not in {
+                    "source_absent_today", "prior_close_source_absent"} for code in codes)
+                    or len(set(codes)) != len(codes) or symbol not in missing):
+                raise EvidenceError("incremental_invalid_reason_unproven")
+            if "source_absent_today" in codes and expected_day not in missing[symbol]:
+                raise EvidenceError("incremental_invalid_reason_unproven")
+        days.append({key: row[key] for key in sorted(fields | {"status"})})
+    if (any(type(price[key]) is not int for key in ("eligible", "valid", "invalid", "first_day_listings_checked"))
+            or type(price["coverage"]) not in (int, float)
+            or price["status"] != ("partial" if any(day["invalid"] for day in days) else "complete")
+            or any(price[key] != days[-1][key] for key in fields)):
+        raise EvidenceError("incremental_price_claim_disagrees")
+    return {"status": price["status"], "dailyCoverage": days, "sourceAbsenceDates": missing,
+            "lastQuotedDate": dict(price["lastQuotedDate"]), "historicalTailGaps": dict(gaps),
+            "storedShortHistoryDates": stored}
+
+
+def incremental_index_quality(document):
+    """Cross-check CSI inventory claims without asserting an independent scan."""
+    legacy, index = document["legacyUnquotedCSI"], document["indexPriceValidation"]
+    if (not isinstance(legacy, dict) or set(legacy) != {"sourceCommit", "baseDate", "dates", "lastQuotedDates"}
+            or legacy["sourceCommit"] != document["sourceCommit"] or legacy["baseDate"] != document["baseDate"]
+            or not isinstance(legacy["dates"], dict) or not isinstance(legacy["lastQuotedDates"], dict)
+            or set(legacy["dates"]) != set(legacy["lastQuotedDates"])
+            or set(legacy["dates"]) & set(document["sourceAbsence"]["dates"])):
+        raise EvidenceError("incremental_legacy_csi_claim_invalid")
+    for symbol, dates in legacy["dates"].items():
+        if (not isinstance(symbol, str) or re.fullmatch(r"(?:SH|SZ|BJ)[0-9]{6}", symbol) is None
+                or dates != document["calendarAdded"]):
+            raise EvidenceError("incremental_legacy_csi_claim_invalid")
+        end = legacy["lastQuotedDates"][symbol]
+        iso_date(end)
+        if end >= document["baseDate"]:
+            raise EvidenceError("incremental_legacy_csi_claim_invalid")
+    lists = {"missingQuoteMembers", "missingPreviousCloseMembers", "firstListingDayMembers", "legacyUnquotedMembers"}
+    counts = {"uniqueMembers", "uniqueMembersWithPrices", "usableDailyReturnMembers", "sourceAbsenceSlotsVerified"}
+    maps = {"indexMemberCounts", "missingQuoteCountsByIndex", "missingPreviousCloseCountsByIndex", "legacyUnquotedCountsByIndex"}
+    fields = lists | counts | maps | {"status", "targetDate", "sourceAbsenceCommit", "absenceMeaning",
+                                      "legacyUnquotedMeaning", "legacyUnquotedBaseDate"}
+    if (not isinstance(index, dict) or not fields <= set(index)
+            or index["targetDate"] != document["targetDate"] or index["sourceAbsenceCommit"] != document["sourceCommit"]
+            or index["legacyUnquotedBaseDate"] != document["baseDate"]
+            or index["absenceMeaning"] != "source_absent_not_confirmed_suspension"
+            or index["legacyUnquotedMeaning"] != "unchanged_historical_feature_boundary_no_physical_target_quote"):
+        raise EvidenceError("incremental_index_price_claim_invalid")
+    for key in counts:
+        if type(index[key]) is not int or index[key] < 0:
+            raise EvidenceError("incremental_index_price_claim_invalid")
+    members = {}
+    for key in lists:
+        values = index[key]
+        if (not isinstance(values, list) or any(not isinstance(symbol, str)
+                or re.fullmatch(r"(?:SH|SZ|BJ)[0-9]{6}", symbol) is None for symbol in values)
+                or values != sorted(set(values))):
+            raise EvidenceError("incremental_index_price_claim_invalid")
+        members[key] = set(values)
+    quotes, previous = members["missingQuoteMembers"], members["missingPreviousCloseMembers"]
+    old, first = members["legacyUnquotedMembers"], members["firstListingDayMembers"]
+    missing = document["sourceAbsence"]["dates"]
+    if (old != set(legacy["dates"]) or old & (quotes | previous | first) or first & (quotes | previous)
+            or not quotes | previous <= set(missing)
+            or index["uniqueMembers"] <= 0
+            or index["uniqueMembersWithPrices"] != index["uniqueMembers"] - len(quotes | old)
+            or index["usableDailyReturnMembers"] != index["uniqueMembers"] - len(quotes | previous | old | first)
+            or index["status"] != ("partial" if quotes or previous or old else "complete")
+            or any(document["targetDate"] not in missing[symbol] for symbol in quotes)
+            or not sum(len(missing[symbol]) for symbol in quotes | previous) <= index["sourceAbsenceSlotsVerified"]
+                <= sum(len(dates) for dates in missing.values())):
+        raise EvidenceError("incremental_index_price_claim_disagrees")
+    names = {"csi300", "csi500", "csi800", "csi1000", "csiall"}
+    for key in maps:
+        values = index[key]
+        if (not isinstance(values, dict) or set(values) != names
+                or any(type(value) is not int or value < 0 for value in values.values())):
+            raise EvidenceError("incremental_index_counts_invalid")
+    inventory = index["indexMemberCounts"]
+    if not all(0 < value <= index["uniqueMembers"] for value in inventory.values()) or sum(inventory.values()) < index["uniqueMembers"]:
+        raise EvidenceError("incremental_index_counts_invalid")
+    for key, affected in (("missingQuoteCountsByIndex", quotes), ("missingPreviousCloseCountsByIndex", previous),
+                          ("legacyUnquotedCountsByIndex", old)):
+        if (sum(index[key].values()) < len(affected)
+                or any(value > min(inventory[name], len(affected)) for name, value in index[key].items())):
+            raise EvidenceError("incremental_index_counts_invalid")
+    return {"validation": {key: index[key] for key in sorted(fields)},
+            "legacyLastQuotedDates": dict(legacy["lastQuotedDates"])}
+
+
+def incremental_identity(root, tag):
+    """Check local generation claims, not source authenticity/full-market prices.
+
+    Only a genuinely absent file is a legacy candidate. Malformed, dangling,
+    symlinked, oversized, or incomplete manifests never downgrade to legacy.
+    The caller must additionally match this identity to calendar/reference data.
+    """
+    try:
+        raw = read_file(root / INCREMENTAL_MANIFEST, 65536)
+    except FileNotFoundError:
+        return None, None
+    try:
+        document = strict_json(raw.decode("utf-8"))
+    except (UnicodeError, ValueError):
+        raise EvidenceError("incremental_manifest_invalid_json") from None
+    required = {"schemaVersion", "kind", "status", "sourceRepository", "sourceCommit",
+                "generationId", "baseReleaseTag", "baseDate", "targetDate", "calendarAdded",
+                "sourceRowsSha256", "historicalPrefixes", "sourceAbsence", "priceValidation",
+                "legacyUnquotedCSI", "indexPriceValidation"}
+    if not isinstance(document, dict) or not required <= set(document):
+        raise EvidenceError("incremental_manifest_missing_fields")
+    if (type(document["schemaVersion"]) is not int or document["schemaVersion"] != 1
+            or document["kind"] != "same_source_dolt_incremental"
+            or document["status"] != "validated"
+            or document["sourceRepository"] != "chenditc/investment_data"
+            or not isinstance(document["sourceCommit"], str)
+            or re.fullmatch(r"[0-9a-v]{32}", document["sourceCommit"]) is None
+            or not isinstance(document["generationId"], str)
+            or re.fullmatch(r"[0-9a-f]{32}", document["generationId"]) is None
+            or document["baseReleaseTag"] != tag):
+        raise EvidenceError("incremental_manifest_identity_invalid")
+    base, target = iso_date(document["baseDate"]), iso_date(document["targetDate"])
+    added = document["calendarAdded"]
+    if base >= target or not isinstance(added, list) or not added:
+        raise EvidenceError("incremental_manifest_dates_invalid")
+    for day in added:
+        iso_date(day)
+    if added != sorted(set(added)) or added[0] <= base.isoformat() or added[-1] != target.isoformat():
+        raise EvidenceError("incremental_manifest_dates_invalid")
+    validate_hash(document["sourceRowsSha256"])
+    proof = document["historicalPrefixes"]
+    if (not isinstance(proof, dict) or not {"unchanged", "files", "bytes", "sha256"} <= set(proof)
+            or proof["unchanged"] is not True
+            or type(proof["files"]) is not int or proof["files"] <= 0
+            or type(proof["bytes"]) is not int or proof["bytes"] <= 0):
+        raise EvidenceError("incremental_prefix_claim_invalid")
+    validate_hash(proof["sha256"])
+    quality = incremental_quality(document)
+    quality["index"] = incremental_index_quality(document)
+    quality["priceStatus"] = quality["status"]
+    if quality["index"]["validation"]["status"] == "partial":
+        quality["status"] = "partial"
+    if document.get("dataQuality", quality["status"]) != quality["status"]:
+        raise EvidenceError("incremental_quality_claim_disagrees")
+    identity = (document["generationId"], document["sourceCommit"], base.isoformat(), target.isoformat(),
+                tuple(added), document["sourceRowsSha256"], proof["sha256"], proof["files"], proof["bytes"], quality)
+    return hashlib.sha256(raw).hexdigest(), identity
+
+
 def generation(root):
     if root.is_symlink() or not root.is_dir():
         raise EvidenceError("qlib_root_invalid")
+    first = root.stat()
     tag = read_file(root.parent / ".tag", 128).decode().strip()
     embedded = read_file(root / ".qlib-release", 128).decode().strip()
     iso_date(tag)
     if tag != embedded:
         raise EvidenceError("qlib_tags_disagree")
-    return (root.stat().st_ino, tag)
+    manifest_sha, incremental = incremental_identity(root, tag)
+    last = root.stat()
+    if (first.st_dev, first.st_ino) != (last.st_dev, last.st_ino):
+        raise EvidenceError("qlib_generation_changed_or_invalid")
+    # Keep release tag at index 1 for existing readers; hash exact manifest bytes
+    # to detect in-place replacement/removal even when root inode/tag stay fixed.
+    return (first.st_ino, tag, manifest_sha, incremental, first.st_dev)
 
 
 def qlib_evidence(root):
     before = generation(root)
+    incremental = before[3]
     calendar = read_file(root / "calendars/day.txt", 1024 * 1024).decode().splitlines()
     if not calendar or calendar != sorted(set(calendar)):
         raise EvidenceError("calendar_not_strictly_increasing")
     for day in calendar:
         iso_date(day)
+    if incremental is not None:
+        base, target, added = incremental[2], incremental[3], incremental[4]
+        if (base not in calendar or target != calendar[-1]
+                or tuple(calendar[calendar.index(base) + 1:]) != added):
+            raise EvidenceError("incremental_calendar_disagrees")
+        quality = incremental[9]
+        missing = quality["sourceAbsenceDates"]
+        if any(day not in calendar for dates in missing.values() for day in dates):
+            raise EvidenceError("incremental_absence_outside_calendar")
+        if any(day not in calendar for day in quality["lastQuotedDate"].values()):
+            raise EvidenceError("incremental_last_quote_outside_calendar")
+        if any(day not in calendar for day in quality["index"]["legacyLastQuotedDates"].values()):
+            raise EvidenceError("incremental_legacy_csi_date_outside_calendar")
+        if any(calendar[-2] not in missing[symbol]
+               for symbol in quality["index"]["validation"]["missingPreviousCloseMembers"]):
+            raise EvidenceError("incremental_index_previous_close_unproven")
+        gaps = quality["historicalTailGaps"]
+        if any(day not in calendar for dates in gaps.values() for day in dates):
+            raise EvidenceError("incremental_historical_tail_outside_calendar")
+        base_index = calendar.index(base)
+        stored = quality["storedShortHistoryDates"]
+        old_window = set(calendar[max(0, base_index - 9):base_index + 1])
+        if any(day not in old_window for dates in stored.values() for day in dates):
+            raise EvidenceError("incremental_stored_short_history_outside_window")
+        recent = set(calendar[max(0, base_index - 2):])
+        if any(day not in recent and day not in gaps.get(symbol, []) and day not in stored.get(symbol, [])
+               for symbol, dates in missing.items() for day in dates):
+            raise EvidenceError("incremental_old_absence_unproven")
+        for row in quality["dailyCoverage"]:
+            previous = calendar[calendar.index(row["target_date"]) - 1]
+            for symbol, codes in row["invalid_reasons"].items():
+                if "prior_close_source_absent" in codes and previous not in missing[symbol]:
+                    raise EvidenceError("incremental_invalid_reason_unproven")
+            for symbol, dates in missing.items():
+                codes = row["invalid_reasons"].get(symbol, [])
+                if ((row["target_date"] in dates and "source_absent_today" not in codes)
+                        or (previous in dates and "prior_close_source_absent" not in codes)):
+                    raise EvidenceError("incremental_source_absence_not_disclosed")
     dates = {}
     for symbol in REFERENCES:
         starts, features = [], {}
@@ -113,6 +394,8 @@ def qlib_evidence(root):
             features[field] = values[1:]
         if len(set(starts)) != 1 or len({len(v) for v in features.values()}) != 1:
             raise EvidenceError("reference_fields_disagree")
+        if incremental is not None and starts[0] + len(features["close"]) != len(calendar):
+            raise EvidenceError("incremental_reference_physical_tail_disagrees")
         for index in range(len(features["close"]) - 1, 0, -1):
             position = starts[0] + index
             values = [features["close"][index - 1]] + [features[f][index] for f in FIELDS]
@@ -124,7 +407,9 @@ def qlib_evidence(root):
     if len(set(dates.values())) != 1:
         raise EvidenceError("reference_dates_disagree")
     complete = next(iter(dates.values()))
-    if complete > before[1] or generation(root) != before:
+    if incremental is not None and complete != incremental[3]:
+        raise EvidenceError("incremental_reference_date_disagrees")
+    if (incremental is None and complete > before[1]) or generation(root) != before:
         raise EvidenceError("qlib_generation_changed_or_invalid")
     return calendar, complete, before
 
@@ -269,6 +554,16 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
     def issue(code, severity="warning", **details):
         issues.append({"code": code, "severity": severity, **details})
 
+    if gen[3] is not None:
+        quality = gen[3][9]
+        index = quality["index"]["validation"]
+        if quality["priceStatus"] == "partial" or index["missingQuoteMembers"] or index["missingPreviousCloseMembers"]:
+            issue("qlib_source_absence", dataQuality="partial", validationScope="local_manifest_calendar_and_reference_only",
+                  affectedDates=[row["target_date"] for row in quality["dailyCoverage"] if row["invalid"]],
+                  currentInventoryQuality=quality["priceStatus"], csiInventoryQuality=index["status"])
+        if index["legacyUnquotedMembers"]:
+            issue("qlib_legacy_unquoted_csi", dataQuality="partial", validationScope="local_manifest_calendar_and_reference_only",
+                  symbols=index["legacyUnquotedMembers"], meaning=index["legacyUnquotedMeaning"])
     if business_mode != "FROZEN":
         issue("business_mode_not_frozen", "critical")
     if any(iso_date(d) > now.date() for d in rows):
@@ -362,6 +657,16 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
             "auditSince": since.isoformat(), "monitorSince": monitor_since.isoformat(),
             "schedule": {"expectedLastRunDate": due_date.isoformat(), "todayDeadline": deadline.isoformat()},
             "qlib": {"releaseTag": gen[1], "calendarLastDate": calendar[-1], "referenceCompleteDate": complete,
+                     "dataGeneration": "same_source_dolt_incremental" if gen[3] is not None else "release",
+                     "dataQuality": gen[3][9]["status"] if gen[3] is not None else "unknown",
+                     "incremental": ({"manifestSha256": gen[2], "generationId": gen[3][0],
+                                      "sourceCommit": gen[3][1], "baseDate": gen[3][2], "targetDate": gen[3][3],
+                                      "dailyCoverage": gen[3][9]["dailyCoverage"],
+                                      "currentInventoryQuality": gen[3][9]["priceStatus"],
+                                      "csiInventoryQuality": gen[3][9]["index"]["validation"]["status"],
+                                      "indexPriceValidation": gen[3][9]["index"]["validation"],
+                                      "validationScope": "local_manifest_calendar_and_reference_only"}
+                                     if gen[3] is not None else None),
                      "upstreamFreshness": "not_independently_verified", "pendingObservedStage": pending_upstream,
                      "fullMarketCoverage": "not_scanned"},
             "snapshot": {"rowCount": len(rows), "latestValidDate": max((d for d, v in rows.items() if v["state"] == "valid"), default=None),

@@ -13,6 +13,7 @@ import unittest
 from unittest import mock
 
 import data_health as health
+from test_qlib_incremental import index_claim, legacy_claim, price_claim
 
 
 class AuditTests(unittest.TestCase):
@@ -312,6 +313,89 @@ class AuditTests(unittest.TestCase):
         result = self.run_audit()
         self.assertEqual(result["status"], "critical")
         self.assertEqual(self.mode.read_text(), "RUNNING\n")
+
+    def incremental_fixture(self):
+        extra = ["2026-09-07", "2026-09-08"]
+        (self.qlib / "calendars/day.txt").write_text("\n".join(self.days + extra) + "\n")
+        for symbol in health.REFERENCES:
+            self.features(symbol, len(self.days) + len(extra))
+        document = {
+            "schemaVersion": 1, "kind": "same_source_dolt_incremental", "status": "validated",
+            "sourceRepository": "chenditc/investment_data", "sourceCommit": "80q7jtqjrga15h61uufm60h6uqirk6iq",
+            "generationId": "a" * 32, "baseReleaseTag": "2026-09-05",
+            "baseDate": "2026-09-04", "targetDate": "2026-09-08", "calendarAdded": extra,
+            "sourceRowsSha256": "b" * 64,
+            "historicalPrefixes": {"unchanged": True, "files": 17, "bytes": 2000, "sha256": "c" * 64},
+            "sourceAbsence": {"sourceCommit": "80q7jtqjrga15h61uufm60h6uqirk6iq", "dates": {}},
+            "priceValidation": price_claim(extra),
+            "legacyUnquotedCSI": legacy_claim(extra),
+            "indexPriceValidation": index_claim("2026-09-08"),
+        }
+        path = self.qlib / health.INCREMENTAL_MANIFEST
+        path.write_text(json.dumps(document))
+        return path, document
+
+    def test_incremental_audit_keeps_release_label_and_readonly_scope(self):
+        self.incremental_fixture()
+        before = self.fingerprint()
+        result = self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
+        self.assertEqual(result["qlib"]["releaseTag"], "2026-09-05")
+        self.assertEqual(result["qlib"]["referenceCompleteDate"], "2026-09-08")
+        self.assertEqual(result["qlib"]["dataGeneration"], "same_source_dolt_incremental")
+        self.assertEqual(result["qlib"]["incremental"]["targetDate"], "2026-09-08")
+        self.assertEqual(result["qlib"]["fullMarketCoverage"], "not_scanned")
+        self.assertEqual(result["qlib"]["dataQuality"], "complete")
+        self.assertNotIn("qlib_source_absence", self.codes(result))
+        self.assertEqual(before, self.fingerprint())
+        self.assertFalse(result["automaticRecoveryAuthorized"])
+
+    def test_partial_incremental_emits_warning_without_full_market_claim(self):
+        path, document = self.incremental_fixture()
+        absence = {"SH600825": ["2026-09-07", "2026-09-08"]}
+        document["sourceAbsence"]["dates"] = absence
+        document["priceValidation"] = price_claim(document["calendarAdded"], absence,
+            {"2026-09-07": {"SH600825": ["source_absent_today"]},
+             "2026-09-08": {"SH600825": ["source_absent_today", "prior_close_source_absent"]}},
+            {"SH600825": "2026-09-04"})
+        path.write_text(json.dumps(document))
+        before = self.fingerprint()
+        result = self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
+        self.assertEqual(result["qlib"]["dataQuality"], "partial")
+        warning = next(issue for issue in result["issues"] if issue["code"] == "qlib_source_absence")
+        self.assertEqual(warning["severity"], "warning")
+        self.assertEqual(warning["affectedDates"], ["2026-09-07", "2026-09-08"])
+        self.assertEqual(result["qlib"]["fullMarketCoverage"], "not_scanned")
+        self.assertFalse(result["automaticRecoveryAuthorized"])
+        self.assertEqual(before, self.fingerprint())
+
+    def test_legacy_has_unknown_quality_not_fabricated_complete(self):
+        self.assertEqual(self.run_audit()["qlib"]["dataQuality"], "unknown")
+
+    def test_legacy_csi_only_partial_has_separate_warning_and_inventory_labels(self):
+        path, document = self.incremental_fixture()
+        document["legacyUnquotedCSI"] = legacy_claim(document["calendarAdded"], {"SH600929": "2026-09-03"})
+        document["indexPriceValidation"] = index_claim(document["targetDate"], legacy=["SH600929"])
+        path.write_text(json.dumps(document))
+        before = self.fingerprint()
+        result = self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
+        self.assertEqual(result["qlib"]["dataQuality"], "partial")
+        self.assertEqual(result["qlib"]["incremental"]["currentInventoryQuality"], "complete")
+        self.assertEqual(result["qlib"]["incremental"]["csiInventoryQuality"], "partial")
+        self.assertIn("qlib_legacy_unquoted_csi", self.codes(result))
+        self.assertNotIn("qlib_source_absence", self.codes(result))
+        self.assertEqual(result["qlib"]["fullMarketCoverage"], "not_scanned")
+        self.assertEqual(before, self.fingerprint())
+
+    def test_manifest_change_after_qlib_read_detected_at_audit_end(self):
+        path, document = self.incremental_fixture()
+        original = health.snapshot_rows
+        def mutate_after_read(db):
+            rows = original(db)  # Only this test's TemporaryDirectory database.
+            path.write_text(json.dumps(dict(document, sourceRowsSha256="d" * 64)))
+            return rows
+        with mock.patch.object(health, "snapshot_rows", side_effect=mutate_after_read):
+            with self.assertRaisesRegex(health.EvidenceError, "generation_changed_during_audit"):
+                self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
 
 
 if __name__ == "__main__":
