@@ -1,0 +1,17 @@
+# Source-only allowlist; credentials and generated artifacts are never tracked.
+*
+!.gitignore
+!README.md
+!scripts/
+scripts/*
+!scripts/research_relay.py
+!tests/
+tests/*
+!tests/test_research_relay.py
+!systemd/
+systemd/*
+!systemd/nng8-research-digest.service
+!systemd/nng8-research-digest.timer
+!systemd/astock-xhs-draft.service.d/
+systemd/astock-xhs-draft.service.d/*
+!systemd/astock-xhs-draft.service.d/signal-gate.conf

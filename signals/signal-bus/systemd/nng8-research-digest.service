@@ -1,0 +1,13 @@
+[Unit]
+Description=Relay today's validated sealed research before the 08:15 merge
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -B /home/ubuntu/signal-bus/scripts/research_relay.py --json
+WorkingDirectory=/home/ubuntu/signal-bus
+TimeoutStartSec=45s
+TimeoutStopSec=5s
+UMask=0077
+Nice=10
+NoNewPrivileges=yes
