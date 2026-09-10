@@ -355,6 +355,8 @@ class CninfoTests(unittest.TestCase):
                     stack.enter_context(mock.patch.object(daily_snapshot, name, return_value={}))
                 stack.enter_context(mock.patch.object(daily_snapshot, "collect_cninfo_announcements",
                     return_value={"002617": {"error": error.diagnostic}}))
+                stack.enter_context(mock.patch.object(daily_snapshot, "collect_shareholders",
+                    return_value={"002617": {}}))
                 store = stack.enter_context(mock.patch.object(daily_snapshot, "store_snapshot"))
                 with self.assertRaises(daily_snapshot.SnapshotValidationError) as caught:
                     daily_snapshot.run_snapshot("offline-rejected", time.monotonic())

@@ -638,8 +638,10 @@ class AkShareStageTests(unittest.TestCase):
                 stack.enter_context(mock.patch.object(daily_snapshot, "cninfo_announcements", return_value=[]))
                 stack.enter_context(mock.patch.object(daily_snapshot, "cls_telegraph", return_value=[{"title": "news"}]))
                 stack.enter_context(mock.patch.object(daily_snapshot, "northbound_flow", return_value={"hgt": 1.0, "sgt": 2.0, "total": 3.0}))
-                stack.enter_context(mock.patch.object(daily_snapshot, "concept_blocks", return_value={}))
-                stack.enter_context(mock.patch.object(daily_snapshot, "insider_transactions", return_value=""))
+                from test_current_sources import values
+                concepts, insiders = values()
+                stack.enter_context(mock.patch.object(daily_snapshot, "collect_concepts", return_value=concepts))
+                stack.enter_context(mock.patch.object(daily_snapshot, "collect_shareholders", return_value=insiders))
                 stack.enter_context(mock.patch.object(daily_snapshot, "hot_stocks", return_value=[{"code": "002617"}]))
                 stack.enter_context(mock.patch.object(daily_snapshot, "global_markets", return_value={"道指": {}, "纳指": {}, "标普": {}}))
                 stack.enter_context(mock.patch.object(sys, "argv", ["daily_snapshot.py"]))
@@ -665,6 +667,9 @@ class AkShareStageTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0][0], "2026-09-02")
             stored_payload = json.loads(rows[0][1])
+            self.assertEqual(stored_payload["assemblyKind"], "delayed_observation")
+            self.assertEqual(stored_payload["concepts"], concepts)
+            self.assertEqual(stored_payload["insiders"], insiders)
             self.assertEqual(
                 stored_payload["akshare"]["activity"]["统计日期"][:10],
                 "2026-09-02",

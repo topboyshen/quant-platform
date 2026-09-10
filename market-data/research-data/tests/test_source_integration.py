@@ -72,6 +72,7 @@ class SourceIntegrationTests(unittest.TestCase):
                                                  return_value={"300033": []}))
             stack.enter_context(mock.patch.object(daily, "collect_concepts",
                                                  return_value={"300033": {"error": failure.diagnostic}}))
+            stack.enter_context(mock.patch.object(daily, "collect_shareholders", return_value={"300033": {}}))
             store = stack.enter_context(mock.patch.object(daily, "store_snapshot"))
             with self.assertRaises(daily.SnapshotValidationError) as caught:
                 daily.run_snapshot("offline-concepts-rejected", time.monotonic())

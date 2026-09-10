@@ -22,7 +22,12 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
 from qlib_io import load_qlib_features, read_qlib_day_bin
 from cninfo_source import CninfoClient, CninfoError, safe_diagnostic
-from concept_source import ConceptClient, ConceptError, safe_concept_diagnostic
+from concept_source import ConceptError, safe_concept_diagnostic
+from ths_concept_source import ThsConceptClient as ConceptClient
+from ths_source import SourceError, safe_source_diagnostic
+from shareholder_source import ShareholderClient
+from source_contract import validate_current_source_payloads
+from collection_window import validate_stage_collection_time
 
 # akshare 需直连中国源, 去掉代理环境变量
 for _k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
@@ -565,6 +570,10 @@ def seal_akshare_market_stage(
         raise SnapshotValidationError(
             "AkShare stage collection window ends before it starts"
         )
+    try:
+        validate_stage_collection_time(trade_date, collection_started_at, collection_completed_at)
+    except ValueError as exc:
+        raise SnapshotDeferredError(f"AkShare stage collection deferred: {exc}") from None
     stage_dir = _akshare_stage_directory(stage_dir)
     path = _akshare_stage_path(trade_date, stage_dir)
     payload_sha256 = _payload_sha256(_snapshot_payload(akshare_payload))
@@ -674,7 +683,9 @@ def validate_source_completeness(sources, watch_codes, fund_flow_codes):
     if errors:
         source_details = []
         for source_name, sanitize in (("announcements", safe_diagnostic),
-                                      ("concepts", safe_concept_diagnostic)):
+                                      ("concepts", lambda value: safe_source_diagnostic(value)
+                                       or safe_concept_diagnostic(value)),
+                                      ("insiders", safe_source_diagnostic)):
             records = sources.get(source_name)
             if isinstance(records, dict):
                 for value in records.values():
@@ -736,6 +747,10 @@ def validate_source_completeness(sources, watch_codes, fund_flow_codes):
         for value in northbound_values
     ):
         raise SnapshotValidationError("northbound flow has no finite market value")
+    try:
+        validate_current_source_payloads(sources["concepts"], sources["insiders"], watch_codes)
+    except ValueError as exc:
+        raise SnapshotValidationError(str(exc)) from None
 
 
 def requested_trade_date(argv):
@@ -1181,16 +1196,26 @@ def collect_concepts(codes):
         for code in codes:
             try:
                 result[code] = concept_blocks(code, client=client)
-            except ConceptError as exc:
+            except (ConceptError, SourceError) as exc:
                 result[code] = {"error": exc.diagnostic}
     return result
 
 
 def insider_transactions(code):
-    from mootdx.quotes import Quotes
-    client = Quotes.factory(market="std")
-    text = client.F10(symbol=code, name="股东研究")
-    return (text or "")[:3000]  # 截断, 供 LLM 分析用
+    """Compatibility function name: this is a current F10 excerpt, not trades."""
+    with ShareholderClient() as client:
+        return client.shareholders(code)
+
+
+def collect_shareholders(codes):
+    result = {}
+    with ShareholderClient() as client:
+        for code in codes:
+            try:
+                result[code] = client.shareholders(code)
+            except SourceError as exc:
+                result[code] = {"error": exc.diagnostic}
+    return result
 
 
 def hot_stocks():
@@ -1334,12 +1359,7 @@ def run_snapshot(run_id, started_monotonic):
     except Exception as e:
         nb = {"error": str(e)}
     concepts = collect_concepts(watch_codes)
-    try:
-        insiders = collect_source(
-            lambda: {code: insider_transactions(code) for code in watch_codes}
-        )
-    except Exception as e:
-        insiders = {"error": str(e)}
+    insiders = collect_shareholders(watch_codes)
     try:
         hot = collect_source(hot_stocks)
     except Exception as e:
@@ -1371,9 +1391,13 @@ def run_snapshot(run_id, started_monotonic):
         exc.details.update({"target": q["date"], "qlibTag": q["generation"]["tag"]})
         raise
     collection_completed_at = datetime.datetime.now().astimezone().isoformat()
+    observation_day = datetime.datetime.fromisoformat(collection_completed_at).astimezone(
+        datetime.timezone(datetime.timedelta(hours=8))).date().isoformat()
+    assembly_kind = "same_day_observation" if q["date"] == observation_day else "delayed_observation"
     snapshot = {
         "date": q["date"],
         "generatedAt": collection_completed_at,
+        "assemblyKind": assembly_kind,
         "sourceAsOf": {
             "collectionWindow": {
                 "startedAt": collection_started_at,
@@ -1408,6 +1432,14 @@ def run_snapshot(run_id, started_monotonic):
                 "dateIsFirstObservedTime": False,
                 "nextDayPolicy": "one_calendar_day_with_verified_midnight_label_and_attachment_identity",
             },
+            "concepts": {"provider": "ths_f10", "kind": "observed_at",
+                         "evidenceLocation": "concepts[code].evidence",
+                         "taxonomy": "ths_f10_current_concepts",
+                         "replacesProvider": "baidu_related_blocks"},
+            "insiders": {"provider": "ths_f10", "kind": "observed_at",
+                         "evidenceLocation": "insiders[code].evidence",
+                         "scope": "current_shareholder_excerpt_not_insider_trades",
+                         "replacesProvider": "mootdx_F10"},
             "liveAndRollingSources": {
                 "status": "ok",
                 "kind": "observed_at",
@@ -1446,6 +1478,7 @@ def run_snapshot(run_id, started_monotonic):
         "target": q["date"],
         "qlibTag": q["generation"]["tag"],
         "generatedAt": snapshot["generatedAt"],
+        "assemblyKind": assembly_kind,
         "sourceDates": {
             "qlib": q["date"],
             "akshareActivity": activity_date,
