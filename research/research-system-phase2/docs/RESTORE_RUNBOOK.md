@@ -15,6 +15,13 @@ project requiring a destination and credential decision.
 This procedure does not enable business timers, call an external model/source, create forecasts or
 publish anything. It assumes the business mode remains `FROZEN` throughout.
 
+Current nnG8 policy is **NO_BACKUP**. This document does not authorize a restore or creation of a
+new recovery point. Before approved maintenance, record `/etc/research-ledger/backup-policy.mode`
+and both backup timer states. NO_BACKUP requires disabled/inactive throughout; preserve all
+existing archives and audit evidence. Do not restart backup timers on completion or rollback.
+REQUIRED is a different, separately approved policy; because existing timers use Persistent=true,
+resuming even a formerly enabled timer needs an explicit catch-up review, not an automatic start.
+
 ## Recovery artifacts and ownership
 
 | Item | Production contract |
@@ -30,7 +37,8 @@ publish anything. It assumes the business mode remains `FROZEN` throughout.
 
 An archive contains at least `phase2.db`, `phase2-db-check.json`,
 `calibration_protocol_v1.json`, `runtime/`, `systemd/`, Python version/package inventories and an
-internal `SHA256SUMS` manifest. Archives older than 14 days are removed by the backup job.
+internal `SHA256SUMS` manifest. Under REQUIRED the backup job removes archives older than 14 days.
+Under NO_BACKUP neither new archives nor this automatic deletion occur; keep existing files.
 
 ## 1. Select and authenticate one archive
 
@@ -159,8 +167,9 @@ test "$(systemctl is-enabled research-system-phase2-producer.timer)" = disabled
 test "$(systemctl is-active research-system-phase2-producer.timer)" = inactive
 test "$(systemctl is-enabled research-system-phase2-settler.timer)" = disabled
 test "$(systemctl is-active research-system-phase2-settler.timer)" = inactive
-test "$(systemctl is-enabled research-system-phase2-backup.timer)" = enabled
-test "$(systemctl is-active research-system-phase2-backup.timer)" = active
+test "$(sudo tr -d '\n' </etc/research-ledger/backup-policy.mode)" = NO_BACKUP
+test "$(systemctl is-enabled research-system-phase2-backup.timer)" = disabled
+test "$(systemctl is-active research-system-phase2-backup.timer)" = inactive
 ```
 
 Abort if a producer, settler, manual-role provisioner or any other writer is running. Do not change
@@ -170,7 +179,7 @@ Prevent a backup from overlapping cutover, then stop the read-only dashboard so 
 initialization and SQLite handle are quiescent:
 
 ```bash
-sudo systemctl stop research-system-phase2-backup.timer
+# NO_BACKUP: the backup timer is already disabled/inactive; do not change it.
 sudo systemctl stop research-system-phase2.service
 
 ! sudo systemctl is-active --quiet research-system-phase2-backup.service
@@ -184,8 +193,8 @@ if sudo fuser /var/lib/research-system-phase2/phase2.db; then
 fi
 ```
 
-If the procedure stops here, restart the dashboard and backup timer; no database cutover has
-occurred.
+If the procedure stops here, an approved return of the dashboard may proceed; no database cutover
+has occurred. Keep both backup timers disabled/inactive; do not resume them automatically.
 
 ## 4. Preserve the pre-restore state and cut over atomically
 
@@ -244,7 +253,7 @@ systemctl show research-system-phase2.service \
   -p ActiveState -p SubState -p MainPID -p NRestarts -p ExecMainStatus --no-pager
 ```
 
-Confirm the governance boundary did not change, then return the independent backup schedule:
+Confirm the governance boundary and NO_BACKUP policy did not change:
 
 ```bash
 test "$(sudo tr -d '\n' </etc/research-ledger/runtime-health.mode)" = FROZEN
@@ -253,9 +262,9 @@ test "$(systemctl is-active research-system-phase2-producer.timer)" = inactive
 test "$(systemctl is-enabled research-system-phase2-settler.timer)" = disabled
 test "$(systemctl is-active research-system-phase2-settler.timer)" = inactive
 
-sudo systemctl start research-system-phase2-backup.timer
-test "$(systemctl is-enabled research-system-phase2-backup.timer)" = enabled
-test "$(systemctl is-active research-system-phase2-backup.timer)" = active
+test "$(sudo tr -d '\n' </etc/research-ledger/backup-policy.mode)" = NO_BACKUP
+test "$(systemctl is-enabled research-system-phase2-backup.timer)" = disabled
+test "$(systemctl is-active research-system-phase2-backup.timer)" = inactive
 systemctl list-timers --all research-system-phase2-backup.timer --no-pager
 ```
 
@@ -279,7 +288,7 @@ the old file because that would discard new records; stop and perform a record-l
 For a failure inside the safe boundary:
 
 ```bash
-sudo systemctl stop research-system-phase2-backup.timer
+# Preserve NO_BACKUP; no timer start/stop is part of this rollback.
 sudo systemctl stop research-system-phase2.service
 
 readonly FAILED_DIR="$LIVE_DIR/restore-failed-$RESTORE_STAMP"
@@ -302,7 +311,8 @@ sudo chmod 0644 "$LIVE_DB"
 
 sudo systemctl start research-system-phase2.service
 curl --fail --silent http://127.0.0.1:18768/healthz
-sudo systemctl start research-system-phase2-backup.timer
+test "$(systemctl is-enabled research-system-phase2-backup.timer)" = disabled
+test "$(systemctl is-active research-system-phase2-backup.timer)" = inactive
 ```
 
 Re-run the live SQLite checks and all governance-boundary checks from section 5. Preserve the failed
@@ -320,7 +330,7 @@ Record, outside the database, at least:
 - restored file owner/mode;
 - dashboard PID/status and `/healthz` result;
 - `FROZEN` plus producer/settler timer states;
-- backup timer restoration; and
+- backup policy and preserved disabled/inactive timer states; and
 - rollback directory disposition.
 
 Do not record manual capability tokens or other secrets.

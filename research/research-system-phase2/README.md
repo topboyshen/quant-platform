@@ -76,11 +76,18 @@ migration framework and does not set SQLite `PRAGMA user_version`. A schema chan
 an explicit, reviewed migration before deployment. Starting the server is not a migration plan.
 
 The production recovery procedure is documented in
-[`docs/RESTORE_RUNBOOK.md`](docs/RESTORE_RUNBOOK.md). Hourly archives are created by the independent
-`research-system-phase2-backup.timer`, whose canonical script and unit live in
+[`docs/RESTORE_RUNBOOK.md`](docs/RESTORE_RUNBOOK.md). The current nnG8 backup policy is **NO_BACKUP**:
+the independent `research-system-phase2-backup.timer` and Ledger backup timer remain
+disabled/inactive. Their canonical scripts and units live in
 `/opt/research-ledger`. Archives under `/var/backups/research-system-phase2` are on the same VPS as
 the live database. They are useful local recovery points, but they are **not off-host disaster
 recovery** and provide no protection from loss of the VPS, account, region, or attached storage.
+
+The authoritative policy is `/etc/research-ledger/backup-policy.mode`, maintained by root.
+Both backup entry points skip before any state/archive write under NO_BACKUP. Existing archives,
+checksums, last-success records, and failed audit evidence are retained, but are not advertised
+as current recovery points. Timer re-enablement, manual backup, and restore require separate
+approval. A missing/invalid policy fails closed rather than reverting to REQUIRED.
 
 Never exercise the production restore steps as a health check. A real restore requires an approved
 maintenance window, a selected immutable archive, a stopped/quiescent database, and completion of
