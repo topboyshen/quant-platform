@@ -7,6 +7,11 @@ readonly SUBJECT="${PHASE2_BACKUP_SUBJECT:-$PROJECT_ROOT/scripts/research-system
 readonly TEST_TMP="$(mktemp -d)"
 trap 'rm -rf "$TEST_TMP"' EXIT
 
+# Preserve original REQUIRED assertions without relying on production policy.
+export RESEARCH_BACKUP_POLICY_FILE="$TEST_TMP/backup-policy.mode"
+printf 'REQUIRED\n' > "$RESEARCH_BACKUP_POLICY_FILE"
+chmod 0600 "$RESEARCH_BACKUP_POLICY_FILE"
+
 readonly APP_ROOT="$TEST_TMP/app-root"
 readonly DATA_ROOT="$TEST_TMP/data"
 readonly SYSTEMD_ROOT="$TEST_TMP/systemd"

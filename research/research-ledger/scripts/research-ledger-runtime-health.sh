@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/research-backup-policy.sh"
+research_backup_policy_load
+
 readonly MODE_FILE="${RUNTIME_HEALTH_MODE_FILE:-/etc/research-ledger/runtime-health.mode}"
 readonly LEDGER_BACKUP_STATE="${RUNTIME_HEALTH_LEDGER_BACKUP_STATE:-/var/lib/research-ledger-backup/last-success.json}"
 readonly PHASE2_BACKUP_STATE="${RUNTIME_HEALTH_PHASE2_BACKUP_STATE:-/var/lib/research-system-phase2-backup/last-success.json}"
@@ -106,6 +109,27 @@ if [[ "$expected_mode" == "FROZEN" ]]; then
   done
 fi
 
+if [[ "$RESEARCH_BACKUP_POLICY" == "NO_BACKUP" ]]; then
+  for backup_timer in research-ledger-backup.timer research-system-phase2-backup.timer; do
+    backup_load_state="$(unit_property "$backup_timer" LoadState)"
+    backup_unit_file_state="$(unit_property "$backup_timer" UnitFileState)"
+    backup_active_state="$(unit_property "$backup_timer" ActiveState)"
+    [[ "$backup_load_state" == "loaded" && "$backup_unit_file_state" == "disabled" && "$backup_active_state" == "inactive" ]] \
+      || fail "no_backup_timer_policy_mismatch unit=$backup_timer state=$backup_load_state/$backup_unit_file_state/$backup_active_state"
+    backup_service="${backup_timer%.timer}.service"
+    [[ "$(unit_property "$backup_service" LoadState)" == "loaded" ]] \
+      || fail "no_backup_service_not_loaded unit=$backup_service"
+    backup_service_state="$(unit_property "$backup_service" ActiveState)"
+    [[ "$backup_service_state" == "inactive" || "$backup_service_state" == "failed" ]] \
+      || fail "no_backup_service_running unit=$backup_service state=$backup_service_state"
+    [[ "$(unit_property "$backup_service" MainPID)" == "0" ]] \
+      || fail "no_backup_service_has_pid unit=$backup_service"
+  done
+  printf 'RUNTIME_HEALTH=ok business_mode=%s backup_policy=NO_BACKUP backups=disabled_by_policy root_disk_used_percent=%s root_disk_max_percent=%s\n' \
+    "$expected_mode" "$root_disk_used_percent" "$MAX_ROOT_DISK_USED_PERCENT"
+  exit 0
+fi
+
 for backup_timer in research-ledger-backup.timer research-system-phase2-backup.timer; do
   backup_load_state="$(unit_property "$backup_timer" LoadState)"
   backup_unit_file_state="$(unit_property "$backup_timer" UnitFileState)"
@@ -187,5 +211,5 @@ IFS=$'\t' read -r phase2_backup_age phase2_backup_file <<< "$phase2_backup_summa
   || fail "phase2_backup_summary_invalid"
 
 timer_state_summary="$(IFS=,; printf '%s' "${timer_states[*]}")"
-printf 'RUNTIME_HEALTH=ok business_mode=%s root_disk_used_percent=%s root_disk_max_percent=%s ledger_backup_age_seconds=%s phase2_backup_age_seconds=%s phase2_backup_file=%s timers=%s\n' \
+printf 'RUNTIME_HEALTH=ok business_mode=%s backup_policy=REQUIRED root_disk_used_percent=%s root_disk_max_percent=%s ledger_backup_age_seconds=%s phase2_backup_age_seconds=%s phase2_backup_file=%s timers=%s\n' \
   "$expected_mode" "$root_disk_used_percent" "$MAX_ROOT_DISK_USED_PERCENT" "$ledger_backup_age" "$phase2_backup_age" "$phase2_backup_file" "$timer_state_summary"

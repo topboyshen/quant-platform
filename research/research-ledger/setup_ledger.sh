@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/scripts/research-backup-policy.sh"
+research_backup_policy_load
+
 APP=/opt/research-ledger
 DATA=/var/lib/research-ledger
 BACKUP=/var/backups/research-ledger
@@ -116,7 +119,12 @@ for unit in research-system-phase2.service research-system-phase2-producer.servi
   install -o root -g root -m 0644 "$APP/systemd/research-ledger-on-failure.conf" "/etc/systemd/system/$unit.d/alert.conf"
 done
 systemctl daemon-reload
-systemctl enable --now research-ledger-backup.timer research-ledger-healthcheck.timer research-ledger-pipeline-health.timer
+systemctl enable --now research-ledger-healthcheck.timer research-ledger-pipeline-health.timer
+if [[ "$RESEARCH_BACKUP_POLICY" == "REQUIRED" ]]; then
+  systemctl enable --now research-ledger-backup.timer
+else
+  printf 'BACKUP_SCHEDULE=unchanged policy=NO_BACKUP\n'
+fi
 
 printf 'SETUP_STATUS=success\n'
 printf 'APP=%s\nDATA=%s\nBACKUP=%s\nDB=research_ledger\nTEST_DATABASES_DROPPED=%s,%s\n' \

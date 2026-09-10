@@ -113,6 +113,12 @@ sudo systemctl restart research-ledger.service
 
 ### 初始化部署
 
+先由管理员明确备份政策：`/etc/research-ledger/backup-policy.mode` 必须是
+root 所有、不可由组/其他用户写入的普通文件，内容仅 `REQUIRED` 或 `NO_BACKUP`。
+缺失、软链或非法政策会在部署入口任何变更之前拒绝执行，不会自动恢复旧备份策略。
+`REQUIRED` 保持原备份逻辑；当前 nnG8 采用 `NO_BACKUP`，详见
+[`docs/NO_BACKUP_POLICY.md`](docs/NO_BACKUP_POLICY.md)。不要为应用备份政策而运行完整 setup。
+
 ```bash
 cd /opt/research-ledger
 sudo ./setup_ledger.sh
@@ -126,7 +132,8 @@ sudo ./setup_ledger.sh
 5. 为两组有状态测试分别创建名称唯一、以 `_test` 结尾的一次性数据库
 6. 核验测试连接为本机 Unix socket 和 `researchledger`，两组测试全部通过后删除测试库
 7. 仅在测试库清理成功后运行生产数据库迁移
-8. 安装并启用 systemd 单元和定时器
+8. 安装 systemd 单元并启用健康 timer；只有 `REQUIRED` 才启用 Ledger backup timer，
+   `NO_BACKUP` 不启用或恢复任一备份调度。业务 FROZEN 契约不变。
 
 `setup_ledger.sh` 是完整部署脚本，会安装依赖、迁移生产库并管理 systemd；不要把它当作日常测试命令。
 修改脚本后可先运行不接触数据库的安全约束测试：
@@ -150,13 +157,16 @@ sudo /opt/research-ledger/scripts/research-ledger-pipeline-health.sh
 
 ### 备份
 
-```bash
-# 手动备份
-sudo /opt/research-ledger/scripts/research-ledger-backup.sh
+nnG8 当前政策为 **NO_BACKUP**：Ledger / Phase2 两小时 backup timer 应为 disabled/inactive，
+备份服务无活动进程；历史 failed 保留。备份脚本即使被调用也只返回
+`BACKUP_STATUS=skipped policy=NO_BACKUP`，不会写新档案、last-success 或清理旧档案。
+skipped 不等于备份成功。
 
-# 备份位置
-ls -lh /var/backups/research-ledger/hourly/
-```
+现有 `/var/backups/research-ledger`、`/var/backups/research-system-phase2` 与状态文件均保留，
+但未来不再有新恢复点，也不保证历史恢复点新鲜。此决策不代表容灾能力提升。
+
+政策变回 `REQUIRED`、重新启用 timer、手工备份或恢复都需要单独批准，不能当作健康修复。
+两现有 timer 含 `Persistent=true`，重启用可能补跑；如获批准恢复，应先审查无补跑方案。
 
 ### 测试数据库安全边界
 

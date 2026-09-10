@@ -7,6 +7,11 @@ readonly SUBJECT="${RUNTIME_HEALTH_SUBJECT:-$PROJECT_ROOT/scripts/research-ledge
 readonly TEST_TMP="$(mktemp -d)"
 trap 'rm -rf "$TEST_TMP"' EXIT
 
+# Preserve original REQUIRED assertions without relying on production policy.
+export RESEARCH_BACKUP_POLICY_FILE="$TEST_TMP/backup-policy.mode"
+printf 'REQUIRED\n' > "$RESEARCH_BACKUP_POLICY_FILE"
+chmod 0600 "$RESEARCH_BACKUP_POLICY_FILE"
+
 readonly FIXTURE_PATH="$TEST_TMP/bin"
 readonly MODE_FILE="$TEST_TMP/runtime-health.mode"
 readonly LEDGER_STATE="$TEST_TMP/ledger-last-success.json"

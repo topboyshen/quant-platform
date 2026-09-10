@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+source "$(dirname -- "${BASH_SOURCE[0]}")/research-backup-policy.sh"
+research_backup_policy_load
+if [[ "$RESEARCH_BACKUP_POLICY" == "NO_BACKUP" ]]; then
+  printf 'BACKUP_STATUS=skipped policy=NO_BACKUP\n'
+  exit 0
+fi
 umask 077
 
 readonly APP_ROOT="${PHASE2_APP_ROOT:-/opt/research-system-phase2}"
