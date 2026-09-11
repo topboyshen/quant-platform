@@ -599,9 +599,11 @@ class RelayTests(unittest.TestCase):
         self.assertEqual(result, {"status": "confirmed", "reason": "accepted"})
         request = opener.open.call_args.args[0]
         timestamp = str(int(NOW.timestamp()))
-        expected = relay.hmac.new(b"test", timestamp.encode() + b"." + request.data, relay.hashlib.sha256).hexdigest()
+        expected = "sha256=" + relay.hmac.new(b"test", timestamp.encode() + b"." + request.data, relay.hashlib.sha256).hexdigest()
         self.assertEqual(request.get_header("X-signature"), expected)
+        self.assertTrue(request.get_header("X-signature").startswith("sha256="))
         self.assertEqual(request.get_header("X-source"), "nng8")
+        self.assertEqual(request.data, relay.encode_payload(payload))
         self.assertNotIn("PRIVATE_RESPONSE_PATH", json.dumps(result))
         proxy = next(handler for handler in build_opener.call_args.args if isinstance(handler, relay.urllib.request.ProxyHandler))
         self.assertEqual(proxy.proxies, {})

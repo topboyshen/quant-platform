@@ -567,10 +567,10 @@ def post_payload(payload, config, now):
     """Return fixed classified outcomes; an uncertain POST is never retried."""
     body = encode_payload(payload)
     timestamp = str(int(now.timestamp()))
-    signature = hmac.new(config["secret"].encode(), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+    digest = hmac.new(config["secret"].encode(), timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
     request = urllib.request.Request(config["url"], data=body, method="POST", headers={
         "Content-Type": "application/json", "X-Timestamp": timestamp,
-        "X-Signature": signature, "X-Source": "nng8"})
+        "X-Signature": f"sha256={digest}", "X-Source": "nng8"})
     if config.get("tls_mode", "strict") == "pinned":
         handler = _PinnedHTTPSHandler(ca_pem=config["ca_pem"], pin_host=config["pin_host"],
                                       certificate_sha256=config["certificate_sha256"])
