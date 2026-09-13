@@ -7,6 +7,7 @@ import os
 import numpy as np
 
 from qlib_io import load_qlib_features, read_qlib_day_bin
+from signal_rules import latest_signal
 
 QLIB = os.path.expanduser("~/qlib/data/cn_data")
 
@@ -27,55 +28,27 @@ def load_stock(sym):
 
 def turtle_trade(d):
     """海龟突破: close>20日high, 成交额>1亿, 阳线, 真涨"""
-    if len(d["close"]) < 21:
-        return False
-    high_20 = d["high"][-21:-1].max()
-    last, prev = d["close"][-1], d["close"][-2]
-    return (last > high_20 and d["amount"][-1] > 1e5 and  # amount单位千元, 1e5=1亿
-            last > d["open"][-1] and last > prev)
+    return latest_signal("turtle_trade", d)
 
 
 def ma_volume(d):
-    """均线放量: 5日ma上穿20日ma(金叉), 放量1.5倍"""
-    if len(d["close"]) < 20:
-        return False
-    close = d["close"]
-    ma5_prev, ma20_prev = close[-6:-1].mean(), close[-21:-1].mean()
-    ma5_today, ma20_today = close[-5:].mean(), close[-20:].mean()
-    vol_ma20 = d["volume"][-21:-1].mean()
-    return (ma5_prev < ma20_prev and ma5_today > ma20_today and
-            d["volume"][-1] > vol_ma20 * 1.5)
+    """均线放量: 原金叉规则；至少21日，均量排除信号日。"""
+    return latest_signal("ma_volume", d)
 
 
 def high_tight_flag(d):
     """高窄旗形: 40日涨>60%, 10日收敛<15%, 高位抗跌, 缩量"""
-    if len(d["close"]) < 40:
-        return False
-    high40, low40 = d["high"][-40:].max(), d["low"][-40:].min()
-    high10, low10 = d["high"][-10:].max(), d["low"][-10:].min()
-    vol_ma20 = d["volume"][-21:-1].mean()
-    return (high40 / low40 > 1.6 and high10 / low10 < 1.15 and
-            low10 >= high40 * 0.8 and d["volume"][-1] < vol_ma20 * 0.6)
+    return latest_signal("high_tight_flag", d)
 
 
 def limit_up_shakeout(d):
     """涨停洗盘: 昨日涨停, 今日收阴, 放量2倍, 支撑不破"""
-    if len(d["close"]) < 3:
-        return False
-    prev2, prev1, today = d["close"][-3], d["close"][-2], d["close"][-1]
-    return (prev1 >= prev2 * 1.095 and today < d["open"][-1] and
-            d["volume"][-1] > d["volume"][-2] * 2.0 and d["low"][-1] >= prev1)
+    return latest_signal("limit_up_shakeout", d)
 
 
 def uptrend_limit_down(d):
-    """上升跌停: ma20>ma60, 跌停, 放量2倍"""
-    if len(d["close"]) < 60:
-        return False
-    close = d["close"]
-    ma20, ma60 = close[-21:-1].mean(), close[-61:-1].mean()
-    vol_ma20 = d["volume"][-21:-1].mean()
-    return (ma20 > ma60 and close[-1] <= close[-2] * 0.905 and
-            d["volume"][-1] > vol_ma20 * 2.0)
+    """上升跌停: 原阈值；至少61日，均价和均量均排除信号日。"""
+    return latest_signal("uptrend_limit_down", d)
 
 
 def main():

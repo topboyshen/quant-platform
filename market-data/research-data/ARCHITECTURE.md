@@ -21,11 +21,12 @@
 │  chip.py        筹码分布(本地计算)            │
 │  strategies.py  6策略(移植Sequoia-X)          │
 └──────────────────────────────────────────────┘
-┌─ 验证层 backtest*.py ────────────────────────┐
-│  backtest.py          向量化+A股规则(T+1/涨跌停/手续费) │
-│  backtest_sweep.py    参数扫描                │
-│  backtest_benchmark.py 基准对比(alpha vs beta)│
-│  backtest_oos.py      样本外验证              │
+┌─ 诊断层 backtest*.py ────────────────────────┐
+│  signal_rules.py     五规则共享信号实现      │
+│  backtest.py         逐笔价格情景，非组合收益 │
+│  backtest_sweep.py    自动参数扫描已阻断      │
+│  backtest_benchmark.py 旧基准诊断已阻断       │
+│  backtest_oos.py      事后切分诊断已阻断      │
 │  RESEARCH_FINDINGS.md 结论(公开策略无稳定edge)│
 └──────────────────────────────────────────────┘
 ┌─ 结算层 /opt/research-ledger ────────────────┐
@@ -43,9 +44,16 @@
   → 仅用同交易日封存截面组装 daily_snapshot
   → snapshot.db（append-only）
   → review.py(复盘) / screen.py(选股) / chip.py(筹码)
-  → strategies.py(6策略) → backtest(回测) → benchmark(基准) → oos(样本外)
-  → RESEARCH_FINDINGS(结论) → 治理层裁决(无edge→不交易)
+  → strategies.py(研究扫描) → backtest(逐笔价格情景)
+  → 研究证据审查 → 治理层裁决(未证明edge→不交易)
 ```
+
+扫描与逐笔诊断的五规则共用 `signal_rules.py`，均量使用信号日前完整二十个观测。
+开盘决策不读取入场日最终高低收盘；未到退出日或无有效退出价格的观测保留并单独计数。
+输出不包含组合/累计收益或独立同分布置信区间，也不证明成交、策略盈利或实盘准入。
+`benchmark`、`oos` 与自动参数扫描入口保留名称但主动报错，已退出上述流程；
+可信组合、匹配时点的基准与预先登记的样本外引擎尚未实现。历史研究记录保留，
+离线代码回归不构成对这些历史结论的重新认证。
 
 ## 运行环境
 
@@ -92,4 +100,4 @@ AkShare 的市场活跃度接口只提供当前页面，没有可靠的历史日
 
 ## 系统定位
 
-**一台"研究验证台"**：数据 → 研究 → 回测 → 验证 → 治理裁决，完整闭环。核心结论已固化：**公开策略无稳定 edge，系统回到 EDGE_DISCOVERY 待命，等真正的 edge 来源。**
+**一台"研究验证台"**：数据 → 研究 → 逐笔诊断 → 治理裁决。当前工具尚未建立资金组合、可信基准和样本外验证，不能由代码测试推导策略盈利。现有治理结论仍是缺少可投入资本的稳定 edge 证据，系统保持 EDGE_DISCOVERY 待命。

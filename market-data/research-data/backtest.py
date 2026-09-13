@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
-"""向量化回测: 5个策略 + A股规则(T+1/涨跌停/手续费)。
+"""五规则的逐笔日线价格情景，不是已验证成交或资金组合回测。
 
-规则:
-- 信号日 D 收盘后确认 → D+1 开盘买入(无前视)
-- T+1: 持有 >= 1 天
-- 涨停不能买(close==涨停价则跳过)
-- 手续费: 佣金0.025%×2 + 印花税0.05%(卖出)
-- 持有 N 日后收盘卖出
+信号在 D 收盘后确认，情景入场价为 D+1 开盘；开盘准入只使用前收盘
+与该开盘价，不读取入场日最终 high/close/volume。至少再经过一个观测
+交易日后，按指定日收盘价计算条件收益。涨跌幅与费用沿用旧假设，尚未
+按历史日期、ST/IPO、复权或真实成交规则核实；开盘低于估算涨停价和有
+退出收盘价均不保证可成交。停牌、流动性、滑点和退出跌停尚未建模。
+
+各信号可能重叠且共享资金，未指定资金、仓位、复投或持仓冲突规则，
+因此不计算组合/累计收益或独立同分布置信区间，也不构成策略有效性证据。
 """
+import json
+from numbers import Integral, Real
 import os
 import numpy as np
 import pandas as pd
 
 from qlib_io import load_qlib_features, read_qlib_day_bin
+from signal_rules import (sig_turtle, sig_ma_volume, sig_high_tight_flag,
+                          sig_limit_up_shakeout, sig_uptrend_limit_down)
 
 QLIB = os.path.expanduser("~/qlib/data/cn_data")
 
@@ -32,6 +38,7 @@ def load_df(sym):
 
 
 def limit_pct(sym):
+    """Legacy board-based proxy only; not a dated exchange-rule authority."""
     code = sym[2:]
     if sym.startswith("bj"):
         return 0.30
@@ -40,51 +47,73 @@ def limit_pct(sym):
     return 0.10
 
 
-# ---- 信号函数(返回 bool Series, 每天) ----
-def sig_turtle(df):
-    high_20 = df["high"].shift(1).rolling(20).max()
-    return (df["close"] > high_20) & (df["amount"] > 1e5) & (df["close"] > df["open"]) & (df["close"] > df["close"].shift(1))
+def validate_backtest_parameters(hold_days, commission, stamp_tax):
+    """Reject malformed inputs; do not introduce a position/risk policy."""
+    if isinstance(hold_days, (bool, np.bool_)) or not isinstance(hold_days, Integral) or hold_days < 1:
+        raise ValueError("hold_days must be a positive nonboolean integer")
+    for name, value in (("commission", commission), ("stamp_tax", stamp_tax)):
+        if (isinstance(value, (bool, np.bool_)) or not isinstance(value, Real)
+                or not np.isfinite(value) or value < 0):
+            raise ValueError(f"{name} must be finite and nonnegative")
+    if not np.isfinite(float(commission) * 2 + float(stamp_tax)):
+        raise ValueError("aggregate assumed cost must be finite")
 
 
-def sig_ma_volume(df):
-    ma5 = df["close"].rolling(5).mean()
-    ma20 = df["close"].rolling(20).mean()
-    vol_ma20 = df["volume"].rolling(20).mean()
-    return (ma5.shift(1) < ma20.shift(1)) & (ma5 > ma20) & (df["volume"] > vol_ma20 * 1.5)
+def opening_entry_allowed(previous_close, opening_price, assumed_limit_pct):
+    """Conservative price-scenario filter, NOT evidence of an executable fill.
+
+Only these three arguments are available to this decision. The inherited
+rounding/board proxy is not a historical rule engine. Daily bars alone cannot
+establish auction liquidity or that this opening price was attainable.
+"""
+    values = (previous_close, opening_price, assumed_limit_pct)
+    if any(isinstance(value, (bool, np.bool_)) or not isinstance(value, Real)
+           or not np.isfinite(value) or value <= 0 for value in values):
+        return False
+    estimated_limit = round(float(previous_close) * (1 + float(assumed_limit_pct)), 2)
+    return np.isfinite(estimated_limit) and opening_price < estimated_limit - 0.005
 
 
-def sig_high_tight_flag(df):
-    high40 = df["high"].rolling(40).max()
-    low40 = df["low"].rolling(40).min()
-    high10 = df["high"].rolling(10).max()
-    low10 = df["low"].rolling(10).min()
-    vol_ma20 = df["volume"].rolling(20).mean()
-    return (high40 / low40 > 1.6) & (high10 / low10 < 1.15) & (low10 >= high40 * 0.8) & (df["volume"] < vol_ma20 * 0.6)
+def _aligned_signal(frame, signal):
+    if isinstance(signal, pd.Series):
+        if not signal.index.equals(frame.index):
+            raise ValueError("signal index must exactly match frame index")
+        values = signal.to_numpy()
+    else:
+        # Preserve bools beside NaN/None; numpy's default float coercion would
+        # turn valid False values into numeric 0.0 and lose the input contract.
+        values = np.asarray(signal, dtype=object)
+    if values.ndim != 1 or len(values) != len(frame):
+        raise ValueError("one signal is required per frame row")
+    # Missing signal means no decision; numeric/string truthiness is not a signal.
+    result = []
+    for value in values:
+        if isinstance(value, (bool, np.bool_)):
+            result.append(bool(value))
+        elif value is None or value is pd.NA or (isinstance(value, Real) and np.isnan(value)):
+            result.append(False)
+        else:
+            raise ValueError("signals must be booleans or explicitly missing")
+    return result
 
 
-def sig_limit_up_shakeout(df):
-    pc = df["close"].shift(1)
-    p2c = df["close"].shift(2)
-    pv = df["volume"].shift(1)
-    return (pc >= p2c * 1.095) & (df["close"] < df["open"]) & (df["volume"] > pv * 2.0) & (df["low"] >= pc)
+def trade_returns_from_frame(df, signal, sym, hold_days=5, commission=0.00025, stamp_tax=0.0005):
+    """Pure in-memory conditional per-entry net-price observations.
 
-
-def sig_uptrend_limit_down(df):
-    ma20 = df["close"].rolling(20).mean()
-    ma60 = df["close"].rolling(60).mean()
-    vol_ma20 = df["volume"].rolling(20).mean()
-    return (ma20.shift(1) > ma60.shift(1)) & (df["close"] <= df["close"].shift(1) * 0.905) & (df["volume"] > vol_ma20 * 2.0)
-
-
-def backtest(sym, sig_fn, hold_days=5, commission=0.00025, stamp_tax=0.0005):
-    df = load_df(sym)
-    if df is None or len(df) < 60:
-        return []
-    sig = sig_fn(df).fillna(False).values
-    close = df["close"].values
-    open_ = df["open"].values
-    high = df["high"].values
-    n = len(close)
+Rows must already be chronological, aligned observations for one instrument.
+This helper neither loads data nor verifies its calendar/adjustment provenance.
+Eligible opening scenarios with no priced exit are retained as NaN, never
+filled with zero; describe_trade_returns reports their excluded count. A final
+row signal has no subsequent open and is therefore not an entry scenario.
+"""
+    validate_backtest_parameters(hold_days, commission, stamp_tax)
+    # Keep numpy integer arithmetic from overflowing a future row index.
+    hold_days = int(hold_days)
+    cost = float(commission) * 2 + float(stamp_tax)
+    sig = _aligned_signal(df, signal)
+    close = pd.to_numeric(df["close"], errors="raise").to_numpy(dtype=float)
+    open_ = pd.to_numeric(df["open"], errors="raise").to_numpy(dtype=float)
+    n = len(df)
     lim = limit_pct(sym)
     rets = []
     for i in range(n - 1):
@@ -92,22 +121,60 @@ def backtest(sym, sig_fn, hold_days=5, commission=0.00025, stamp_tax=0.0005):
             continue
         buy_day = i + 1
         buy_price = open_[buy_day]
-        if buy_price <= 0 or np.isnan(buy_price):
-            continue
-        # 涨停不能买: close == 涨停价(round(prev_close*(1+lim),2)) 且 high==close
-        lp = round(close[buy_day - 1] * (1 + lim), 2)
-        if abs(close[buy_day] - lp) < 0.005 and abs(high[buy_day] - close[buy_day]) < 0.005:
+        if not opening_entry_allowed(close[i], buy_price, lim):
             continue
         sell_day = buy_day + hold_days
         if sell_day >= n:
+            rets.append(float("nan"))
             continue
         sell_price = close[sell_day]
-        if sell_price <= 0 or np.isnan(sell_price):
+        if sell_price <= 0 or not np.isfinite(sell_price):
+            rets.append(float("nan"))
             continue
         ret = (sell_price - buy_price) / buy_price
-        cost = commission * 2 + stamp_tax
-        rets.append(ret - cost)
+        value = ret - cost
+        rets.append(float(value) if np.isfinite(value) else float("nan"))
     return rets
+
+
+def backtest(sym, sig_fn, hold_days=5, commission=0.00025, stamp_tax=0.0005):
+    """Legacy loader wrapper; each canonical signal enforces its own warmup."""
+    validate_backtest_parameters(hold_days, commission, stamp_tax)
+    df = load_df(sym)
+    if df is None or len(df) == 0:
+        return []
+    return trade_returns_from_frame(df, sig_fn(df), sym, hold_days, commission, stamp_tax)
+
+
+def describe_trade_returns(values):
+    """Descriptive finite subset only; not funded or independent observations."""
+    observations = np.asarray(values, dtype=float)
+    if observations.ndim != 1:
+        raise ValueError("trade observations must be one dimensional")
+    priced = observations[np.isfinite(observations)]
+
+    def finite_or_none(value):
+        return float(value) if np.isfinite(value) else None
+
+    return {
+        "scope": "conditional_single_trade_price_scenarios",
+        "scenario_count": int(len(observations)),
+        "priced_count": int(len(priced)),
+        "excluded_unpriced_count": int(len(observations) - len(priced)),
+        "mean_trade_return": finite_or_none(priced.mean()) if len(priced) else None,
+        "median_trade_return": finite_or_none(np.median(priced)) if len(priced) else None,
+        "win_fraction_priced": float((priced > 0).mean()) if len(priced) else None,
+        "min_trade_return": float(priced.min()) if len(priced) else None,
+        "max_trade_return": float(priced.max()) if len(priced) else None,
+        "portfolio_return": None,
+        "portfolio_status": "not_modeled",
+        "confidence_interval": None,
+        "confidence_interval_status": "not_estimated_non_independent_observations",
+        "limitations": ["overlapping_signals_not_capital_allocated", "fills_not_verified",
+                        "historical_limit_and_fee_rules_not_validated",
+                        "liquidity_slippage_and_exit_constraints_not_modeled",
+                        "priced_subset_may_have_selection_bias"],
+    }
 
 
 def main():
@@ -118,20 +185,8 @@ def main():
         all_rets = []
         for sym in insts:
             all_rets.extend(backtest(sym, fn))
-        if not all_rets:
-            print(f"{name}: 无信号")
-            continue
-        r = np.array(all_rets)
-        r = r[np.isfinite(r)]
-        if len(r) == 0:
-            print(f"{name}: 无有效信号")
-            continue
-        win = (r > 0).mean()
-        avg = r.mean()
-        total = (1 + r).prod() - 1
-        # 置信区间(均值)
-        se = r.std() / np.sqrt(len(r))
-        print(f"{name}: {len(r)}笔 胜率{win*100:.1f}% 平均{avg*100:.2f}%±{1.96*se*100:.2f}% 累计{total*100:.1f}%")
+        report = {"strategy": name, **describe_trade_returns(all_rets)}
+        print(json.dumps(report, ensure_ascii=False, allow_nan=False))
 
 
 if __name__ == "__main__":
