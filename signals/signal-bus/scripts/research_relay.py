@@ -279,7 +279,13 @@ def extract_summary(report, target_date, data_status, semantic_review):
             limitations.append("原风险块明确未提供结构化反证来源；该缺失提示不是已核验反证，未补造来源。")
     else:
         base = sections.get("一句话结论", {}).get("lines", [])
-        conclusion = "\n".join(line.strip() for line in base if line.strip())
+        conclusion_lines = [line.strip() for line in base if line.strip()]
+        if conclusion_lines:
+            # Normalize only the leading bullet of an already labelled headline.
+            # Never invent a label or rewrite a continuation's content.
+            conclusion_lines[0] = re.sub(
+                r"^[-+*][ \t]+(?=\[(?:事实|推断)\])", "", conclusion_lines[0], count=1)
+        conclusion = "\n".join(conclusion_lines)
         if not conclusion:
             conclusion = "[事实] 本次为程序核验基础版，没有可转发的结构化研究结论。"
         evidence = _blocks(sections["2"]["lines"])

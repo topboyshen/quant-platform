@@ -60,6 +60,13 @@ blocks is disclosed. Overlong retained content fails instead of truncating away
 risks or counter-evidence. Query/fragment credentials and unsafe source links are
 removed with an explicit limitation note. No order or approval signal is emitted.
 
+For a basic report's first nonempty headline line, a single unordered Markdown
+bullet (`-`, `+`, or `*`, followed by spaces/tabs) is removed only when immediately
+followed by an existing `[事实]` or `[推断]` label. Plain labelled headlines and
+later lines keep the existing whitespace normalization only; unlabelled
+continuations do not acquire labels.
+Missing labels, unsupported wrappers and missing/invalid references still hold.
+
 Conclusions retain `[事实]`/`[推断]` labels and require source references. If the
 original headline has no inline reference, its retained support references are
 copied explicitly into the conclusion, never invented. Inference blocks without
@@ -128,5 +135,6 @@ gates/hashes/cutoff, basic-mode disclosure, retained counter-evidence/references
 source credential cleanup, dry-run isolation, window recheck, HMAC/receipts,
 confirmed deduplication and ambiguous/rejected delivery recovery boundaries.
 An optional integration test imports a sibling Signal Gate consumer when present
-and validates five fixture payload shapes entirely in memory. A standalone
+and validates six fixture payload shapes (including a basic list headline)
+entirely in memory. A standalone
 production relay checkout skips that one test; all other tests are independent.

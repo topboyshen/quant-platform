@@ -227,6 +227,102 @@ class RelayTests(unittest.TestCase):
         self.assertIn("[事实]", summary["conclusion"])
         self.assertEqual(summary["counter_evidence"], [])
 
+    def basic_fixture(self, conclusion):
+        """Synthetic sealed basic report; never borrow live report contents."""
+        start, end = REPORT.index("- [推断] 情景"), REPORT.index("## 7.")
+        basic = REPORT[:start] + "本次没有程序证明合格的语义候选。\n" + REPORT[end:]
+        begin, end = basic.index("## 一句话结论\n"), basic.index("## 1.")
+        self.report = basic[:begin] + "## 一句话结论\n" + conclusion + "\n" + basic[end:]
+        self.write_fixture()
+
+    def test_basic_list_conclusion_preserves_unlabelled_original_followup(self):
+        original = "[事实] 合成基础行情已核验。[来源 1]\n- 无标签原说明，不增加事实标签。\n+ [推断] 原文补充仍保留列表。"
+        self.basic_fixture("\n \t\n- " + original)
+        summary = relay.build_payload(self.root, NOW)["research_summary"]
+        self.assertEqual(summary["conclusion"], original)
+        self.assertEqual(summary["evidence"], ["- [事实] 三项指数表现分化。[来源 1]"])
+        self.assertEqual(summary["counter_evidence"], [])
+
+    def test_basic_list_conclusion_accepts_only_single_markers_and_horizontal_space(self):
+        for marker in ("-", "+", "*"):
+            for whitespace in (" ", "\t", " \t "):
+                for tag in ("事实", "推断"):
+                    with self.subTest(marker=marker, whitespace=repr(whitespace), tag=tag):
+                        original = f"[{tag}] 合成原始结论。[来源 1]"
+                        self.basic_fixture(marker + whitespace + original)
+                        summary = relay.build_payload(self.root, NOW)["research_summary"]
+                        self.assertEqual(summary["conclusion"], original)
+
+    def test_basic_plain_labelled_conclusion_is_unchanged(self):
+        for tag in ("事实", "推断"):
+            with self.subTest(tag=tag):
+                original = f"[{tag}] 合成原始结论。[来源 1]\n- 无标签原说明。"
+                self.basic_fixture(original)
+                summary = relay.build_payload(self.root, NOW)["research_summary"]
+                self.assertEqual(summary["conclusion"], original)
+
+    def test_basic_list_conclusion_does_not_invent_or_unwrap_labels(self):
+        for invalid in ("- 没有标签。[来源 1]", "没有标签。[来源 1]",
+                        "- - [事实] 双层标记。[来源 1]", "> - [事实] 引用前缀。[来源 1]",
+                        "- **[事实]** 加粗标签。[来源 1]", "-[事实] 缺少空白。[来源 1]",
+                        "-\u00a0[事实] 不换行空格。[来源 1]", "-\u200b[事实] 零宽字符。[来源 1]",
+                        "-\v[事实] 纵向空白。[来源 1]", "-\f[事实] 换页字符。[来源 1]"):
+            with self.subTest(conclusion=repr(invalid)):
+                self.basic_fixture(invalid)
+                self.assert_hold("conclusion_label_missing")
+
+    def test_basic_list_conclusion_still_requires_resolvable_source_references(self):
+        self.basic_fixture("- [事实] 没有结论出处。")
+        self.report = self.report.replace("- [事实] 三项指数表现分化。[来源 1]", "- [事实] 无引用的行情。").replace(
+            "- 财务及公告字段不完整。[来源 1]", "- 财务及公告字段不完整。")
+        self.write_fixture()
+        self.assert_hold("conclusion_reference_missing")
+        self.basic_fixture("- [事实] 引用不存在的来源。[来源 99]")
+        self.assert_hold("source_reference_missing")
+
+    def test_basic_list_conclusion_preserves_partial_and_human_review_limits(self):
+        self.basic_fixture("- [事实] 合成基础行情已核验。[来源 1]\n- 不能据此推断因果。")
+        payload = relay.build_payload(self.root, NOW)
+        summary, contract = payload["research_summary"], payload["research_contract"]
+        self.assertEqual(contract["data_status"], "partial")
+        self.assertEqual(contract["semantic_review"], "not_human_reviewed")
+        self.assertEqual(contract["report_date"], DAY)
+        self.assertEqual(payload["as_of"], "2026-09-08")
+        limitations = "\n".join(summary["limitations"])
+        for text in ("基础版", "部分来源或字段不可用", "研究语义未通过人工审核", "不是交易指令"):
+            self.assertIn(text, limitations)
+        self.assertEqual(len(summary["risks"]), 3)
+        self.assertEqual(summary["counter_evidence"], [])
+
+    def test_basic_list_dry_run_does_not_read_credentials_write_state_or_send(self):
+        self.basic_fixture("- [事实] 合成基础行情已核验。[来源 1]\n- 无标签原说明。")
+        self.config()
+        before = {str(p.relative_to(Path(self.temp.name))): p.read_bytes()
+                  for p in Path(self.temp.name).rglob("*") if p.is_file()}
+        sender = Mock(side_effect=AssertionError("send"))
+        with patch.object(relay, "read_post_config", side_effect=AssertionError("config read")), \
+                patch.object(relay, "_state_directory", side_effect=AssertionError("state directory")), \
+                patch.object(relay, "_write_state", side_effect=AssertionError("state write")):
+            for now, within_window in ((NOW, True), (NOW + dt.timedelta(hours=8), False)):
+                with self.subTest(within_window=within_window):
+                    result = relay.run_relay(self.root, self.bus, now=now, dry_run=True, sender=sender)
+                    self.assertEqual(result["status"], "ready", result)
+                    self.assertFalse(result["would_send"])
+                    self.assertEqual(result["within_send_window"], within_window)
+                    self.assertNotIn("SUPER_SECRET", json.dumps(result))
+        sender.assert_not_called()
+        after = {str(p.relative_to(Path(self.temp.name))): p.read_bytes()
+                 for p in Path(self.temp.name).rglob("*") if p.is_file()}
+        self.assertEqual(before, after)
+
+    def test_basic_list_normalization_does_not_replace_structured_analysis(self):
+        original = relay.build_payload(self.root, NOW)["research_summary"]
+        self.report = REPORT.replace("[事实] 基础行情已核验，不补造因果关系。[来源 1]",
+                                     "- [事实] 不应替代结构化研究的基础说明。[来源 1]")
+        self.write_fixture()
+        summary = relay.build_payload(self.root, NOW)["research_summary"]
+        self.assertEqual(summary, original)
+
     def test_missing_source_reference_blocks(self):
         self.report = REPORT.replace("  反证：[来源 4]", "  反证：[来源 99]")
         self.write_fixture()
@@ -650,7 +746,7 @@ class RelayTests(unittest.TestCase):
         """Run in this integration worktree; production standalone install skips.
 
         No inputs are written to the consumer, and only its pure renderer method
-        is called. All five payloads still come from temporary sealed fixtures.
+        is called. All payloads still come from temporary sealed fixtures.
         """
         consumer_path = MODULE.parents[2] / "signal-gate/app/digest_content.py"
         if not consumer_path.is_file():
@@ -666,6 +762,9 @@ class RelayTests(unittest.TestCase):
         cases = {
             "production_shape": REPORT,
             "basic": basic,
+            "basic_list": basic.replace(
+                "[事实] 基础行情已核验，不补造因果关系。[来源 1]",
+                "- [事实] 基础行情已核验，不补造因果关系。[来源 1]\n- 无标签原说明，仍须人工复核。"),
             "compound_reference": REPORT.replace("  反证：[来源 3]\n  反证：[来源 4]", "  反证：[来源 3 4]"),
             "risk_placeholder": risk,
             "counter_continuation": REPORT.replace("  反证：[来源 3]", "  反证：[来源 3]\n    不能排除另一解释；仍需后续数据验证。"),
@@ -679,6 +778,8 @@ class RelayTests(unittest.TestCase):
                 lines = renderer.sealed_research(payload)
                 self.assertEqual(renderer.issues, [], label)
                 self.assertNotIn("旧稿未纳入", "\n".join(lines))
+                if label == "basic_list":
+                    self.assertIn("无标签原说明，仍须人工复核。", "\n".join(lines))
                 if label == "counter_continuation":
                     self.assertIn("不能排除另一解释", "\n".join(lines))
 
