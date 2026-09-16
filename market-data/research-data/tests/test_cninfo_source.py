@@ -54,7 +54,7 @@ def next_day_announcements(code="002617", day="2026-09-08"):
 class CninfoTests(unittest.TestCase):
     def setUp(self):
         self.session = mock.Mock(headers={}, trust_env=True)
-        self.patch_session = mock.patch.object(source.requests, "Session", return_value=self.session)
+        self.patch_session = mock.patch.object(source, "build_cninfo_session", return_value=self.session)
         self.patch_sleep = mock.patch.object(source.time, "sleep")
         self.patch_now = mock.patch.object(source, "_now_cst", return_value=OBSERVED_AT)
         self.patch_session.start()

@@ -1275,6 +1275,21 @@ def run_snapshot(run_id, started_monotonic):
         }
 
     if prior is not None:
+        captured_date = None
+        if current_stage is not None:
+            try:
+                captured_date = datetime.date.fromisoformat(current_stage["tradeDate"])
+            except (KeyError, TypeError, ValueError):
+                captured_date = None
+        try:
+            qlib_day = datetime.date.fromisoformat(q["date"])
+        except (KeyError, TypeError, ValueError):
+            qlib_day = None
+        if captured_date is not None and qlib_day is not None and captured_date > qlib_day:
+            raise SnapshotDeferredError(
+                "qlib calendar behind observed market stage: "
+                f"qlib={q['date']}, captured={current_stage['tradeDate']}"
+            )
         status_record = {
             "runId": run_id,
             "status": "skipped_existing",

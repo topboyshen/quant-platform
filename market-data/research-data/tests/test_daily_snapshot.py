@@ -567,14 +567,47 @@ class AkShareStageTests(unittest.TestCase):
             ), mock.patch.object(
                 sys, "argv", ["daily_snapshot.py"]
             ):
+                with self.assertRaisesRegex(
+                    daily_snapshot.SnapshotDeferredError,
+                    r"qlib calendar behind observed market stage: qlib=2026-09-01, captured=2026-09-02",
+                ):
+                    daily_snapshot.run_snapshot("run", time.monotonic())
+
+            self.assertEqual(emitted, [])
+            self.assertTrue(
+                (Path(state_dir) / "akshare-market" / "2026-09-02.json").is_file()
+            )
+
+    def test_existing_snapshot_same_qlib_date_still_skipped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = str(Path(directory) / "state")
+            emitted = []
+            with mock.patch.object(
+                daily_snapshot, "STATE_DIR", state_dir
+            ), mock.patch.object(
+                daily_snapshot, "AKSHARE_STAGE_DIR", None
+            ), mock.patch.object(
+                daily_snapshot,
+                "akshare_market",
+                return_value=sample_akshare_market("2026-09-01"),
+            ), mock.patch.object(
+                daily_snapshot,
+                "qlib_market",
+                return_value=sample_qlib_market("2026-09-01"),
+            ), mock.patch.object(
+                daily_snapshot,
+                "existing_snapshot",
+                return_value={"generatedAt": "old", "payloadSha256": "abc"},
+            ), mock.patch.object(
+                daily_snapshot, "emit_status", side_effect=emitted.append
+            ), mock.patch.object(
+                sys, "argv", ["daily_snapshot.py"]
+            ):
                 result = daily_snapshot.run_snapshot("run", time.monotonic())
 
             self.assertEqual(result, 0)
             self.assertEqual(emitted[0]["status"], "skipped_existing")
-            self.assertEqual(emitted[0]["akshareStage"]["tradeDate"], "2026-09-02")
-            self.assertTrue(
-                (Path(state_dir) / "akshare-market" / "2026-09-02.json").is_file()
-            )
+            self.assertEqual(emitted[0]["akshareStage"]["tradeDate"], "2026-09-01")
 
     def test_existing_snapshot_is_not_blocked_by_current_staging_failure(self):
         emitted = []

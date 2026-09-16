@@ -6,6 +6,11 @@ import time
 
 import requests
 
+try:
+    from curl_cffi.requests.errors import RequestsError as CurlRequestsError
+except ImportError:
+    CurlRequestsError = ()  # type: ignore[misc, assignment]
+
 
 STOCK_MAP_URL = "https://www.cninfo.com.cn/new/data/szse_stock.json"
 ANNOUNCEMENTS_URL = "https://www.cninfo.com.cn/new/hisAnnouncement/query"
@@ -20,6 +25,31 @@ ERROR_TYPES = {
     "RequestException", "HTTPStatus", "InvalidJSON", "InvalidSchema",
     "UnknownSecurity", "SecurityMismatch", "InvalidInput",
 }
+TRANSPORT_ERRORS = (requests.RequestException, CurlRequestsError) if CurlRequestsError else (requests.RequestException,)
+CNINFO_HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Referer": "https://www.cninfo.com.cn/new/disclosure",
+    "Origin": "https://www.cninfo.com.cn",
+}
+
+
+def build_cninfo_session():
+    """CNINFO CDN blocks default TLS fingerprints as bots; Chrome impersonation is required."""
+    try:
+        from curl_cffi import requests as impersonated
+        session = impersonated.Session(impersonate="chrome120")
+        session.trust_env = False
+        # Do not override the impersonated User-Agent; a generic Mozilla UA is classified as a bot.
+        session.headers.update({
+            "Referer": CNINFO_HEADERS["Referer"],
+            "Origin": CNINFO_HEADERS["Origin"],
+        })
+        return session
+    except (ImportError, TypeError, ValueError):
+        session = requests.Session()
+        session.trust_env = False
+        session.headers.update(CNINFO_HEADERS)
+        return session
 
 
 class CninfoError(RuntimeError):
@@ -81,13 +111,8 @@ def _next_day_disclosure_evidence(row, declared_at, org_id):
 
 class CninfoClient:
     def __init__(self):
-        self.session = requests.Session()
+        self.session = build_cninfo_session()
         self.session.trust_env = False
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0",
-            "Referer": "https://www.cninfo.com.cn/new/disclosure",
-            "Origin": "https://www.cninfo.com.cn",
-        })
         self.org_ids = None
 
     def __enter__(self):
@@ -100,8 +125,10 @@ class CninfoClient:
         for attempt in range(1, 4):
             retry = False
             try:
-                with self.session.request(method, url, timeout=(5, 15),
-                                          allow_redirects=False, **kwargs) as response:
+                response = self.session.request(method, url, timeout=(5, 15),
+                                                allow_redirects=False, **kwargs)
+                closer = getattr(response, "close", None)
+                try:
                     status = response.status_code
                     if status != 200:
                         error = CninfoError(stage, "HTTPStatus", code, attempt, status)
@@ -111,12 +138,17 @@ class CninfoClient:
                             return response.json()
                         except ValueError:
                             raise CninfoError(stage, "InvalidJSON", code, attempt, status) from None
-            except requests.RequestException as exc:
+                finally:
+                    if callable(closer):
+                        closer()
+            except TRANSPORT_ERRORS as exc:
                 error_type = type(exc).__name__
                 if error_type not in ERROR_TYPES:
                     error_type = "RequestException"
                 error = CninfoError(stage, error_type, code, attempt)
-                retry = isinstance(exc, (requests.Timeout, requests.ConnectionError))
+                retry = isinstance(exc, (requests.Timeout, requests.ConnectionError)) or error_type in {
+                    "Timeout", "ConnectTimeout", "ReadTimeout", "ConnectionError",
+                }
             if not retry or attempt == 3:
                 raise error from None
             time.sleep(attempt)
