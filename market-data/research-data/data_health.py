@@ -678,6 +678,32 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
                             "Stored rows receive strict JSON/date/error checks, not a full market revalidation."]}
 
 
+def write_audit_output(path, payload):
+    """Atomically store the audit JSON for a networked alerter. Never follow a symlink."""
+    destination = Path(path)
+    parent = destination.parent
+    if destination.exists() or destination.is_symlink():
+        info = destination.lstat()
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+            raise EvidenceError("audit_output_not_regular_file")
+    info = parent.lstat()
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        raise EvidenceError("audit_output_parent_invalid")
+    temporary = parent / f".{destination.name}.{os.getpid()}.tmp"
+    if temporary.exists() or temporary.is_symlink():
+        raise EvidenceError("audit_output_temp_exists")
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, required=True)
@@ -689,6 +715,7 @@ def main():
     parser.add_argument("--monitor-since", required=True)
     parser.add_argument("--baseline", type=Path)
     parser.add_argument("--pretty", action="store_true")
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
         result = audit(args.db, args.qlib, args.stages, args.last_run, args.mode,
@@ -698,9 +725,21 @@ def main():
         result = {"schemaVersion": 1, "readOnly": True, "status": "unknown",
                   "reason": str(exc) if isinstance(exc, EvidenceError) else "evidence_read_or_validation_failed",
                   "errorType": type(exc).__name__}
-        print(json.dumps(result, sort_keys=True))
+        payload = json.dumps(result, sort_keys=True)
+        print(payload)
+        if args.output is not None:
+            try:
+                write_audit_output(args.output, payload + "\n")
+            except (OSError, EvidenceError):
+                return 2
         return 2
-    print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2 if args.pretty else None))
+    payload = json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2 if args.pretty else None)
+    print(payload)
+    if args.output is not None:
+        try:
+            write_audit_output(args.output, payload + ("" if payload.endswith("\n") else "\n"))
+        except (OSError, EvidenceError):
+            return 2
     return 0  # Data warnings are payload state, not collector/process failure.
 
 

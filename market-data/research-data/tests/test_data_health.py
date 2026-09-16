@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 import socket
 import sqlite3
 import struct
@@ -396,6 +397,19 @@ class AuditTests(unittest.TestCase):
         with mock.patch.object(health, "snapshot_rows", side_effect=mutate_after_read):
             with self.assertRaisesRegex(health.EvidenceError, "generation_changed_during_audit"):
                 self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
+
+    def test_audit_output_is_atomic_and_rejects_symlinks(self):
+        destination = self.root / "last-health.json"
+        health.write_audit_output(destination, '{"status":"critical"}\n')
+        self.assertEqual(destination.read_text(), '{"status":"critical"}\n')
+        self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
+        decoy = self.root / "decoy"
+        decoy.write_text("secret")
+        linked = self.root / "link.json"
+        linked.symlink_to(decoy)
+        with self.assertRaisesRegex(health.EvidenceError, "audit_output_not_regular_file"):
+            health.write_audit_output(linked, '{"status":"ok"}\n')
+        self.assertEqual(decoy.read_text(), "secret")
 
 
 if __name__ == "__main__":
