@@ -1017,5 +1017,21 @@ class SnapshotSafetyTests(unittest.TestCase):
             self.assertEqual(count, 0)
 
 
+class MootdxQuotesTests(unittest.TestCase):
+    def test_empty_book_is_quotes_api_failure_not_missing_codes(self):
+        import pandas as pd
+
+        class Client:
+            def quotes(self, symbol=None):
+                return pd.DataFrame()
+
+        with mock.patch.object(daily_snapshot, "Quotes", create=True), mock.patch(
+            "mootdx.quotes.Quotes"
+        ) as factory:
+            factory.factory.return_value = Client()
+            with self.assertRaisesRegex(RuntimeError, "mootdx quotes API returned empty"):
+                daily_snapshot.mootdx_quotes(["002617", "300033", "600875"])
+
+
 if __name__ == "__main__":
     unittest.main()

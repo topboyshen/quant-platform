@@ -1076,6 +1076,10 @@ def mootdx_quotes(codes):
                 "bid_vol1": json_scalar(r.get("bid_vol1")),
                 "ask_vol1": json_scalar(r.get("ask_vol1")),
             }
+    if not result:
+        # Empty for the whole request is a quotes-API failure, not "these codes
+        # are missing from an otherwise populated book". Do not substitute another source.
+        raise RuntimeError("mootdx quotes API returned empty")
     return result
 
 
