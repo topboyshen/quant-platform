@@ -597,7 +597,15 @@ def post_payload(payload, config, now):
                 return {"status": "ambiguous", "reason": "acknowledgement_invalid"}
             if acknowledgement.get("status") != "accepted" or acknowledgement.get("source") != "nng8" or acknowledgement.get("day") != payload["as_of"]:
                 return {"status": "ambiguous", "reason": "acknowledgement_invalid"}
-            return {"status": "confirmed", "reason": "accepted"}
+            stored = acknowledgement.get("stored")
+            if stored is True:
+                storage = "receiver_reported_stored"
+            elif stored is False:
+                storage = "receiver_reported_not_stored"
+            else:
+                storage = "not_in_acknowledgement"
+            return {"status": "confirmed", "reason": "accepted",
+                    "ack_scope": "http_accepted", "receiver_storage": storage}
     except urllib.error.HTTPError as error:
         if error.code in (400, 401, 403, 404, 405, 413, 415, 422, 429):
             return {"status": "rejected", "reason": "http_rejected"}
@@ -715,8 +723,20 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
             else:
                 reason = result["reason"]
             record.update(status=status, reason=reason)
+            if result.get("ack_scope") == "http_accepted":
+                record["ack_scope"] = "http_accepted"
+            storage = result.get("receiver_storage")
+            if storage in ("not_in_acknowledgement", "receiver_reported_stored",
+                           "receiver_reported_not_stored"):
+                record["receiver_storage"] = storage
             _write_state(directory, target, record)
-            return {"status": status, "reason": reason, **public, "sent": int(status == "confirmed"), "confirmed": status == "confirmed"}
+            outcome = {"status": status, "reason": reason, **public,
+                       "sent": int(status == "confirmed"), "confirmed": status == "confirmed"}
+            if "ack_scope" in record:
+                outcome["ack_scope"] = record["ack_scope"]
+            if "receiver_storage" in record:
+                outcome["receiver_storage"] = record["receiver_storage"]
+            return outcome
         finally:
             os.close(lock_fd)
     except Held as error:

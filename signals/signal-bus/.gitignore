@@ -5,9 +5,11 @@
 !scripts/
 scripts/*
 !scripts/research_relay.py
+!scripts/digest_freshness.py
 !tests/
 tests/*
 !tests/test_research_relay.py
+!tests/test_digest_freshness.py
 !systemd/
 systemd/*
 !systemd/nng8-research-digest.service

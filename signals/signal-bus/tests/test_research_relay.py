@@ -692,7 +692,9 @@ class RelayTests(unittest.TestCase):
         opener.open.return_value = response
         with patch.object(relay.urllib.request, "build_opener", return_value=opener) as build_opener:
             result = relay.post_payload(payload, {"url": "https://example.org/SECRET_PATH", "secret": "test"}, NOW)
-        self.assertEqual(result, {"status": "confirmed", "reason": "accepted"})
+        self.assertEqual(result, {"status": "confirmed", "reason": "accepted",
+                                  "ack_scope": "http_accepted",
+                                  "receiver_storage": "not_in_acknowledgement"})
         request = opener.open.call_args.args[0]
         timestamp = str(int(NOW.timestamp()))
         expected = "sha256=" + relay.hmac.new(b"test", timestamp.encode() + b"." + request.data, relay.hashlib.sha256).hexdigest()
@@ -703,6 +705,20 @@ class RelayTests(unittest.TestCase):
         self.assertNotIn("PRIVATE_RESPONSE_PATH", json.dumps(result))
         proxy = next(handler for handler in build_opener.call_args.args if isinstance(handler, relay.urllib.request.ProxyHandler))
         self.assertEqual(proxy.proxies, {})
+
+    def test_ack_stored_flag_is_classified_without_copying_extra_fields(self):
+        payload = relay.build_payload(self.root, NOW)
+        response = Mock(status=200)
+        response.read.return_value = b'{"status":"accepted","source":"nng8","day":"2026-09-08","stored":true,"path":"SECRET_STORE"}'
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        opener = Mock()
+        opener.open.return_value = response
+        with patch.object(relay.urllib.request, "build_opener", return_value=opener):
+            result = relay.post_payload(payload, {"url": "https://example.org/a", "secret": "test"}, NOW)
+        self.assertEqual(result["receiver_storage"], "receiver_reported_stored")
+        self.assertEqual(result["ack_scope"], "http_accepted")
+        self.assertNotIn("SECRET_STORE", json.dumps(result))
 
     def test_transport_mismatched_ack_is_ambiguous(self):
         response = Mock(status=200)
