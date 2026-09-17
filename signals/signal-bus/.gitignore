@@ -17,3 +17,10 @@ systemd/*
 !systemd/astock-xhs-draft.service.d/
 systemd/astock-xhs-draft.service.d/*
 !systemd/astock-xhs-draft.service.d/signal-gate.conf
+!scripts/build_cninfo_seal_fixture.mjs
+!scripts/morning_seal_alert.sh
+!scripts/run_research_relay_with_alert.sh
+!tests/test_cninfo_seal_relay_chain.py
+!CNINFO_SEAL_RELAY_CHAIN.md
+!systemd/astock-seal-failure-alert.service
+!systemd/astock-xhs-draft.service.d/failure-alert.conf

@@ -138,3 +138,18 @@ An optional integration test imports a sibling Signal Gate consumer when present
 and validates six fixture payload shapes (including a basic list headline)
 entirely in memory. A standalone
 production relay checkout skips that one test; all other tests are independent.
+
+## CNINFO seal chain regression (2026-09-17)
+
+Offline full-chain check that a report with CNINFO `披露日期` + `实际采集时间`
+source lines can build an xhs-draft seal and pass `prepare_research` / dry-run
+relay validation without HTTP send:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest tests.test_cninfo_seal_relay_chain -v
+```
+
+See `CNINFO_SEAL_RELAY_CHAIN.md`. Seal-failure Telegram alerts:
+`scripts/morning_seal_alert.sh` (wired via `astock-xhs-draft` OnFailure and
+`run_research_relay_with_alert.sh`). Verify with
+`ALERT_DRY_RUN=1 scripts/morning_seal_alert.sh --dry-run-notify`.

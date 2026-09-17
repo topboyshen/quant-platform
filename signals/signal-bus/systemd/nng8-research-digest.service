@@ -4,7 +4,7 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 -B /home/ubuntu/signal-bus/scripts/research_relay.py --json
+ExecStart=/home/ubuntu/signal-bus/scripts/run_research_relay_with_alert.sh
 WorkingDirectory=/home/ubuntu/signal-bus
 TimeoutStartSec=45s
 TimeoutStopSec=5s
