@@ -55,7 +55,7 @@ AKSHARE_STAGE_REQUIRED_ACTIVITY_COUNTS = (
 )
 SNAPSHOT_DEFERRED_EXIT = 69
 QLIB_MIN_ELIGIBLE = 5000
-QLIB_MIN_COVERAGE = 0.999
+QLIB_MIN_COVERAGE = 0.995  # 容忍每日正常停牌（~28只），大规模数据缺失仍告警
 SQLITE_TIMEOUT = 30
 
 
@@ -1061,10 +1061,29 @@ def lhb_official(date):
     return out
 
 
+# Verified-reachable TongDaXin quote servers (TCP + protocol handshake tested).
+# The library default picks an unverified entry from HQ_HOSTS, which caused
+# intermittent post-close failures (2026-09-10/11 missing watch codes).
+MOOTDX_SERVERS = (
+    ("218.75.126.9", 7709),
+    ("123.60.84.66", 7709),
+    ("115.238.90.165", 7709),
+)
+
+
 def mootdx_quotes(codes):
     from mootdx.quotes import Quotes
-    client = Quotes.factory(market="std")
-    df = client.quotes(symbol=codes)
+    df = None
+    last_error = None
+    for server in MOOTDX_SERVERS:
+        try:
+            client = Quotes.factory(market="std", server=server, timeout=10)
+            df = client.quotes(symbol=codes)
+            if df is not None and not df.empty:
+                break
+        except Exception as exc:  # try the next verified server
+            last_error = exc
+            continue
     result = {}
     if df is not None and not df.empty:
         for _, r in df.iterrows():
@@ -1079,7 +1098,8 @@ def mootdx_quotes(codes):
     if not result:
         # Empty for the whole request is a quotes-API failure, not "these codes
         # are missing from an otherwise populated book". Do not substitute another source.
-        raise RuntimeError("mootdx quotes API returned empty")
+        detail = f": {last_error}" if last_error else ""
+        raise RuntimeError(f"mootdx quotes API returned empty{detail}")
     return result
 
 
