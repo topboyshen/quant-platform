@@ -680,6 +680,12 @@ def capture_current_akshare_market(stage_dir=None):
 
 def validate_source_completeness(sources, watch_codes, fund_flow_codes):
     errors = source_error_paths(sources)
+    # mootdx is best-effort: TongDaXin quote servers refuse this host's IDC
+    # egress IP at the protocol layer (metadata APIs respond, quotes/bars
+    # return empty on every HQ server, both tdxpy and pytdx, since ~2026-09-10).
+    # Its error must not reject the whole snapshot; tencent/baostock remain
+    # authoritative for watch-code quotes.
+    errors = [e for e in errors if e != "mootdx.error"]
     if errors:
         source_details = []
         for source_name, sanitize in (("announcements", safe_diagnostic),
@@ -711,7 +717,7 @@ def validate_source_completeness(sources, watch_codes, fund_flow_codes):
         raise SnapshotValidationError("global-market collection is incomplete")
 
     expected_by_source = {
-        "mootdx": watch_codes,
+        # mootdx excluded: optional source (IDC-IP block, see validate_source_completeness)
         "tencent": watch_codes,
         "baostock": watch_codes,
         "announcements": watch_codes,
@@ -728,7 +734,7 @@ def validate_source_completeness(sources, watch_codes, fund_flow_codes):
 
     nonempty_required = {
         "fundFlow": fund_flow_codes,
-        "mootdx": watch_codes,
+        # mootdx excluded: optional source (IDC-IP block, see validate_source_completeness)
         "tencent": watch_codes,
         "baostock": watch_codes,
     }
@@ -1461,6 +1467,12 @@ def run_snapshot(run_id, started_monotonic):
                 "sources": ["akshareActivity", "akshareSectors"],
             },
             "lhb": {"status": "ok", "kind": "trade_date", "value": q["date"]},
+            "mootdx": {
+                "status": "degraded" if (isinstance(mq, dict) and mq.get("error")) else "ok",
+                "kind": "observed_at",
+                "optional": True,
+                "note": "TDX quote servers block this host's IDC egress IP; failure does not reject the snapshot",
+            },
             "lhbOfficial": {
                 "status": "ok", "kind": "trade_date", "value": q["date"],
             },
