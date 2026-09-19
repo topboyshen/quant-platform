@@ -60,6 +60,25 @@ class DescribeTests(unittest.TestCase):
         # A failed audit unit alerts even when the stored artifact looks fine.
         self.assertTrue(alert.should_alert(alert.describe(self.write(artifact(status="ok")), now=NOW), "failed"))
 
+    def test_stale_ok_or_warning_result_still_alerts(self):
+        old = (NOW - dt.timedelta(hours=10)).isoformat()
+        for status in ("ok", "warning"):
+            with self.subTest(status=status, freshness="stale"):
+                info = alert.describe(self.write(artifact(status=status, generatedAt=old)), now=NOW)
+                self.assertTrue(info["stale"])
+                self.assertTrue(alert.should_alert(info, "inactive"))
+                lines = dict(line.split("=", 1) for line in alert._shell_lines(info, "inactive"))
+                self.assertEqual(lines["ALERT"], "yes")
+            with self.subTest(status=status, freshness="current"):
+                info = alert.describe(self.write(artifact(status=status)), now=NOW)
+                self.assertFalse(info["stale"])
+                self.assertFalse(alert.should_alert(info, "inactive"))
+                lines = dict(line.split("=", 1) for line in alert._shell_lines(info, "inactive"))
+                self.assertEqual(lines["ALERT"], "no")
+        # An unreadable timestamp is stale too, so an unparsable ok artifact alerts.
+        info = alert.describe(self.write(artifact(status="ok", generatedAt="2026-09-20 22:45")), now=NOW)
+        self.assertTrue(alert.should_alert(info, "inactive"))
+
     def test_stale_or_unreadable_time_is_reported_not_hidden(self):
         old = (NOW - dt.timedelta(hours=10)).isoformat()
         info = alert.describe(self.write(artifact(generatedAt=old)), now=NOW)

@@ -118,9 +118,16 @@ def message(info, hostname="unknown", unit_state="unknown", now=None, entry_reas
 
 
 def should_alert(info, unit_state):
+    """Stale or unreadable audit output alerts regardless of its stored status.
+
+    An old `ok`/`warning` artifact means the audit that should have run did not
+    leave a current result; staying silent there is how a broken schedule hides.
+    """
     if unit_state == "failed":
         return True
-    return info.get("status") in ALERT_STATUSES
+    if info.get("status") in ALERT_STATUSES:
+        return True
+    return bool(info.get("stale"))
 
 
 def parse_receipt(raw, exit_code):
