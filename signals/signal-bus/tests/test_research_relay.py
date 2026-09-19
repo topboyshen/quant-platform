@@ -161,6 +161,26 @@ class RelayTests(unittest.TestCase):
                 self.write_research_seal(source_patch={key: value})
                 self.assert_hold("sealed_report_proof_invalid")
 
+    def test_invalid_research_seal_is_not_masked_by_a_valid_legacy_manifest(self):
+        """A present-but-invalid seal must fail, not silently fall back."""
+        self.write_research_seal(seal_patch={"state": "DRAFT_ONLY"}, keep_legacy=True)
+        self.assertTrue((self.root / self.seal_relative).exists(), "legacy manifest stays valid")
+        self.assert_hold("sealed_report_proof_invalid")
+
+    def test_legacy_confirmation_is_not_reissued_when_the_research_seal_appears(self):
+        """Legacy confirms first; the later research seal must not resend or overwrite."""
+        self.config()
+        sender = Mock(return_value={"status": "confirmed", "reason": "accepted"})
+        self.assertEqual(self.execute(sender=sender)["status"], "confirmed")
+        state_path = self.bus / f"out/relay-delivery/{DAY}.json"
+        before = state_path.read_bytes()
+        self.write_research_seal(keep_legacy=True)
+        second = self.execute(sender=sender)
+        self.assertEqual(second["status"], "already_confirmed", second)
+        self.assertEqual(second["sent"], 0)
+        self.assertEqual(sender.call_count, 1)
+        self.assertEqual(state_path.read_bytes(), before, "confirmed record must not be rewritten")
+
     def test_legacy_xhs_manifest_still_delivers_on_an_unmigrated_host(self):
         result = self.execute(dry_run=True)
         self.assertEqual(result.get("status"), "ready", result)
