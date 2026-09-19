@@ -150,6 +150,14 @@ def decode_json(body):
     return value
 
 
+def read_optional_json(root, relative, limit=65536):
+    """Return None only when the artifact is absent; invalid artifacts still hold."""
+    try:
+        return read_json(root, relative, limit)
+    except OSError:
+        return None
+
+
 def read_json(root, relative, limit=65536):
     result = read_artifact(root, relative, limit)
     return {**result, "value": decode_json(result["body"])}
@@ -384,11 +392,30 @@ def prepare_research(project_root=PROJECT_ROOT, now=None):
     if r.get("reportFile") != report_file:
         hold("formal_report_path_invalid")
     report = read_artifact(project_root, report_file, MAX_REPORT_BYTES)
-    seal_file = f"work/xhs/drafts/{target}/{report['sha256']}.json"
-    seal = read_json(project_root, seal_file, 512 * 1024)
+    # The research seal is owned by the research pipeline; the legacy XHS draft
+    # manifest stays accepted so an un-migrated host keeps working. A display-only
+    # draft failure must not be able to block research delivery.
+    seal = None
+    seal_file = ""
+    seal_kind = ""
+    for kind, relative in (("research", f"work/research-seal/{target}/{report['sha256']}.json"),
+                           ("legacy", f"work/xhs/drafts/{target}/{report['sha256']}.json")):
+        candidate = read_optional_json(project_root, relative, 512 * 1024)
+        if candidate is not None:
+            seal, seal_file, seal_kind = candidate, relative, kind
+            break
+    if seal is None:
+        hold("research_seal_missing")
     s = seal["value"]
     source = s.get("source")
-    if not isinstance(source, dict) or s.get("schemaVersion") != "astock.xhs-draft.v1" or s.get("kind") != "xhs_draft" or s.get("targetDate") != target or s.get("state") != "DRAFT_ONLY" or s.get("publishEligible") is not False or s.get("humanApprovalRequired") is not True:
+    if not isinstance(source, dict) or s.get("targetDate") != target:
+        hold("sealed_report_proof_invalid")
+    if seal_kind == "research":
+        if s.get("schemaVersion") != "astock.research-seal.v1" or s.get("kind") != "research_seal" or s.get("state") != "SEALED":
+            hold("sealed_report_proof_invalid")
+    elif (s.get("schemaVersion") != "astock.xhs-draft.v1" or s.get("kind") != "xhs_draft"
+          or s.get("state") != "DRAFT_ONLY" or s.get("publishEligible") is not False
+          or s.get("humanApprovalRequired") is not True):
         hold("sealed_report_proof_invalid")
     required = {"lastRunFile": "work/last-run.json", "reportFile": report_file,
                 "lastRunSha256": run["sha256"], "reportSha256": report["sha256"],

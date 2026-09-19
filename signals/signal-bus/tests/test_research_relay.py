@@ -106,6 +106,74 @@ class RelayTests(unittest.TestCase):
         self.seal_relative = f"work/xhs/drafts/{DAY}/{relay.sha256(report_body)}.json"
         self.write(self.seal_relative, self.seal)
 
+    def write_research_seal(self, source_patch=None, seal_patch=None, keep_legacy=False):
+        """Research-pipeline seal; the legacy XHS draft can be absent or present."""
+        report_body = self.report.encode()
+        source = dict(self.source)
+        source.update(source_patch or {})
+        seal = {"schemaVersion": "astock.research-seal.v1", "kind": "research_seal",
+                "targetDate": DAY, "state": "SEALED", "source": source}
+        seal.update(seal_patch or {})
+        if not keep_legacy:
+            legacy = self.root / self.seal_relative
+            if legacy.exists():
+                legacy.unlink()
+        relative = f"work/research-seal/{DAY}/{relay.sha256(report_body)}.json"
+        self.write(relative, seal)
+        return relative
+
+    def test_research_seal_delivers_when_the_xhs_draft_never_ran(self):
+        """Decoupling: a display-transformation failure must not block research."""
+        relative = self.write_research_seal()
+        self.assertFalse((self.root / self.seal_relative).exists(), "legacy draft must be absent")
+        prepared = relay.prepare_research(self.root, now=NOW)
+        self.assertEqual(prepared["status"], "ready", prepared)
+        self.assertEqual(prepared["target_date"], DAY)
+        contract = prepared["payload"]["research_contract"]
+        self.assertEqual(contract["report_date"], DAY)
+        self.assertEqual(contract["status"], "ready")
+        self.assertEqual(contract["report_sha256"], self.source["reportSha256"])
+        self.assertEqual(prepared["proof"]["seal_sha256"],
+                         relay.sha256((self.root / relative).read_bytes()))
+        # The dry-run preview stays metadata-only, as before.
+        result = self.execute(dry_run=True)
+        self.assertEqual(result.get("status"), "ready", result)
+        self.assertNotIn("payload", result)
+
+    def test_missing_research_seal_reports_a_specific_reason(self):
+        (self.root / self.seal_relative).unlink()
+        self.assert_hold("research_seal_missing")
+
+    def test_research_seal_schema_and_source_echo_are_enforced(self):
+        cases = (
+            ("kind", {"kind": "xhs_draft"}),
+            ("state", {"state": "DRAFT_ONLY"}),
+            ("schema", {"schemaVersion": "astock.xhs-draft.v1"}),
+            ("target", {"targetDate": "2026-09-08"}),
+        )
+        for label, patch in cases:
+            with self.subTest(field=label):
+                self.write_research_seal(seal_patch=patch)
+                self.assert_hold("sealed_report_proof_invalid")
+        for key, value in (("reportSha256", "b" * 64), ("lastRunSha256", "c" * 64),
+                           ("publicationGate", "blocked"), ("dataStatus", "fixture")):
+            with self.subTest(source_echo=key):
+                self.write_research_seal(source_patch={key: value})
+                self.assert_hold("sealed_report_proof_invalid")
+
+    def test_legacy_xhs_manifest_still_delivers_on_an_unmigrated_host(self):
+        result = self.execute(dry_run=True)
+        self.assertEqual(result.get("status"), "ready", result)
+        self.assertFalse((self.root / "work/research-seal").exists())
+
+    def test_research_seal_takes_precedence_over_a_stale_legacy_draft(self):
+        # A broken legacy manifest must not matter once the research seal exists.
+        self.seal["state"] = "PUBLISHED"
+        self.write(self.seal_relative, self.seal)
+        self.write_research_seal()
+        result = self.execute(dry_run=True)
+        self.assertEqual(result.get("status"), "ready", result)
+
     def config(self, text=None):
         (self.bus / "config").mkdir(exist_ok=True)
         (self.bus / "config/pending.env").write_text(text or (
