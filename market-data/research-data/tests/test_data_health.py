@@ -242,6 +242,26 @@ class AuditTests(unittest.TestCase):
         self.sql("UPDATE snapshot SET payload=? WHERE date=?", (raw, "2026-08-28"))
         self.assertEqual(self.run_audit()["ledger"][0]["snapshotState"], "invalid")
 
+    def test_stored_optional_mootdx_error_keeps_row_valid(self):
+        day = "2026-08-28"
+        payload = {"date": day, "qlib": {"date": day},
+                   "akshare": {"activity": {"统计日期": day}},
+                   "mootdx": {"error": "mootdx quotes API returned empty"}}
+        self.sql("UPDATE snapshot SET payload=? WHERE date=?", (json.dumps(payload), day))
+        ledger = {row["tradeDate"]: row for row in self.run_audit()["ledger"]}
+        self.assertEqual(ledger[day]["snapshotState"], "valid")
+
+    def test_stored_non_optional_source_error_is_still_invalid(self):
+        day = "2026-08-28"
+        payload = {"date": day, "qlib": {"date": day},
+                   "akshare": {"activity": {"统计日期": day}},
+                   "mootdx": {"error": "mootdx quotes API returned empty"},
+                   "announcements": {"error": "cninfo unavailable"}}
+        self.sql("UPDATE snapshot SET payload=? WHERE date=?", (json.dumps(payload), day))
+        ledger = {row["tradeDate"]: row for row in self.run_audit()["ledger"]}
+        self.assertEqual(ledger[day]["snapshotState"], "invalid")
+        self.assertEqual(ledger[day]["reason"], "stored_source_errors")
+
     def test_weekend_rows_and_stages_within_calendar_are_flagged(self):
         day = "2026-08-29"
         payload = {"date": day, "qlib": {"date": day}, "akshare": {"activity": {"统计日期": day}}}

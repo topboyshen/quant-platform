@@ -880,6 +880,65 @@ class SnapshotSafetyTests(unittest.TestCase):
         ):
             daily_snapshot.json_scalar(np.float64(np.nan))
 
+    def test_optional_mootdx_error_is_tolerated_but_other_errors_are_not(self):
+        from test_current_sources import values as current_source_values
+        concepts, insiders = current_source_values("002617")
+        sources = {
+            "akshare": {"sectors": [1], "activity": {}},
+            "spot": {"breadth": {"total": 5000}},
+            "news": [1],
+            "hotStocks": [1],
+            "globalMarkets": {"a": 1, "b": 2, "c": 3},
+            "fundFlow": {"002617": [1]},
+            "mootdx": {"error": "mootdx quotes API returned empty"},
+            "tencent": {"002617": {"price": "10"}},
+            "baostock": {"002617": [{"date": "2026-08-28"}]},
+            "announcements": {"002617": []},
+            "concepts": concepts,
+            "insiders": insiders,
+            "northbound": {"hgt": 1.0, "sgt": 1.0, "total": 2.0},
+        }
+        # The tolerated error no longer rejects an otherwise complete snapshot...
+        daily_snapshot.validate_source_completeness(sources, ["002617"], ["002617"])
+        # ...and it stays recorded as evidence instead of being deleted.
+        self.assertEqual(sources["mootdx"]["error"], "mootdx quotes API returned empty")
+        # Any other source error still fails closed.
+        sources["announcements"] = {"error": "cninfo unavailable"}
+        with self.assertRaisesRegex(
+            daily_snapshot.SnapshotValidationError, "contains errors"
+        ):
+            daily_snapshot.validate_source_completeness(sources, ["002617"], ["002617"])
+
+    def test_existing_snapshot_uses_the_same_optional_source_policy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db_path = str(Path(directory) / "snapshot.db")
+            payload = {
+                "date": "2026-08-28",
+                "qlib": {"date": "2026-08-28"},
+                "akshare": {"activity": {"统计日期": "2026-08-28 15:00:00"}},
+                "mootdx": {"error": "mootdx quotes API returned empty"},
+            }
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    "CREATE TABLE snapshot(date TEXT PRIMARY KEY, generated_at TEXT, payload TEXT)"
+                )
+                conn.execute(
+                    "INSERT INTO snapshot VALUES(?,?,?)",
+                    ("2026-08-28", "2026-08-28T22:30:00+08:00", json.dumps(payload)),
+                )
+            prior = daily_snapshot.existing_snapshot("2026-08-28", db_path)
+            self.assertEqual(prior["generatedAt"], "2026-08-28T22:30:00+08:00")
+            payload["announcements"] = {"error": "cninfo unavailable"}
+            with sqlite3.connect(db_path) as conn:
+                conn.execute(
+                    "UPDATE snapshot SET payload=? WHERE date=?",
+                    (json.dumps(payload), "2026-08-28"),
+                )
+            with self.assertRaisesRegex(
+                daily_snapshot.SnapshotValidationError, "contains source errors"
+            ):
+                daily_snapshot.existing_snapshot("2026-08-28", db_path)
+
     def test_source_errors_are_rejected(self):
         sources = {
             "akshare": {"sectors": [1], "activity": {}},

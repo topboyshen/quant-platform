@@ -14,6 +14,8 @@ import stat
 import struct
 import sys
 
+from source_policy import is_optional_source_error
+
 CST = dt.timezone(dt.timedelta(hours=8))
 REFERENCES = ("sh600000", "sz000001", "sh600519", "sz300750")
 FIELDS = ("close", "high", "low", "amount")
@@ -414,11 +416,25 @@ def qlib_evidence(root):
     return calendar, complete, before
 
 
-def has_source_error(value):
+def has_source_error(value, path=""):
+    """Detect stored source errors, skipping tolerated optional sources.
+
+    The tolerated set is shared with the collector's write path
+    (source_policy.OPTIONAL_SOURCE_ERRORS). A tolerated error stays in the
+    payload as evidence; it just no longer marks an otherwise complete
+    snapshot row invalid.
+    """
     if isinstance(value, dict):
-        return any(((key == "error" or key.endswith("_error")) and bool(child))
-                   or has_source_error(child) for key, child in value.items())
-    return isinstance(value, list) and any(has_source_error(child) for child in value)
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            if (key == "error" or key.endswith("_error")) and bool(child):
+                if is_optional_source_error(child_path):
+                    continue
+                return True
+            if has_source_error(child, child_path):
+                return True
+        return False
+    return isinstance(value, list) and any(has_source_error(child, path) for child in value)
 
 
 def snapshot_rows(path):

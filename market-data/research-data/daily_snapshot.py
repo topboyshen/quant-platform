@@ -27,6 +27,7 @@ from ths_concept_source import ThsConceptClient as ConceptClient
 from ths_source import SourceError, safe_source_diagnostic
 from shareholder_source import ShareholderClient
 from source_contract import validate_current_source_payloads
+from source_policy import required_source_errors
 from collection_window import validate_stage_collection_time
 
 # akshare 需直连中国源, 去掉代理环境变量
@@ -193,7 +194,7 @@ def existing_snapshot(date, db_path=None):
             f"existing snapshot {date} is mixed-date: "
             f"akshare_activity={existing_activity_date}"
         )
-    errors = source_error_paths(payload)
+    errors = required_source_errors(source_error_paths(payload))
     if errors:
         raise SnapshotValidationError(
             f"existing snapshot {date} contains source errors: {', '.join(errors[:5])}"
@@ -679,13 +680,10 @@ def capture_current_akshare_market(stage_dir=None):
 
 
 def validate_source_completeness(sources, watch_codes, fund_flow_codes):
-    errors = source_error_paths(sources)
-    # mootdx is best-effort: TongDaXin quote servers refuse this host's IDC
-    # egress IP at the protocol layer (metadata APIs respond, quotes/bars
-    # return empty on every HQ server, both tdxpy and pytdx, since ~2026-09-10).
-    # Its error must not reject the whole snapshot; tencent/baostock remain
-    # authoritative for watch-code quotes.
-    errors = [e for e in errors if e != "mootdx.error"]
+    # Optional-source tolerance is defined once in source_policy.py and shared
+    # with existing_snapshot() and data_health.has_source_error(); the recorded
+    # mootdx error is kept as evidence, not deleted to make a row pass.
+    errors = required_source_errors(source_error_paths(sources))
     if errors:
         source_details = []
         for source_name, sanitize in (("announcements", safe_diagnostic),
