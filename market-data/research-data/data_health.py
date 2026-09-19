@@ -4,6 +4,7 @@ import argparse
 from contextlib import closing
 import datetime as dt
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -14,7 +15,27 @@ import stat
 import struct
 import sys
 
-from source_policy import is_optional_source_error
+
+def _load_source_policy():
+    """Load the sibling policy module by path.
+
+    This file is executed both as a script and loaded by qlib's read-only
+    consumer via ``spec_from_file_location``, which does not put this directory
+    on ``sys.path``; a plain ``from source_policy import ...`` therefore raised
+    ModuleNotFoundError inside the nightly qlib run (2026-09-19 22:00). Loading
+    by path keeps the single shared policy without mutating ``sys.path``.
+    """
+    path = Path(__file__).resolve().with_name("source_policy.py")
+    spec = importlib.util.spec_from_file_location("_nng8_source_policy", path)
+    if spec is None or spec.loader is None:
+        raise ImportError("source_policy module unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_source_policy = _load_source_policy()
+is_optional_source_error = _source_policy.is_optional_source_error
 
 CST = dt.timezone(dt.timedelta(hours=8))
 REFERENCES = ("sh600000", "sz000001", "sh600519", "sz300750")

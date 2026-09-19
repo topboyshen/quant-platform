@@ -9,6 +9,7 @@ import socket
 import sqlite3
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -417,6 +418,25 @@ class AuditTests(unittest.TestCase):
         with mock.patch.object(health, "snapshot_rows", side_effect=mutate_after_read):
             with self.assertRaisesRegex(health.EvidenceError, "generation_changed_during_audit"):
                 self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
+
+    def test_module_loads_by_path_without_its_directory_on_sys_path(self):
+        """Regression: qlib's read-only consumer loads this file with
+        spec_from_file_location and no sys.path entry, which used to fail with
+        ModuleNotFoundError for the shared source_policy import (2026-09-19)."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_consumer_probe", health.__file__)
+        module = importlib.util.module_from_spec(spec)
+        original = list(sys.path)
+        try:
+            sys.path[:] = [entry for entry in sys.path if entry != str(Path(health.__file__).parent)]
+            spec.loader.exec_module(module)
+        finally:
+            sys.path[:] = original
+        self.assertTrue(callable(module.is_optional_source_error))
+        self.assertTrue(module.is_optional_source_error("mootdx.error"))
+        self.assertFalse(module.is_optional_source_error("announcements.error"))
+        # The shared policy still comes from the single policy module.
+        self.assertIs(module.is_optional_source_error.__module__, "_nng8_source_policy")
 
     def test_audit_output_is_atomic_and_rejects_symlinks(self):
         destination = self.root / "last-health.json"
