@@ -3,6 +3,7 @@
 !.gitignore
 !README.md
 !CNINFO_SEAL_RELAY_CHAIN.md
+!RELAY_RECEIVER_PROTOCOL.md
 !scripts/
 scripts/*
 !scripts/research_relay.py
@@ -15,6 +16,8 @@ tests/*
 !tests/test_research_relay.py
 !tests/test_digest_freshness.py
 !tests/test_cninfo_seal_relay_chain.py
+!tests/test_relay_receiver_contract.py
+!tests/reference_receiver.py
 !systemd/
 systemd/*
 !systemd/nng8-research-digest.service

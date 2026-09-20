@@ -624,6 +624,9 @@ def post_payload(payload, config, now):
                 return {"status": "ambiguous", "reason": "acknowledgement_invalid"}
             if acknowledgement.get("status") != "accepted" or acknowledgement.get("source") != "nng8" or acknowledgement.get("day") != payload["as_of"]:
                 return {"status": "ambiguous", "reason": "acknowledgement_invalid"}
+            # 三件事分开：HTTP 接受 / 接收端确认存储 / 内容一致。
+            # 内容哈希必须是对“已保存内容”算的，也就是我们实际发出的这份字节。
+            sent_sha256 = sha256(body)
             stored = acknowledgement.get("stored")
             if stored is True:
                 storage = "receiver_reported_stored"
@@ -631,10 +634,28 @@ def post_payload(payload, config, now):
                 storage = "receiver_reported_not_stored"
             else:
                 storage = "not_in_acknowledgement"
-            return {"status": "confirmed", "reason": "accepted",
-                    "ack_scope": "http_accepted", "receiver_storage": storage}
+            ack_content = acknowledgement.get("content_sha256") or acknowledgement.get("contentSha256")
+            record_id = acknowledgement.get("record_id") or acknowledgement.get("recordId")
+            common = {"ack_scope": "http_accepted", "receiver_storage": storage,
+                      "payload_sha256": sent_sha256}
+            if isinstance(record_id, str) and record_id:
+                common["receiver_record_id"] = record_id
+            if not isinstance(ack_content, str) or not ack_content:
+                content_match = None
+            else:
+                common["receiver_content_sha256"] = ack_content
+                content_match = ack_content == sent_sha256
+            common["content_match"] = content_match
+            if stored is False:
+                return {"status": "failed", "reason": "receiver_reported_not_stored", **common}
+            if content_match is False:
+                return {"status": "failed", "reason": "content_mismatch", **common}
+            if stored is True and content_match is True:
+                return {"status": "confirmed", "reason": "accepted", **common}
+            # HTTP 接受了，但存储或内容一致性没有证据：只能记“未确认”，不重发。
+            return {"status": "accepted", "reason": "http_accepted_storage_unconfirmed", **common}
     except urllib.error.HTTPError as error:
-        if error.code in (400, 401, 403, 404, 405, 413, 415, 422, 429):
+        if error.code in (400, 401, 403, 404, 405, 409, 410, 413, 415, 422, 429):
             return {"status": "rejected", "reason": "http_rejected"}
         return {"status": "ambiguous", "reason": "http_result_unknown"}
     except urllib.error.URLError as error:
@@ -643,6 +664,62 @@ def post_payload(payload, config, now):
         return {"status": "ambiguous", "reason": "transport_result_unknown"}
     except Exception:
         return {"status": "ambiguous", "reason": "transport_result_unknown"}
+
+
+def record_url(config, target_date):
+    """只读记录查询地址：由投递地址推导，不新增配置项。"""
+    parts = urllib.parse.urlsplit(config["url"])
+    if parts.scheme != "https" or not parts.netloc:
+        hold("record_endpoint_invalid")
+    return f"{parts.scheme}://{parts.netloc}/records/nng8/{target_date}"
+
+
+def query_record(config, target_date, now, expected_payload_sha256):
+    """只读查询接收记录：绝不 POST、绝不写入、绝不改变记录。
+
+    accepted（HTTP 已接受、存储未确认）只能靠这条路径补证；重发是不允许的。
+    """
+    url = record_url(config, target_date)
+    path = urllib.parse.urlsplit(url).path
+    timestamp = str(int(now.timestamp()))
+    digest = hmac.new(config["secret"].encode(),
+                      f"{timestamp}.GET.{path}".encode(), hashlib.sha256).hexdigest()
+    request = urllib.request.Request(url, method="GET", headers={
+        "X-Timestamp": timestamp, "X-Signature": f"sha256={digest}", "X-Source": "nng8"})
+    if config.get("tls_mode", "strict") == "pinned":
+        handler = _PinnedHTTPSHandler(ca_pem=config["ca_pem"], pin_host=config["pin_host"],
+                                      certificate_sha256=config["certificate_sha256"])
+    else:
+        handler = urllib.request.HTTPSHandler(context=ssl.create_default_context())
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect(), handler)
+    try:
+        with opener.open(request, timeout=20) as response:
+            if response.status == 404:
+                return {"status": "not_found"}
+            if not 200 <= response.status < 300:
+                return {"status": "query_failed"}
+            body = response.read(16385)
+            if len(body) > 16384:
+                return {"status": "query_failed"}
+            try:
+                record = decode_json(body)
+            except Held:
+                return {"status": "query_failed"}
+            if record.get("status") != "accepted" or record.get("source") != "nng8":
+                return {"status": "query_failed"}
+            stored = record.get("stored")
+            content = record.get("content_sha256") or record.get("contentSha256")
+            if stored is True and isinstance(content, str) and content == expected_payload_sha256:
+                return {"status": "confirmed", "receiver_content_sha256": content,
+                        "receiver_record_id": record.get("record_id") or record.get("recordId"),
+                        "stored_at": record.get("stored_at")}
+            return {"status": "unconfirmed"}
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return {"status": "not_found"}
+        return {"status": "query_failed"}
+    except Exception:
+        return {"status": "query_failed"}
 
 
 def _state_directory(bus_root):
@@ -682,12 +759,13 @@ def _write_state(directory, target, value):
 
 
 def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=False,
-              sender=post_payload, clock=None):
+              sender=post_payload, clock=None, query=None):
     """Orchestrate safe preview or bounded idempotent delivery.
 
     ``now`` and injected sender/clock are Python test seams, not CLI overrides.
     """
     supplied_now = now
+    query_reader = query or query_record
     try:
         now = observation_time(now)
         prepared = prepare_research(project_root, now)
@@ -719,12 +797,54 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
             except FileNotFoundError:
                 existing = None
             if existing is not None:
-                if existing.get("version") != 1 or existing.get("target_date") != target or existing.get("status") not in ("sending", "ambiguous", "confirmed", "not_sent", "rejected"):
+                if existing.get("version") != 1 or existing.get("target_date") != target or existing.get("status") not in ("sending", "ambiguous", "confirmed", "accepted", "failed", "not_sent", "rejected"):
                     hold("delivery_state_invalid")
                 if existing.get("report_sha256") != prepared["proof"]["report_sha256"]:
                     hold("same_day_report_changed")
                 if existing["status"] == "confirmed":
                     return {"status": "already_confirmed", **public, "sent": 0, "confirmed": True}
+                # 旧记录（HTTP 已接受但存储未确认）与新终态都只回显，绝不重新放回待发送队列，
+                # 否则“状态升级”会变成重复投递。
+                if existing["status"] == "accepted":
+                    # 优先只读补证：查询确认存储与内容一致后升级本地状态，不发任何东西。
+                    try:
+                        probed = query_reader(config, target, now,
+                                              existing.get("payload_sha256", ""))
+                    except Exception:
+                        probed = {"status": "query_failed"}
+                    if probed.get("status") == "confirmed":
+                        upgraded = dict(existing, status="confirmed", reason="confirmed_via_read_only_query",
+                                        confirmed_via="read_only_query",
+                                        receiver_content_sha256=probed.get("receiver_content_sha256"),
+                                        content_match=True)
+                        if probed.get("receiver_record_id"):
+                            upgraded["receiver_record_id"] = probed["receiver_record_id"]
+                        if probed.get("stored_at"):
+                            upgraded["stored_at"] = probed["stored_at"]
+                        _write_state(directory, target, upgraded)
+                        echo = {"status": "confirmed_from_query", **public, "sent": 0,
+                                "confirmed": True, "confirmed_via": "read_only_query",
+                                "receiver_content_sha256": probed.get("receiver_content_sha256"),
+                                "content_match": True}
+                        if probed.get("receiver_record_id"):
+                            echo["receiver_record_id"] = probed["receiver_record_id"]
+                        return echo
+                    echo = {"status": "already_accepted", **public, "sent": 0,
+                            "confirmed": False, "reason": existing.get("reason"),
+                            "query": probed.get("status")}
+                    for key in ("ack_scope", "receiver_storage", "receiver_content_sha256",
+                                "payload_sha256", "content_match", "receiver_record_id"):
+                        if key in existing:
+                            echo[key] = existing[key]
+                    return echo
+                if existing["status"] == "failed":
+                    echo = {"status": "already_failed", **public, "sent": 0,
+                            "confirmed": False, "reason": existing.get("reason")}
+                    for key in ("ack_scope", "receiver_storage", "receiver_content_sha256",
+                                "payload_sha256", "content_match", "receiver_record_id"):
+                        if key in existing:
+                            echo[key] = existing[key]
+                    return echo
                 if existing["status"] in ("sending", "ambiguous"):
                     hold("delivery_requires_manual_review")
             # Recheck both the sealed proof and clock at the actual send boundary.
@@ -744,8 +864,12 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
             except Exception:
                 result = {"status": "ambiguous", "reason": "transport_result_unknown"}
             status = result.get("status")
-            allowed_reasons = {"accepted", "http_rejected", "connection_not_established", "unexpected_http_status", "acknowledgement_invalid", "http_result_unknown", "transport_result_unknown"}
-            if status not in ("confirmed", "ambiguous", "not_sent", "rejected") or result.get("reason") not in allowed_reasons:
+            allowed_reasons = {"accepted", "http_accepted_storage_unconfirmed", "receiver_reported_not_stored",
+                               "content_mismatch", "http_rejected", "connection_not_established",
+                               "unexpected_http_status", "acknowledgement_invalid", "http_result_unknown",
+                               "transport_result_unknown"}
+            if status not in ("confirmed", "accepted", "failed", "ambiguous", "not_sent", "rejected") \
+                    or result.get("reason") not in allowed_reasons:
                 status, reason = "ambiguous", "transport_result_unknown"
             else:
                 reason = result["reason"]
@@ -756,6 +880,9 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
             if storage in ("not_in_acknowledgement", "receiver_reported_stored",
                            "receiver_reported_not_stored"):
                 record["receiver_storage"] = storage
+            for key in ("payload_sha256", "receiver_content_sha256", "receiver_record_id", "content_match"):
+                if key in result:
+                    record[key] = result[key]
             _write_state(directory, target, record)
             outcome = {"status": status, "reason": reason, **public,
                        "sent": int(status == "confirmed"), "confirmed": status == "confirmed"}
@@ -763,6 +890,9 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
                 outcome["ack_scope"] = record["ack_scope"]
             if "receiver_storage" in record:
                 outcome["receiver_storage"] = record["receiver_storage"]
+            for key in ("payload_sha256", "receiver_content_sha256", "receiver_record_id", "content_match"):
+                if key in record:
+                    outcome[key] = record[key]
             return outcome
         finally:
             os.close(lock_fd)
@@ -780,7 +910,7 @@ def main(argv=None):
     result = run_relay(dry_run=args.dry_run)
     # --json is explicit for operators; all output is always safe metadata JSON.
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    return 1 if result["status"] in ("ambiguous", "not_sent", "rejected") else 0
+    return 1 if result["status"] in ("ambiguous", "not_sent", "rejected", "failed") else 0
 
 
 if __name__ == "__main__":
