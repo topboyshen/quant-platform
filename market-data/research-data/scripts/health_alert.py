@@ -53,11 +53,30 @@ def _codes(data):
     return codes
 
 
+def _retained_counts(data):
+    """历史保留项分类计数：未解决缺口日与遗留问题日分开，绝不把它们写成新增故障。"""
+    counts = {"unresolvedTradingDayGaps": 0, "legacyGapDays": 0}
+    if isinstance(data, dict):
+        for issue in data.get("issues") or []:
+            if not isinstance(issue, dict):
+                continue
+            dates = issue.get("dates")
+            if not isinstance(dates, list):
+                dates = issue.get("affectedDates")
+            size = len(dates) if isinstance(dates, list) else 0
+            if issue.get("code") == "unresolved_trading_day_gaps":
+                counts["unresolvedTradingDayGaps"] = size
+            elif issue.get("code") == "legacy_gaps_or_invalid_rows":
+                counts["legacyGapDays"] = size
+    return counts
+
+
 def describe(path, now=None, max_age_hours=6.0):
     """Classify the audit artifact without ever raising on bad input."""
     now = now or dt.datetime.now(CST)
     result = {"status": "unknown", "codes": [], "generatedAt": None,
-              "stale": True, "ageHours": None, "reason": None}
+              "stale": True, "ageHours": None, "reason": None,
+              "retained": {"unresolvedTradingDayGaps": 0, "legacyGapDays": 0}}
     try:
         raw = Path(path).read_bytes()
     except OSError:
@@ -77,6 +96,7 @@ def describe(path, now=None, max_age_hours=6.0):
     else:
         result["status"] = status
     result["codes"] = _codes(data)
+    result["retained"] = _retained_counts(data)
     generated = _instant(data.get("generatedAt"))
     if generated is None:
         result.update(stale=True, reason=result["reason"] or "health_generated_at_invalid")
@@ -90,6 +110,17 @@ def describe(path, now=None, max_age_hours=6.0):
     if result["stale"] and result["reason"] is None:
         result["reason"] = "health_json_stale"
     return result
+
+
+def _retained_line(info):
+    """保留项单独一行：N 个未解决缺口日 + M 个遗留问题日＝保留记录，不是新增故障。"""
+    retained = (info or {}).get("retained") or {}
+    gaps = int(retained.get("unresolvedTradingDayGaps") or 0)
+    legacy = int(retained.get("legacyGapDays") or 0)
+    if gaps == 0 and legacy == 0:
+        return "保留项：无"
+    return (f"保留项（历史，不补造）：未解决缺口日 {gaps} 个 + 遗留问题日 {legacy} 个"
+            f"（合计 {gaps + legacy} 条记录，均非新增故障）")
 
 
 def message(info, hostname="unknown", unit_state="unknown", now=None, entry_reason="scheduled_audit"):
@@ -107,6 +138,7 @@ def message(info, hostname="unknown", unit_state="unknown", now=None, entry_reas
         f"审计单元：{state}",
         f"触发：{entry}",
         f"问题：{codes}",
+        _retained_line(info),
         f"审计时间：{generated}",
         f"数据新鲜度：{'陈旧' if info.get('stale') else '当次'}（{reason}）",
         f"主机：{safe_host}",
@@ -190,7 +222,10 @@ def _shell_lines(info, unit_state):
     generated = info.get("generatedAt") if _instant(info.get("generatedAt")) else "unknown"
     reason = info.get("reason") if isinstance(info.get("reason"), str) and REASON_RE.fullmatch(info["reason"]) else "none"
     state = unit_state if unit_state in UNIT_STATES else "unknown"
+    retained = (info or {}).get("retained") or {}
     lines = [f"STATUS={status}", f"CODES={codes}", f"GENERATED_AT={generated}",
+             f"RETAINED_GAP_DAYS={int(retained.get('unresolvedTradingDayGaps') or 0)}",
+             f"RETAINED_LEGACY_DAYS={int(retained.get('legacyGapDays') or 0)}",
              f"STALE={'yes' if info.get('stale') else 'no'}", f"REASON={reason}",
              f"UNIT_STATE={state}",
              f"ALERT={'yes' if should_alert(info, unit_state) else 'no'}"]
