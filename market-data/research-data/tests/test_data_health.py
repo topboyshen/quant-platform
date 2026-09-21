@@ -410,6 +410,21 @@ class AuditTests(unittest.TestCase):
         with self.assertRaises(health.EvidenceError):
             self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
 
+    def test_absence_severity_escalates_when_bounds_are_exceeded(self):
+        """已证明缺失的分级：数量/持续期超上界时重新升级，不做永久豁免。
+
+        proven=true 只说明缺失声明与清单/计数一致，不证明停牌，也不证明对研究无影响。
+        """
+        self.assertEqual(health.absence_severity(True, 9, ["2026-09-18"], 5567),
+                         ("information", None))
+        self.assertEqual(health.absence_severity(True, 40, ["2026-09-18"], 5567),
+                         ("warning", "count_over_tolerance:40>27.8"))
+        self.assertEqual(health.absence_severity(
+            True, 9, ["2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18"], 5567),
+            ("warning", "duration_over_bound:4>3"))
+        self.assertEqual(health.absence_severity(False, 9, ["2026-09-18"], 5567),
+                         ("warning", "proof_incomplete"))
+
     def test_legacy_has_unknown_quality_not_fabricated_complete(self):
         self.assertEqual(self.run_audit()["qlib"]["dataQuality"], "unknown")
 

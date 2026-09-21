@@ -38,6 +38,11 @@ _source_policy = _load_source_policy()
 is_optional_source_error = _source_policy.is_optional_source_error
 
 CST = dt.timezone(dt.timedelta(hours=8))
+# 已证明源缺失的分级守卫：仅在“数量在既定有界容忍内、且影响日期数不超过上界”时记 information；
+# 缺失扩大或持续期变长时重新升级为 warning（“原因可解释”不构成永久豁免）。
+ABSENCE_TOLERANCE_MIN = 20
+ABSENCE_TOLERANCE_RATIO = 0.005
+ABSENCE_DATE_BOUND = 3
 REFERENCES = ("sh600000", "sz000001", "sh600519", "sz300750")
 FIELDS = ("close", "high", "low", "amount")
 FAILURES = {"rejected", "deferred", "failed", "temporary_failure", "usage_error"}
@@ -458,6 +463,23 @@ def has_source_error(value, path=""):
     return isinstance(value, list) and any(has_source_error(child, path) for child in value)
 
 
+def absence_severity(proven, invalid_count, affected_dates, eligible):
+    """已证明源缺失的分级：仅在数量与持续期都在上界内时记 information。
+
+    `proven` 只说明“缺失声明与清单/计数相互一致”，既不证明停牌，也不证明对研究无影响；
+    因此数量扩大或持续期变长时重新升级为 warning，不做永久豁免。
+    返回 (severity, escalation_reason)。
+    """
+    if not proven:
+        return "warning", "proof_incomplete"
+    tolerance = max(ABSENCE_TOLERANCE_MIN, ABSENCE_TOLERANCE_RATIO * (eligible or 0))
+    if invalid_count > tolerance:
+        return "warning", f"count_over_tolerance:{invalid_count}>{tolerance:.1f}"
+    if len(affected_dates) > ABSENCE_DATE_BOUND:
+        return "warning", f"duration_over_bound:{len(affected_dates)}>{ABSENCE_DATE_BOUND}"
+    return "information", None
+
+
 def snapshot_rows(path):
     if path.is_symlink() or not path.is_file():
         raise EvidenceError("database_missing_or_symlinked")
@@ -605,11 +627,21 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
             proven = (index["absenceMeaning"] == "source_absent_not_confirmed_suspension"
                       and sum(len(absence_dates.get(symbol, [])) for symbol in missing_members)
                       <= index["sourceAbsenceSlotsVerified"])
-            issue("qlib_source_absence", severity="information" if proven else "warning",
+            # 分级守卫：数量与持续期超出上界时不再按 information 展示，重新升级为 warning。
+            coverage_rows = quality.get("dailyCoverage") or []
+            coverage_last = coverage_rows[-1] if coverage_rows and isinstance(coverage_rows[-1], dict) else {}
+            eligible = coverage_last.get("eligible") if isinstance(coverage_last.get("eligible"), int) else 0
+            tolerance = max(ABSENCE_TOLERANCE_MIN, ABSENCE_TOLERANCE_RATIO * eligible)
+            affected = [row["target_date"] for row in coverage_rows if row["invalid"]]
+            invalid_count = quality.get("invalid") if isinstance(quality.get("invalid"), int) else len(missing_members)
+            severity, escalation = absence_severity(proven, invalid_count, affected, eligible)
+            issue("qlib_source_absence", severity=severity,
                   dataQuality="partial", validationScope="local_manifest_calendar_and_reference_only",
                   affectedDates=[row["target_date"] for row in quality["dailyCoverage"] if row["invalid"]],
                   currentInventoryQuality=quality["priceStatus"], csiInventoryQuality=index["status"],
                   meaning=index["absenceMeaning"], proven=proven,
+                  absenceTolerance=round(tolerance, 1), invalidCount=invalid_count,
+                  escalation=escalation,
                   sourceAbsenceSlotsVerified=index["sourceAbsenceSlotsVerified"])
         if index["legacyUnquotedMembers"]:
             issue("qlib_legacy_unquoted_csi", dataQuality="partial", validationScope="local_manifest_calendar_and_reference_only",
