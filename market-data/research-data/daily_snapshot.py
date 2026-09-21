@@ -105,6 +105,26 @@ def _reject_json_constant(value):
     raise ValueError(f"non-finite JSON constant: {value}")
 
 
+def _strict_json(raw):
+    """Match the audit's finite-number and unique-object-key JSON contract."""
+    def finite(value):
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError(f"non-finite JSON number: {value}")
+        return number
+
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON key: {key}")
+            result[key] = value
+        return result
+
+    return json.loads(raw, parse_constant=_reject_json_constant,
+                      parse_float=finite, object_pairs_hook=unique)
+
+
 def write_last_run(record, state_dir=None):
     state_dir = state_dir or STATE_DIR
     os.makedirs(state_dir, exist_ok=True)
@@ -179,7 +199,7 @@ def existing_snapshot(date, db_path=None):
     if row is None:
         return None
     try:
-        payload = json.loads(row[1], parse_constant=_reject_json_constant)
+        payload = _strict_json(row[1])
     except (TypeError, ValueError) as exc:
         raise SnapshotValidationError(
             f"existing snapshot {date} contains invalid JSON: {exc}"
@@ -543,7 +563,7 @@ def _load_akshare_market_stage_from_fd(trade_date, directory_fd):
         raise SnapshotValidationError("AkShare stage exceeds the size limit")
     try:
         raw = raw_bytes.decode("utf-8")
-        document = json.loads(raw, parse_constant=_reject_json_constant)
+        document = _strict_json(raw)
     except (UnicodeDecodeError, TypeError, ValueError) as exc:
         raise SnapshotValidationError(f"AkShare stage is invalid JSON: {exc}") from exc
     return _validate_akshare_stage_document(document, trade_date)

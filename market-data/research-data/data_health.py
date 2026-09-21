@@ -464,7 +464,9 @@ def has_source_error(value, path=""):
             if has_source_error(child, child_path):
                 return True
         return False
-    return isinstance(value, list) and any(has_source_error(child, path) for child in value)
+    return isinstance(value, list) and any(
+        has_source_error(child, f"{path}[{index}]") for index, child in enumerate(value)
+    )
 
 
 def absence_severity(proven, invalid_count, affected_dates, eligible):
