@@ -371,7 +371,8 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(before, self.fingerprint())
         self.assertFalse(result["automaticRecoveryAuthorized"])
 
-    def test_partial_incremental_emits_warning_without_full_market_claim(self):
+    def test_partial_incremental_proven_absence_is_information_not_warning(self):
+        """已证明的有界源缺失记为 information：保留日期与含义，不暗示需要处置。"""
         path, document = self.incremental_fixture()
         absence = {"SH600825": ["2026-09-07", "2026-09-08"]}
         document["sourceAbsence"]["dates"] = absence
@@ -383,12 +384,31 @@ class AuditTests(unittest.TestCase):
         before = self.fingerprint()
         result = self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
         self.assertEqual(result["qlib"]["dataQuality"], "partial")
-        warning = next(issue for issue in result["issues"] if issue["code"] == "qlib_source_absence")
-        self.assertEqual(warning["severity"], "warning")
-        self.assertEqual(warning["affectedDates"], ["2026-09-07", "2026-09-08"])
+        entry = next(issue for issue in result["issues"] if issue["code"] == "qlib_source_absence")
+        self.assertEqual(entry["severity"], "information")
+        self.assertTrue(entry["proven"])
+        self.assertEqual(entry["meaning"], "source_absent_not_confirmed_suspension")
+        self.assertEqual(entry["affectedDates"], ["2026-09-07", "2026-09-08"])
+        # 覆盖门禁与整体状态不受分类影响：仍然是 partial 数据质量
+        self.assertEqual(result["qlib"]["incremental"]["dailyCoverage"][-1]["status"], "partial")
         self.assertEqual(result["qlib"]["fullMarketCoverage"], "not_scanned")
         self.assertFalse(result["automaticRecoveryAuthorized"])
         self.assertEqual(before, self.fingerprint())
+
+    def test_unproven_absence_still_fails_closed(self):
+        """未被证明的缺失（reason 不在白名单/符号未出现在 sourceAbsence）必须失败，不得降级。"""
+        path, document = self.incremental_fixture()
+        absence = {"SH600825": ["2026-09-07", "2026-09-08"]}
+        document["sourceAbsence"]["dates"] = absence
+        document["priceValidation"] = price_claim(document["calendarAdded"], absence,
+            {"2026-09-07": {"SH600825": ["source_absent_today"]},
+             "2026-09-08": {"SH600825": ["source_absent_today", "prior_close_source_absent"]}},
+            {"SH600825": "2026-09-04"})
+        # 把符号从 sourceAbsence 里移除 → 证明不完整
+        document["sourceAbsence"]["dates"] = {"SH600825": ["2026-09-07"]}
+        path.write_text(json.dumps(document))
+        with self.assertRaises(health.EvidenceError):
+            self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
 
     def test_legacy_has_unknown_quality_not_fabricated_complete(self):
         self.assertEqual(self.run_audit()["qlib"]["dataQuality"], "unknown")

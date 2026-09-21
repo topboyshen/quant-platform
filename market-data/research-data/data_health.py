@@ -595,9 +595,22 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
         quality = gen[3][9]
         index = quality["index"]["validation"]
         if quality["priceStatus"] == "partial" or index["missingQuoteMembers"] or index["missingPreviousCloseMembers"]:
-            issue("qlib_source_absence", dataQuality="partial", validationScope="local_manifest_calendar_and_reference_only",
+            # 这里的缺失已被上游校验证明：invalid_reasons 只允许 source_absent_today /
+            # prior_close_source_absent，符号必须出现在 sourceAbsence.dates 中，且槽位计数自洽
+            # （否则 incremental_invalid_reason_unproven / incremental_index_price_claim_disagrees）。
+            # 因此按“已证明的有界源缺失”记 information：保留日期与含义，不暗示需要处置，
+            # 也不改变任何覆盖门禁；若证明不完整（防御性分支）才回落为 warning。
+            absence_dates = quality.get("sourceAbsenceDates") or {}
+            missing_members = set(index["missingQuoteMembers"]) | set(index["missingPreviousCloseMembers"])
+            proven = (index["absenceMeaning"] == "source_absent_not_confirmed_suspension"
+                      and sum(len(absence_dates.get(symbol, [])) for symbol in missing_members)
+                      <= index["sourceAbsenceSlotsVerified"])
+            issue("qlib_source_absence", severity="information" if proven else "warning",
+                  dataQuality="partial", validationScope="local_manifest_calendar_and_reference_only",
                   affectedDates=[row["target_date"] for row in quality["dailyCoverage"] if row["invalid"]],
-                  currentInventoryQuality=quality["priceStatus"], csiInventoryQuality=index["status"])
+                  currentInventoryQuality=quality["priceStatus"], csiInventoryQuality=index["status"],
+                  meaning=index["absenceMeaning"], proven=proven,
+                  sourceAbsenceSlotsVerified=index["sourceAbsenceSlotsVerified"])
         if index["legacyUnquotedMembers"]:
             issue("qlib_legacy_unquoted_csi", dataQuality="partial", validationScope="local_manifest_calendar_and_reference_only",
                   symbols=index["legacyUnquotedMembers"], meaning=index["legacyUnquotedMeaning"])
