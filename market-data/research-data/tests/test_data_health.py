@@ -425,6 +425,21 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(health.absence_severity(False, 9, ["2026-09-18"], 5567),
                          ("warning", "proof_incomplete"))
 
+    def test_legacy_unquoted_severity_is_bounded_and_re_escalates(self):
+        """历史特征边界的分级：成员数扩大或触及必需参考符号时重新升级。
+
+        proven 只说明“最后报价早于基线日、声明与计数一致”，不证明停牌，也不证明无研究影响。
+        """
+        self.assertEqual(health.legacy_unquoted_severity(True, ["SZ301139"], health.REFERENCES),
+                         ("information", None))
+        self.assertEqual(health.legacy_unquoted_severity(
+            True, ["SZ301139", "SZ301140", "SZ301141", "SZ301142"], health.REFERENCES),
+            ("warning", "count_over_bound:4>3"))
+        self.assertEqual(health.legacy_unquoted_severity(True, [health.REFERENCES[0]], health.REFERENCES),
+                         ("warning", "reference_symbol_affected"))
+        self.assertEqual(health.legacy_unquoted_severity(False, ["SZ301139"], health.REFERENCES),
+                         ("warning", "meaning_unexpected"))
+
     def test_legacy_has_unknown_quality_not_fabricated_complete(self):
         self.assertEqual(self.run_audit()["qlib"]["dataQuality"], "unknown")
 

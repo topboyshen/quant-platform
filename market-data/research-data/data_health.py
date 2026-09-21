@@ -43,6 +43,9 @@ CST = dt.timezone(dt.timedelta(hours=8))
 ABSENCE_TOLERANCE_MIN = 20
 ABSENCE_TOLERANCE_RATIO = 0.005
 ABSENCE_DATE_BOUND = 3
+# 已证明的“历史特征边界”分级守卫：成员数扩大或触及必需参考符号时重新升级为 warning。
+LEGACY_UNQUOTED_BOUND = 3
+LEGACY_UNQUOTED_MEANING = "unchanged_historical_feature_boundary_no_physical_target_quote"
 REFERENCES = ("sh600000", "sz000001", "sh600519", "sz300750")
 FIELDS = ("close", "high", "low", "amount")
 FAILURES = {"rejected", "deferred", "failed", "temporary_failure", "usage_error"}
@@ -480,6 +483,22 @@ def absence_severity(proven, invalid_count, affected_dates, eligible):
     return "information", None
 
 
+def legacy_unquoted_severity(meaning_ok, members, references=()):
+    """历史特征边界（无目标日实物报价）的分级。
+
+    上游已证明：该符号的最后报价早于基线日、声明与清单/计数一致、且与源缺失集合互斥
+    （否则 incremental_legacy_csi_claim_invalid / incremental_index_price_claim_invalid 直接失败）。
+    这仍**不证明停牌**，也不证明对研究无影响；成员数扩大或触及必需参考符号时必须重新升级。
+    """
+    if not meaning_ok:
+        return "warning", "meaning_unexpected"
+    if any(symbol in set(references) for symbol in members):
+        return "warning", "reference_symbol_affected"
+    if len(members) > LEGACY_UNQUOTED_BOUND:
+        return "warning", f"count_over_bound:{len(members)}>{LEGACY_UNQUOTED_BOUND}"
+    return "information", None
+
+
 def snapshot_rows(path):
     if path.is_symlink() or not path.is_file():
         raise EvidenceError("database_missing_or_symlinked")
@@ -644,8 +663,14 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
                   escalation=escalation,
                   sourceAbsenceSlotsVerified=index["sourceAbsenceSlotsVerified"])
         if index["legacyUnquotedMembers"]:
-            issue("qlib_legacy_unquoted_csi", dataQuality="partial", validationScope="local_manifest_calendar_and_reference_only",
-                  symbols=index["legacyUnquotedMembers"], meaning=index["legacyUnquotedMeaning"])
+            legacy_severity, legacy_escalation = legacy_unquoted_severity(
+                index["legacyUnquotedMeaning"] == LEGACY_UNQUOTED_MEANING,
+                index["legacyUnquotedMembers"], REFERENCES)
+            issue("qlib_legacy_unquoted_csi", severity=legacy_severity,
+                  dataQuality="partial", validationScope="local_manifest_calendar_and_reference_only",
+                  symbols=index["legacyUnquotedMembers"], meaning=index["legacyUnquotedMeaning"],
+                  proven=legacy_severity == "information", escalation=legacy_escalation,
+                  legacyUnquotedBaseDate=index.get("legacyUnquotedBaseDate"))
     if business_mode != "FROZEN":
         issue("business_mode_not_frozen", "critical")
     if any(iso_date(d) > now.date() for d in rows):
