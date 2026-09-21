@@ -1,0 +1,13 @@
+[Unit]
+Description=Research-chain failure detection (read-only classification, one alert per day)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -B /home/ubuntu/signal-bus/scripts/research_chain_alert.py --phase predeadline --json
+Environment=RESEARCH_CHAIN_TELEGRAM_CHAT=%i
+TimeoutStartSec=90
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes

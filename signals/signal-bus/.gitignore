@@ -29,3 +29,9 @@ systemd/astock-xhs-draft.service.d/*
 !systemd/astock-xhs-draft.service.d/signal-gate.conf
 !systemd/astock-xhs-draft.service.d/failure-alert.conf
 !tests/test_research_chain_alert.py
+
+# Research-chain alert wiring (proposal, not installed)
+!systemd/research-chain-alert.service
+!systemd/research-chain-alert.timer
+!docs/
+!docs/RESEARCH_CHAIN_ALERT_WIRING.md

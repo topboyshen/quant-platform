@@ -1,0 +1,12 @@
+[Unit]
+Description=Read-only research readiness check before the 08:15 digest merge
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 08:12:00 Asia/Shanghai
+Persistent=false
+AccuracySec=5s
+RandomizedDelaySec=0
+Unit=research-chain-alert.service
+
+[Install]
+WantedBy=timers.target
