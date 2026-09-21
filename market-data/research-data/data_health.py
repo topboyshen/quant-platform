@@ -284,6 +284,7 @@ def incremental_index_quality(document):
                 or any(value > min(inventory[name], len(affected)) for name, value in index[key].items())):
             raise EvidenceError("incremental_index_counts_invalid")
     return {"validation": {key: index[key] for key in sorted(fields)},
+            "legacyAffectedDates": {symbol: list(dates) for symbol, dates in legacy["dates"].items()},
             "legacyLastQuotedDates": dict(legacy["lastQuotedDates"])}
 
 
@@ -670,7 +671,14 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
                   dataQuality="partial", validationScope="local_manifest_calendar_and_reference_only",
                   symbols=index["legacyUnquotedMembers"], meaning=index["legacyUnquotedMeaning"],
                   proven=legacy_severity == "information", escalation=legacy_escalation,
-                  legacyUnquotedBaseDate=index.get("legacyUnquotedBaseDate"))
+                  # Dates describe different objects. Use only this validated
+                  # generation, never the audit clock or a later market read.
+                  targetDate=index["targetDate"],
+                  affectedDates=sorted({day for dates in quality["index"]["legacyAffectedDates"].values()
+                                        for day in dates}),
+                  legacyUnquotedBaseDate=index["legacyUnquotedBaseDate"],
+                  lastQuotedDates=quality["index"]["legacyLastQuotedDates"],
+                  sourceManifestSha256=gen[2])
     if business_mode != "FROZEN":
         issue("business_mode_not_frozen", "critical")
     if any(iso_date(d) > now.date() for d in rows):

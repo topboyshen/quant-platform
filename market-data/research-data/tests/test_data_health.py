@@ -458,6 +458,33 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(result["qlib"]["fullMarketCoverage"], "not_scanned")
         self.assertEqual(before, self.fingerprint())
 
+    def test_legacy_issue_binds_distinct_dates_to_validated_generation(self):
+        path, document = self.incremental_fixture()
+        document["legacyUnquotedCSI"] = legacy_claim(document["calendarAdded"], {"SH600929": "2026-09-03"})
+        document["indexPriceValidation"] = index_claim(document["targetDate"], legacy=["SH600929"])
+        path.write_text(json.dumps(document))
+        before = self.fingerprint()
+        result = self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
+        item = next(i for i in result["issues"] if i["code"] == "qlib_legacy_unquoted_csi")
+        self.assertEqual(item["targetDate"], "2026-09-08")
+        self.assertEqual(item["affectedDates"], ["2026-09-07", "2026-09-08"])
+        self.assertEqual(item["legacyUnquotedBaseDate"], "2026-09-04")
+        self.assertEqual(item["lastQuotedDates"], {"SH600929": "2026-09-03"})
+        self.assertEqual(item["sourceManifestSha256"], hashlib.sha256(path.read_bytes()).hexdigest())
+        self.assertEqual(item["validationScope"], "local_manifest_calendar_and_reference_only")
+        self.assertEqual(before, self.fingerprint())
+
+    def test_legacy_bad_or_missing_last_quote_cannot_be_replaced_by_target(self):
+        path, baseline = self.incremental_fixture()
+        for last in (None, "2026-09-04", "2026-02-30", "2026-09-08"):
+            with self.subTest(last=last):
+                document = json.loads(json.dumps(baseline))
+                document["legacyUnquotedCSI"] = legacy_claim(document["calendarAdded"], {"SH600929": last})
+                document["indexPriceValidation"] = index_claim(document["targetDate"], legacy=["SH600929"])
+                path.write_text(json.dumps(document))
+                with self.assertRaises(health.EvidenceError):
+                    self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
+
     def test_manifest_change_after_qlib_read_detected_at_audit_end(self):
         path, document = self.incremental_fixture()
         original = health.snapshot_rows
