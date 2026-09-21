@@ -527,7 +527,8 @@ def process(incidents: list[dict], state_dir: Path, now: datetime, *, date: str,
 
 
 def _message(item: dict) -> str:
-    lines = [f"【研究链路告警】{item['date']}",
+    header = "【演练·非真实故障】研究链路告警通道自检" if item.get("drill") else f"【研究链路告警】{item['date']}"
+    lines = [header,
              f"投递状态：{item['delivery_wording']}"]
     lines += [f"- {cause['detail']}" for cause in item["causes"]]
     lines.append("（告警只做故障发现与描述；不重发日报、不追发、不改动研究与验签。）")
@@ -536,7 +537,8 @@ def _message(item: dict) -> str:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Research-chain failure alerting (read-only classification)")
-    parser.add_argument("--phase", choices=("generation", "predeadline", "post"), default="predeadline")
+    parser.add_argument("--phase", choices=("generation", "predeadline", "post", "drill"),
+                        default="predeadline")
     parser.add_argument("--date")
     parser.add_argument("--now")
     parser.add_argument("--dry-run", action="store_true")
@@ -545,6 +547,27 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     now = datetime.fromisoformat(args.now).astimezone(TZ) if args.now else datetime.now(TZ)
     date = args.date or now.date().isoformat()
+    if args.phase == "drill":
+        # A drill exercises the real sender and the real state machine, but in
+        # its own state directory so it never consumes the day's alert quota.
+        if args.state_dir == STATE_DIR:
+            args.state_dir = STATE_DIR / f"drill-{date}"
+        drill_incident = {"key": f"{date}:drill", "date": date, "drill": True,
+                          "causes": [{"code": "drill", "detail": "通道自检：这是演练消息，不代表任何真实故障。"}],
+                          "delivery_state": "n/a",
+                          "delivery_wording": "演练（不涉及真实投递状态）",
+                          "delivery_evidence": {}, "success_evidence": {}, "in_flight": False}
+        summary = process([drill_incident], args.state_dir, now, date=f"drill-{date}",
+                          sender=HermesSender(), dry_run=args.dry_run)
+        payload = {"phase": "drill", "date": date, "dry_run": args.dry_run,
+                   "state_dir": str(args.state_dir), "incidents": [{"key": drill_incident["key"],
+                   "causes": ["drill"]}], **summary}
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True) if args.json
+              else f"research_chain_alert phase=drill date={date} notified={summary['notified']} "
+                   f"paused={summary['paused']}")
+        if summary["paused"]:
+            return 3
+        return 0 if summary["notified"] == 1 else 1
     facts = collect(date=date, now=now)
     incidents = classify(facts)
     if args.phase == "generation" and not incidents:

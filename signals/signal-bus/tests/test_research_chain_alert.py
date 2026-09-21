@@ -405,5 +405,55 @@ class StateSafetyTests(unittest.TestCase):
         self.assertEqual(len(calls), rca.MAX_ATTEMPTS)
 
 
+class DrillTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.production_state = self.root / "state"
+        self.production_state.mkdir()
+        (self.production_state / f"research-chain-alert-{DATE}.json").write_text(
+            json.dumps({"version": 2, "incident": None}), encoding="utf-8")
+        self.sent = []
+
+        class FakeSender:
+            def send(inner, message):
+                self.sent.append(message)
+                return ("confirmed", "ack", {"message_id": "7"}) if inner.outcome == "confirmed" else ("uncertain", "no_ack_exit_0", {})
+
+        FakeSender.outcome = "confirmed"
+        self.fake = FakeSender
+        self.original = rca.HermesSender
+        rca.HermesSender = self.fake
+        rca.STATE_DIR = self.production_state
+
+    def tearDown(self):
+        rca.HermesSender = self.original
+
+    def test_drill_sends_a_marked_message_through_the_new_state_machine(self):
+        code = rca.main(["--phase", "drill", "--date", DATE, "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("演练", self.sent[0])
+        self.assertIn("非真实故障", self.sent[0])
+        self.assertNotIn("研究生成失败", self.sent[0])
+        drill_state = self.production_state / f"drill-{DATE}"
+        self.assertTrue((drill_state / f"research-chain-alert-drill-{DATE}.json").is_file())
+        self.assertEqual((self.production_state / f"research-chain-alert-{DATE}.json").read_text(),
+                         json.dumps({"version": 2, "incident": None}), "production state must be untouched")
+
+    def test_drill_uncertain_is_nonzero_and_never_retried(self):
+        self.fake.outcome = "uncertain"
+        self.assertEqual(rca.main(["--phase", "drill", "--date", DATE]), 1)
+        self.assertEqual(len(self.sent), 1)
+        self.assertEqual(rca.main(["--phase", "drill", "--date", DATE]), 1)
+        self.assertEqual(len(self.sent), 1, "uncertain drill must not be resent")
+
+    def test_drill_dry_run_writes_nothing_and_sends_nothing(self):
+        before = sorted(str(p.relative_to(self.root)) for p in self.root.rglob("*"))
+        self.assertEqual(rca.main(["--phase", "drill", "--date", DATE, "--dry-run"]), 0)
+        self.assertEqual(self.sent, [])
+        self.assertEqual(sorted(str(p.relative_to(self.root)) for p in self.root.rglob("*")), before)
+
 if __name__ == "__main__":
     unittest.main()
