@@ -11,6 +11,7 @@ scripts/*
 !scripts/build_cninfo_seal_fixture.mjs
 !scripts/morning_seal_alert.sh
 !scripts/run_research_relay_with_alert.sh
+!scripts/research_chain_alert.py
 !tests/
 tests/*
 !tests/test_research_relay.py
@@ -27,3 +28,4 @@ systemd/*
 systemd/astock-xhs-draft.service.d/*
 !systemd/astock-xhs-draft.service.d/signal-gate.conf
 !systemd/astock-xhs-draft.service.d/failure-alert.conf
+!tests/test_research_chain_alert.py
