@@ -19,6 +19,8 @@ tests/*
 !tests/test_cninfo_seal_relay_chain.py
 !tests/test_relay_receiver_contract.py
 !tests/reference_receiver.py
+!tests/test_research_chain_alert.py
+!tests/test_alert_wiring.py
 !systemd/
 systemd/*
 !systemd/nng8-research-digest.service
@@ -28,12 +30,12 @@ systemd/*
 systemd/astock-xhs-draft.service.d/*
 !systemd/astock-xhs-draft.service.d/signal-gate.conf
 !systemd/astock-xhs-draft.service.d/failure-alert.conf
-!tests/test_research_chain_alert.py
-
-# Research-chain alert wiring (proposal, not installed)
+!systemd/astock-research-seal.service.d/
+systemd/astock-research-seal.service.d/*
+!systemd/astock-research-seal.service.d/failure-alert.conf
 !systemd/research-chain-alert.service
 !systemd/research-chain-alert.timer
-!docs/
-!docs/RESEARCH_CHAIN_ALERT_WIRING.md
 !systemd/research-chain-alert-generation.service
 !systemd/research-chain-alert-post.service
+!docs/
+!docs/RESEARCH_CHAIN_ALERT_WIRING.md

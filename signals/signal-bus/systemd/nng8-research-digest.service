@@ -5,6 +5,7 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/home/ubuntu/signal-bus/scripts/run_research_relay_with_alert.sh
+EnvironmentFile=/home/ubuntu/.config/systemd/user/research-chain-alert.env
 WorkingDirectory=/home/ubuntu/signal-bus
 TimeoutStartSec=45s
 TimeoutStopSec=5s

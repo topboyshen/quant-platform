@@ -8,6 +8,16 @@ readonly BUS_ROOT="${BUS_ROOT:-/home/ubuntu/signal-bus}"
 readonly RELAY="${BUS_ROOT}/scripts/research_relay.py"
 readonly ALERT="${BUS_ROOT}/scripts/research_chain_alert.py"
 readonly PYTHON="${PYTHON:-/usr/bin/python3}"
+readonly ENV_FILE="${RESEARCH_CHAIN_ENV_FILE:-${HOME}/.config/systemd/user/research-chain-alert.env}"
+
+# Same target config the generation/post units load. Direct wrapper calls otherwise
+# leave RESEARCH_CHAIN_TELEGRAM_CHAT unset and the sender stays uncertain.
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
 
 set +e
 out="$("$PYTHON" -B "$RELAY" --json 2>&1)"
@@ -42,4 +52,4 @@ if [[ "$r_status" == "held" && "$r_sent" == "0" ]]; then
 elif [[ "$r_status" == "confirmed" ]]; then
   echo "research_relay confirmed; no alert needed"
 fi
-exit 0
+exit "$rc"
