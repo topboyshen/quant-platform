@@ -35,3 +35,5 @@ systemd/astock-xhs-draft.service.d/*
 !systemd/research-chain-alert.timer
 !docs/
 !docs/RESEARCH_CHAIN_ALERT_WIRING.md
+!systemd/research-chain-alert-generation.service
+!systemd/research-chain-alert-post.service

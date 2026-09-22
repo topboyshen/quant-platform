@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Run sealed research relay; alert once when held for missing/invalid seal artifacts.
+# Run sealed research relay; route alerts through the unified research-chain alert.
 # Does not loosen HMAC/validation. Does not catch-up send outside window.
 set -euo pipefail
 umask 077
 
 readonly BUS_ROOT="${BUS_ROOT:-/home/ubuntu/signal-bus}"
 readonly RELAY="${BUS_ROOT}/scripts/research_relay.py"
-readonly ALERT="${BUS_ROOT}/scripts/morning_seal_alert.sh"
+readonly ALERT="${BUS_ROOT}/scripts/research_chain_alert.py"
 readonly PYTHON="${PYTHON:-/usr/bin/python3}"
 
 set +e
@@ -31,10 +31,15 @@ r_reason="${fields[2]:-}"
 
 if [[ "$r_status" == "held" && "$r_sent" == "0" ]]; then
   case "$r_reason" in
-    required_artifact_or_config_invalid|sealed_report_proof_invalid|today_run_missing|formal_report_path_invalid)
-      ALERT_DRY_RUN="${ALERT_DRY_RUN:-0}" "$ALERT" relay_held || true
+    outside_send_window|already_confirmed|delivery_busy)
+      echo "research_relay benign=$r_reason; no alert needed"
+      ;;
+    *)
+      echo "research_relay held=$r_reason; triggering unified alert"
+      "$PYTHON" -B "$ALERT" --phase post --json || true
       ;;
   esac
+elif [[ "$r_status" == "confirmed" ]]; then
+  echo "research_relay confirmed; no alert needed"
 fi
-
-exit "$rc"
+exit 0

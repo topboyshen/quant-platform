@@ -1,0 +1,13 @@
+[Unit]
+Description=Research generation failure -> research-chain alert
+OnFailure=
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -B /home/ubuntu/signal-bus/scripts/research_chain_alert.py --phase generation --json
+EnvironmentFile=/home/ubuntu/.config/systemd/user/research-chain-alert.env
+WorkingDirectory=/home/ubuntu/signal-bus
+TimeoutStartSec=90
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
