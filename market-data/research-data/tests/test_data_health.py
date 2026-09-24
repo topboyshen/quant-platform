@@ -17,6 +17,9 @@ from unittest import mock
 import data_health as health
 from test_qlib_incremental import index_claim, legacy_claim, price_claim
 
+BRIDGE_EVIDENCE = json.loads((Path(__file__).resolve().parents[1] / "fixtures"
+                              / "snapshot_diagnostic_chain.json").read_text(encoding="utf-8"))
+
 
 class AuditTests(unittest.TestCase):
     def setUp(self):
@@ -221,6 +224,87 @@ class AuditTests(unittest.TestCase):
         result = self.run_audit()
         self.assertIsNone(result["lastRun"]["target"])
         self.assertIn("last_snapshot_not_successful", self.codes(result))
+
+    def test_deferred_market_endpoint_evidence_is_whitelisted_and_bound_to_run(self):
+        record = BRIDGE_EVIDENCE["deferredLastRun"]
+        self.last.write_text(json.dumps(record))
+        before = self.fingerprint()
+        result = self.run_audit()
+        self.assertEqual(before, self.fingerprint())
+        issue = next(i for i in result["issues"] if i["code"] == "last_snapshot_not_successful")
+        self.assertEqual(issue["severity"], "warning")
+        self.assertEqual(issue["status"], "deferred")
+        self.assertEqual(issue["target"], "2026-09-04")
+        self.assertEqual(issue["runId"], "a" * 32)
+        self.assertEqual(issue["runAt"], "2026-09-06T22:31:00+08:00")
+        self.assertEqual(issue["sourceFailure"]["attemptCount"], 2)
+        self.assertEqual(issue["sourceFailure"]["attempts"][0]["endpoint"],
+                         "stock_board_industry_summary_ths")
+        self.assertEqual(issue["sourceFailure"]["attempts"][1]["errorType"], "OtherError")
+        self.assertNotIn("UPSTREAM_RAW_RESPONSE_NOT_PUBLIC", json.dumps(result))
+        self.assertNotIn("SensitiveVendorCodeDoNotPublish", json.dumps(result))
+
+    def test_successful_snapshot_keeps_success_and_reports_separate_stage_warning(self):
+        for status in ("inserted", "skipped_existing"):
+            with self.subTest(status=status):
+                record = json.loads(json.dumps(BRIDGE_EVIDENCE["insertedWithStageWarning"]))
+                record["status"] = status
+                self.last.write_text(json.dumps(record))
+                result = self.run_audit()
+                self.assertEqual(result["lastRun"]["status"], status)
+                self.assertEqual(result["lastRun"]["target"], "2026-09-04")
+                self.assertNotIn("last_snapshot_not_successful", self.codes(result))
+                warning = next(i for i in result["issues"] if i["code"] == "last_snapshot_material_warning")
+                self.assertEqual(warning["severity"], "warning")
+                self.assertEqual(warning["runStatus"], status)
+                self.assertTrue(warning["stageUnavailable"])
+                self.assertEqual(warning["target"], "2026-09-04")
+                self.assertEqual(warning["runId"], "b" * 32)
+                self.assertEqual(warning["stageSourceFailure"]["attempts"][1]["errorType"], "OtherError")
+                self.assertNotIn("UPSTREAM_RAW_RESPONSE_NOT_PUBLIC", json.dumps(result))
+                self.assertNotIn("SensitiveVendorCodeDoNotPublish", json.dumps(result))
+
+    def test_missing_or_bad_stage_failure_keeps_inserted_status_and_warning(self):
+        base = BRIDGE_EVIDENCE["insertedWithStageWarning"]
+        baseline = self.root / "row-baseline.json"
+        baseline.write_text(json.dumps({"rowHashes": self.run_audit()["snapshot"]["rowHashes"]}))
+        for failure in (None, [], {"provider": "akshare", "attemptCount": 1,
+                                   "attempts": [{"attempt": 1, "endpoint": [], "errorType": "ValueError"}]}):
+            with self.subTest(failure=failure):
+                record = json.loads(json.dumps(base))
+                if failure is None:
+                    record["akshareStage"].pop("sourceFailure")
+                else:
+                    record["akshareStage"]["sourceFailure"] = failure
+                self.last.write_text(json.dumps(record))
+                result = self.run_audit(baseline=baseline)
+                warning = next(i for i in result["issues"] if i["code"] == "last_snapshot_material_warning")
+                self.assertEqual(result["lastRun"]["status"], "inserted")
+                self.assertEqual(warning["severity"], "warning")
+                self.assertEqual(result["snapshot"]["baseline"], "matched")
+                self.assertTrue(warning["stageUnavailable"])
+                self.assertNotIn("stageSourceFailure", warning)
+                self.assertNotIn("last_snapshot_not_successful", self.codes(result))
+
+    def test_missing_or_malformed_source_failure_does_not_change_snapshot_judgment(self):
+        malformed = [None, [], {"provider": "akshare", "attemptCount": True, "attempts": []},
+                     {"provider": "akshare", "attemptCount": 1,
+                      "attempts": [{"attempt": 1, "endpoint": [], "errorType": "ValueError"}]},
+                     {"provider": "akshare", "attemptCount": 1,
+                      "attempts": [{"attempt": 1, "endpoint": "untrusted_endpoint", "errorType": "ValueError"}]}]
+        for failure in malformed:
+            with self.subTest(failure=failure):
+                record = {"status": "deferred", "target": "2026-09-04",
+                          "timestamp": "2026-09-06T22:31:00+08:00"}
+                if failure is not None:
+                    record["sourceFailure"] = failure
+                self.last.write_text(json.dumps(record))
+                result = self.run_audit()
+                issue = next(i for i in result["issues"] if i["code"] == "last_snapshot_not_successful")
+                self.assertEqual(result["lastRun"]["status"], "deferred")
+                self.assertEqual(issue["severity"], "warning")
+                self.assertEqual(issue["target"], "2026-09-04")
+                self.assertNotIn("sourceFailure", issue)
 
     def test_future_timestamp_is_unknown(self):
         self.last.write_text(json.dumps({"status": "inserted", "timestamp": "2026-09-08T22:31:00+08:00"}))

@@ -575,6 +575,42 @@ def stage_evidence(root, now):
     return result, "checked"
 
 
+SNAPSHOT_MARKET_ENDPOINTS = frozenset({
+    "stock_board_industry_summary_ths", "stock_market_activity_legu",
+})
+SNAPSHOT_FAILURE_TYPES = frozenset({
+    "ValueError", "RuntimeError", "TypeError", "KeyError", "IndexError",
+    "OSError", "ConnectionError", "TimeoutError", "HTTPError", "SSLError",
+    "JSONDecodeError", "ParserError", "OtherError",
+})
+
+
+def snapshot_source_failure(record):
+    """Keep only bounded endpoint evidence; never publish raw upstream errors."""
+    if not isinstance(record, dict) or record.get("provider") != "akshare":
+        return None
+    count, attempts = record.get("attemptCount"), record.get("attempts")
+    if (type(count) is not int or not 1 <= count <= 8 or not isinstance(attempts, list)
+            or len(attempts) != count):
+        return None
+    kept = []
+    for index, attempt in enumerate(attempts, 1):
+        if not isinstance(attempt, dict) or type(attempt.get("attempt")) is not int or attempt["attempt"] != index:
+            return None
+        endpoint, error_type = attempt.get("endpoint"), attempt.get("errorType")
+        if endpoint is not None and (not isinstance(endpoint, str)
+                                     or endpoint not in SNAPSHOT_MARKET_ENDPOINTS):
+            return None
+        if not isinstance(error_type, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", error_type):
+            return None
+        item = {"attempt": index,
+                "errorType": error_type if error_type in SNAPSHOT_FAILURE_TYPES else "OtherError"}
+        if endpoint is not None:
+            item["endpoint"] = endpoint
+        kept.append(item)
+    return {"provider": "akshare", "attemptCount": count, "attempts": kept}
+
+
 def recent_run(path, now):
     try:
         record = strict_json(read_file(path))
@@ -589,7 +625,18 @@ def recent_run(path, now):
                    "target": record.get("target"), "qlibTag": record.get("qlibTag"),
                    "hasWarnings": bool(record.get("warnings")),
                    "stageUnavailable": (record.get("akshareStage") or {}).get("status") == "unavailable"}
+        run_id = record.get("runId")
+        if isinstance(run_id, str) and re.fullmatch(r"[0-9a-f]{32}", run_id):
+            summary["runId"] = run_id
+        if record["status"] in FAILURES:
+            failure = snapshot_source_failure(record.get("sourceFailure"))
+            if failure is not None:
+                summary["sourceFailure"] = failure
         stage = record.get("akshareStage") or {}
+        if summary["stageUnavailable"]:
+            failure = snapshot_source_failure(stage.get("sourceFailure"))
+            if failure is not None:
+                summary["stageSourceFailure"] = failure
         for date_key, hash_key in (("tradeDate", "payloadSha256"), ("usedTradeDate", "usedPayloadSha256")):
             if (stage.get(date_key) is None) != (stage.get(hash_key) is None):
                 raise EvidenceError("incomplete_stage_claim")
@@ -731,9 +778,22 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
     if last_time is None or last_time < due_start:
         issue("scheduled_snapshot_missing", dueDate=due_date.isoformat())
     if last["status"] in FAILURES:
-        issue("last_snapshot_not_successful", status=last["status"], target=last.get("target"))
+        details = {"status": last["status"], "target": last.get("target"),
+                   "runAt": last.get("timestamp")}
+        if last.get("runId"):
+            details["runId"] = last["runId"]
+        if last.get("sourceFailure"):
+            details["sourceFailure"] = last["sourceFailure"]
+        issue("last_snapshot_not_successful", **details)
     if last.get("hasWarnings") or last.get("stageUnavailable"):
-        issue("last_snapshot_material_warning")
+        details = {"runStatus": last["status"], "target": last.get("target"),
+                   "runAt": last.get("timestamp"),
+                   "stageUnavailable": bool(last.get("stageUnavailable"))}
+        if last.get("runId"):
+            details["runId"] = last["runId"]
+        if last.get("stageSourceFailure"):
+            details["stageSourceFailure"] = last["stageSourceFailure"]
+        issue("last_snapshot_material_warning", **details)
     ledger = []
     new_due_gaps = []
     for day in (d for d in calendar if since.isoformat() <= d <= complete):

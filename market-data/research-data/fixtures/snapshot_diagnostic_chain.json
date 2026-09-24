@@ -1,0 +1,54 @@
+{
+  "deferredLastRun": {
+    "runId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "deferred",
+    "target": "2026-09-04",
+    "timestamp": "2026-09-06T22:31:00+08:00",
+    "sourceFailure": {
+      "provider": "akshare",
+      "attemptCount": 2,
+      "attempts": [
+        {
+          "attempt": 1,
+          "endpoint": "stock_board_industry_summary_ths",
+          "errorType": "ValueError",
+          "rawResponse": "UPSTREAM_RAW_RESPONSE_NOT_PUBLIC"
+        },
+        {
+          "attempt": 2,
+          "endpoint": "stock_market_activity_legu",
+          "errorType": "SensitiveVendorCodeDoNotPublish"
+        }
+      ],
+      "rawError": "UPSTREAM_RAW_RESPONSE_NOT_PUBLIC"
+    }
+  },
+  "insertedWithStageWarning": {
+    "runId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "status": "inserted",
+    "target": "2026-09-04",
+    "timestamp": "2026-09-06T22:31:00+08:00",
+    "warnings": ["UPSTREAM_RAW_RESPONSE_NOT_PUBLIC"],
+    "akshareStage": {
+      "status": "unavailable",
+      "reason": "UPSTREAM_RAW_RESPONSE_NOT_PUBLIC",
+      "sourceFailure": {
+        "provider": "akshare",
+        "attemptCount": 2,
+        "attempts": [
+          {
+            "attempt": 1,
+            "endpoint": "stock_board_industry_summary_ths",
+            "errorType": "ValueError"
+          },
+          {
+            "attempt": 2,
+            "endpoint": "stock_market_activity_legu",
+            "errorType": "SensitiveVendorCodeDoNotPublish"
+          }
+        ],
+        "rawResponse": "UPSTREAM_RAW_RESPONSE_NOT_PUBLIC"
+      }
+    }
+  }
+}
