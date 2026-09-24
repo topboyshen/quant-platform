@@ -83,6 +83,23 @@ class SnapshotTemporaryError(RuntimeError):
 class SnapshotDeferredError(RuntimeError):
     """Required same-trade-date source material has not arrived yet."""
 
+    def __init__(self, message, *, target=None, qlib_tag=None, source_failure=None):
+        super().__init__(message)
+        self.target = target
+        self.qlib_tag = qlib_tag
+        self.source_failure = source_failure
+
+
+class AkshareMarketSourceError(RuntimeError):
+    """Identify a failed endpoint without exposing an upstream response."""
+
+    def __init__(self, endpoint, cause):
+        self.endpoint = endpoint
+        self.error_type = type(cause).__name__
+        super().__init__(
+            f"akshare_market_source_failed:{endpoint}:{self.error_type}"
+        )
+
 
 def _snapshot_payload(snapshot):
     try:
@@ -684,11 +701,33 @@ def seal_akshare_market_stage(
 
 def capture_current_akshare_market(stage_dir=None):
     collection_started_at = datetime.datetime.now().astimezone().isoformat()
+    attempt_count = 0
+    attempt_failures = []
+
+    def collect_market_attempt():
+        nonlocal attempt_count
+        attempt_count += 1
+        try:
+            return akshare_market()
+        except Exception as exc:
+            diagnostic = {"attempt": attempt_count, "errorType": type(exc).__name__}
+            if isinstance(exc, AkshareMarketSourceError):
+                diagnostic["endpoint"] = exc.endpoint
+                diagnostic["errorType"] = exc.error_type
+            attempt_failures.append(diagnostic)
+            raise
+
     try:
-        akshare_payload = collect_source(akshare_market)
+        akshare_payload = collect_source(collect_market_attempt)
     except Exception as exc:
+        source_failure = {
+            "provider": "akshare",
+            "attemptCount": attempt_count,
+            "attempts": attempt_failures,
+        }
         raise SnapshotDeferredError(
-            f"current AkShare market staging failed: {type(exc).__name__}: {exc}"
+            f"current AkShare market staging failed: {type(exc).__name__}: {exc}",
+            source_failure=source_failure,
         ) from exc
     collection_completed_at = datetime.datetime.now().astimezone().isoformat()
     return seal_akshare_market_stage(
@@ -963,21 +1002,27 @@ def qlib_market(date):
 
 def akshare_market():
     import akshare as ak
-    sectors = ak.stock_board_industry_summary_ths()
-    activity = ak.stock_market_activity_legu()
-    sector_list = []
-    for _, r in sectors.iterrows():
-        sector_list.append({
-            "name": json_scalar(r.get("板块")),
-            "chg": json_scalar(r.get("涨跌幅")),
-            "netInflow": json_scalar(r.get("净流入")),
-            "upCount": json_scalar(r.get("上涨家数")),
-            "downCount": json_scalar(r.get("下跌家数")),
-            "leader": json_scalar(r.get("领涨股")),
-        })
-    act = {}
-    for _, r in activity.iterrows():
-        act[str(r["item"])] = json_scalar(r["value"])
+    try:
+        sectors = ak.stock_board_industry_summary_ths()
+        sector_list = []
+        for _, r in sectors.iterrows():
+            sector_list.append({
+                "name": json_scalar(r.get("板块")),
+                "chg": json_scalar(r.get("涨跌幅")),
+                "netInflow": json_scalar(r.get("净流入")),
+                "upCount": json_scalar(r.get("上涨家数")),
+                "downCount": json_scalar(r.get("下跌家数")),
+                "leader": json_scalar(r.get("领涨股")),
+            })
+    except Exception as exc:
+        raise AkshareMarketSourceError("stock_board_industry_summary_ths", exc) from None
+    try:
+        activity = ak.stock_market_activity_legu()
+        act = {}
+        for _, r in activity.iterrows():
+            act[str(r["item"])] = json_scalar(r["value"])
+    except Exception as exc:
+        raise AkshareMarketSourceError("stock_market_activity_legu", exc) from None
     return {"sectors": sector_list, "activity": act}
 
 
@@ -1299,6 +1344,7 @@ def global_markets():
 def run_snapshot(run_id, started_monotonic):
     date = requested_trade_date(sys.argv[1:])
     q = qlib_market(date)
+    qlib_tag = (q.get("generation") or {}).get("tag")
     prior = existing_snapshot(q["date"])
     target_stage = None
     if prior is None:
@@ -1306,15 +1352,19 @@ def run_snapshot(run_id, started_monotonic):
 
     current_stage = None
     staging_warning = None
+    staging_error = None
     try:
         current_stage = capture_current_akshare_market()
     except (SnapshotDeferredError, SnapshotValidationError) as exc:
+        staging_error = exc
         staging_warning = f"{type(exc).__name__}: {exc}"
     if current_stage is None:
         current_stage_summary = {
             "status": "unavailable",
             "reason": staging_warning,
         }
+        if isinstance(staging_error, SnapshotDeferredError) and staging_error.source_failure:
+            current_stage_summary["sourceFailure"] = staging_error.source_failure
     else:
         current_stage_summary = {
             "status": current_stage["status"],
@@ -1336,7 +1386,8 @@ def run_snapshot(run_id, started_monotonic):
         if captured_date is not None and qlib_day is not None and captured_date > qlib_day:
             raise SnapshotDeferredError(
                 "qlib calendar behind observed market stage: "
-                f"qlib={q['date']}, captured={current_stage['tradeDate']}"
+                f"qlib={q['date']}, captured={current_stage['tradeDate']}",
+                target=q["date"], qlib_tag=qlib_tag,
             )
         status_record = {
             "runId": run_id,
@@ -1366,7 +1417,10 @@ def run_snapshot(run_id, started_monotonic):
         )
         raise SnapshotDeferredError(
             "waiting for immutable AkShare market stage: "
-            f"qlib={q['date']}, captured={captured}{warning_suffix}"
+            f"qlib={q['date']}, captured={captured}{warning_suffix}",
+            target=q["date"], qlib_tag=qlib_tag,
+            source_failure=(staging_error.source_failure
+                            if isinstance(staging_error, SnapshotDeferredError) else None),
         )
     a = target_stage["akshare"]
     activity_date = validate_daily_source_dates(q["date"], a)
@@ -1575,6 +1629,23 @@ def main(run_id=None, started_monotonic=None):
         return run_snapshot(run_id, started_monotonic)
 
 
+def emit_deferred_status(run_id, started_monotonic, error, stream=None):
+    """Persist the target only after Qlib established it for this run."""
+    record = {
+        "runId": run_id,
+        "status": "deferred",
+        "reason": str(error),
+        "durationSeconds": round(time.monotonic() - started_monotonic, 3),
+    }
+    if error.target is not None:
+        record["target"] = error.target
+    if error.qlib_tag is not None:
+        record["qlibTag"] = error.qlib_tag
+    if error.source_failure is not None:
+        record["sourceFailure"] = error.source_failure
+    emit_status(record, stream=stream or sys.stderr)
+
+
 if __name__ == "__main__":
     _run_id = uuid.uuid4().hex
     _started_monotonic = time.monotonic()
@@ -1597,12 +1668,7 @@ if __name__ == "__main__":
         }, stream=sys.stderr)
         raise SystemExit(75)
     except SnapshotDeferredError as exc:
-        emit_status({
-            "runId": _run_id,
-            "status": "deferred",
-            "reason": str(exc),
-            "durationSeconds": round(time.monotonic() - _started_monotonic, 3),
-        }, stream=sys.stderr)
+        emit_deferred_status(_run_id, _started_monotonic, exc)
         raise SystemExit(SNAPSHOT_DEFERRED_EXIT)
     except (QlibDateError, SnapshotValidationError) as exc:
         emit_status({
