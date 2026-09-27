@@ -12,6 +12,7 @@ import health_alert as alert  # noqa: E402
 CST = dt.timezone(dt.timedelta(hours=8))
 DAY1 = dt.datetime(2026, 9, 25, 22, 45, 6, tzinfo=CST)
 DAY2 = dt.datetime(2026, 9, 26, 22, 45, 6, tzinfo=CST)
+DAY3 = dt.datetime(2026, 9, 27, 22, 45, 6, tzinfo=CST)
 BASE8 = ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-11",
          "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17"]
 LEGACY10 = ["2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27",
@@ -216,3 +217,127 @@ class CliStateTests(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DueRunAndBlindAuditTests(Base):
+    """R01/R03 (2026-09-27): due-run events page; a blind audit never proves recovery."""
+
+    def _state(self, payload, now):
+        info = self.info(payload, now)
+        return alert.decide(info, "inactive", None, now)["state"], info
+
+    def test_new_scheduled_snapshot_missing_notifies_while_critical_set_is_unchanged(self):
+        state, _ = self._state(audit("2026-09-25T22:45:00.767231+08:00"), DAY1)
+        current = self.info(audit("2026-09-26T22:45:00.767231+08:00", extra=[
+            {"code": "scheduled_snapshot_missing", "severity": "warning", "dueDate": "2026-09-26"}]),
+            DAY2)
+        decision = alert.decide(current, "inactive", state, DAY2)
+        self.assertTrue(decision["notify"], decision)
+        self.assertEqual(decision["kind"], "should_run_but_did_not")
+        self.assertIn("scheduled_snapshot_missing|2026-09-26", decision["new"])
+
+    def test_repeated_due_run_event_for_the_same_due_date_stays_silent(self):
+        payload = audit("2026-09-26T22:45:00.767231+08:00", extra=[
+            {"code": "scheduled_snapshot_missing", "severity": "warning", "dueDate": "2026-09-26"}])
+        state, _ = self._state(payload, DAY2)
+        again = self.info(audit("2026-09-26T22:50:00.000000+08:00", extra=[
+            {"code": "scheduled_snapshot_missing", "severity": "warning", "dueDate": "2026-09-26"}]), DAY2)
+        decision = alert.decide(again, "inactive", state, DAY2)
+        self.assertFalse(decision["notify"], decision)
+        self.assertEqual(decision["kind"], "unchanged")
+
+    def test_a_new_due_date_is_a_new_event(self):
+        payload = audit("2026-09-26T22:45:00.767231+08:00", extra=[
+            {"code": "scheduled_snapshot_missing", "severity": "warning", "dueDate": "2026-09-26"}])
+        state, _ = self._state(payload, DAY2)
+        next_day = self.info(audit("2026-09-27T22:45:00.000000+08:00", extra=[
+            {"code": "scheduled_snapshot_missing", "severity": "warning", "dueDate": "2026-09-27"}]), DAY3)
+        decision = alert.decide(next_day, "inactive", state, DAY3)
+        self.assertTrue(decision["notify"], decision)
+        # 同 code、新 dueDate 属“恶化”，不是“新增”；两者都必须通知。
+        self.assertIn("scheduled_snapshot_missing|2026-09-27",
+                      decision["new"] + decision["worsened"])
+
+    def test_ordinary_warning_alone_does_not_page(self):
+        state, _ = self._state(audit("2026-09-25T22:45:00.767231+08:00"), DAY1)
+        current = self.info(audit("2026-09-26T22:45:00.767231+08:00", extra=[
+            {"code": "concept_source_degraded", "severity": "warning", "affectedDates": ["2026-09-26"]}]), DAY2)
+        decision = alert.decide(current, "inactive", state, DAY2)
+        self.assertFalse(decision["notify"], decision)
+
+    def test_missing_audit_does_not_confirm_business_recovery(self):
+        state, _ = self._state(audit("2026-09-25T22:45:00.767231+08:00"), DAY1)
+        blind = alert.describe(self.dir / "absent.json", now=DAY2,
+                               retained_path=REPO / "config/health-alert-retained.json")
+        decision = alert.decide(blind, "inactive", state, DAY2)
+        self.assertTrue(decision["notify"], decision)
+        self.assertEqual(decision["kind"], "should_run_but_did_not")
+        self.assertFalse([a for a in decision["recovered"] if a.startswith("unresolved_trading_day_gaps")],
+                         decision["recovered"])
+        self.assertFalse(decision["state"]["auditVisible"])
+        self.assertIn("unresolved_trading_day_gaps|2026-09-07", decision["state"]["businessAtoms"])
+
+    def test_business_fault_is_not_reported_new_after_a_blind_audit(self):
+        state, _ = self._state(audit("2026-09-25T22:45:00.767231+08:00"), DAY1)
+        blind = alert.describe(self.dir / "absent.json", now=DAY2,
+                               retained_path=REPO / "config/health-alert-retained.json")
+        state = alert.decide(blind, "inactive", state, DAY2)["state"]
+        readable = self.info(audit("2026-09-27T22:45:00.000000+08:00"), DAY3)
+        decision = alert.decide(readable, "inactive", state, DAY3)
+        # 审计恢复本身要通知（可观测性故障消失），但业务故障不得被当成新增。
+        self.assertEqual(decision["kind"], "recovered")
+        self.assertEqual([a for a in decision["recovered"] if not a.startswith("audit_")], [])
+        self.assertEqual([a for a in decision["new"] if not a.startswith("audit_")], [])
+        self.assertTrue(decision["state"]["auditVisible"])
+
+    def test_unchanged_critical_set_still_stays_silent(self):
+        state, _ = self._state(audit("2026-09-25T22:45:00.767231+08:00"), DAY1)
+        same = self.info(audit("2026-09-26T22:45:00.767231+08:00"), DAY2)
+        decision = alert.decide(same, "inactive", state, DAY2)
+        self.assertFalse(decision["notify"], decision)
+        self.assertEqual(decision["kind"], "unchanged")
+
+
+class LegacyStateMigrationTests(Base):
+    """R03 migration: live states written before businessAtoms must be inherited, not emptied."""
+
+    def _legacy_state(self, payload, now):
+        """Shape of a state committed by the pre-R03 code: atoms + fingerprint only."""
+        info = self.info(payload, now)
+        state = alert.decide(info, "inactive", None, now)["state"]
+        legacy = {key: state[key] for key in ("schemaVersion", "atoms", "fingerprint")}
+        legacy["auditStatus"] = state["auditStatus"]
+        return legacy
+
+    def test_missing_business_atoms_is_inherited_not_treated_as_empty(self):
+        legacy = self._legacy_state(audit("2026-09-25T22:45:00.767231+08:00"), DAY1)
+        self.assertNotIn("businessAtoms", legacy)
+        blind = alert.describe(self.dir / "absent.json", now=DAY2,
+                               retained_path=REPO / "config/health-alert-retained.json")
+        decision = alert.decide(blind, "inactive", legacy, DAY2)
+        self.assertFalse([a for a in decision["recovered"] if not a.startswith("audit_")],
+                         decision["recovered"])
+        self.assertIn("unresolved_trading_day_gaps|2026-09-22", decision["state"]["businessAtoms"])
+        self.assertFalse(decision["state"]["auditVisible"])
+
+    def test_migration_then_readable_fault_still_present_is_not_new_and_not_recovered(self):
+        legacy = self._legacy_state(audit("2026-09-25T22:45:00.767231+08:00"), DAY1)
+        blind = alert.describe(self.dir / "absent.json", now=DAY2,
+                               retained_path=REPO / "config/health-alert-retained.json")
+        state = alert.decide(blind, "inactive", legacy, DAY2)["state"]
+        readable = self.info(audit("2026-09-27T22:45:00.000000+08:00"), DAY3)
+        decision = alert.decide(readable, "inactive", state, DAY3)
+        self.assertEqual([a for a in decision["new"] if not a.startswith("audit_")], [])
+        self.assertEqual([a for a in decision["recovered"] if not a.startswith("audit_")], [])
+        self.assertEqual(decision["kind"], "recovered")  # only the audit observability fault recovered
+
+    def test_migration_then_readable_fault_gone_notifies_the_real_recovery(self):
+        legacy = self._legacy_state(audit("2026-09-25T22:45:00.767231+08:00"), DAY1)
+        blind = alert.describe(self.dir / "absent.json", now=DAY2,
+                               retained_path=REPO / "config/health-alert-retained.json")
+        state = alert.decide(blind, "inactive", legacy, DAY2)["state"]
+        resolved = self.info(audit("2026-09-27T22:45:00.000000+08:00", gaps=[]), DAY3)
+        decision = alert.decide(resolved, "inactive", state, DAY3)
+        self.assertTrue(decision["notify"], decision)
+        self.assertIn("unresolved_trading_day_gaps|2026-09-22", decision["recovered"])
+        self.assertIn("unresolved_trading_day_gaps|2026-09-07", decision["recovered"])

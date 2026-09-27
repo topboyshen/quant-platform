@@ -38,6 +38,8 @@ MAX_RECEIPT_BYTES = 64 * 1024
 MAX_STATE_BYTES = 256 * 1024
 MAX_MESSAGE_CHARS = 1200
 MAX_ATOMS = 2000
+OBSERVABILITY_PREFIX = "audit_"
+DUE_RUN_CODES = ("scheduled_snapshot_missing",)
 CST = dt.timezone(dt.timedelta(hours=8))
 RECEIPT_SCHEMA_VERSION = 1
 STATE_SCHEMA_VERSION = 1
@@ -85,6 +87,24 @@ def _issue_dates(issue):
         if isinstance(value, str) and DATE_RE.fullmatch(value):
             found.add(value)
     return sorted(found) or ["*"]
+
+
+def _due_run_atoms(data):
+    """Explicit "should have run but did not" events, keyed by their due date.
+
+    These are deliberately not critical atoms: the audit severity is unchanged and
+    ordinary warnings still never page on their own. Only a new code+dueDate is a
+    new event; repeated audits for the same due date collapse into one.
+    """
+    atoms = set()
+    if isinstance(data, dict):
+        for issue in data.get("issues") or []:
+            if not isinstance(issue, dict) or issue.get("code") not in DUE_RUN_CODES:
+                continue
+            code = issue["code"]
+            for date in _issue_dates(issue):
+                atoms.add(f"{code}|{date}")
+    return sorted(atoms)
 
 
 def _critical_atoms(data):
@@ -180,6 +200,7 @@ def describe(path, now=None, max_age_hours=6.0, retained_path=None):
     now = now or dt.datetime.now(CST)
     result = {"status": "unknown", "codes": [], "generatedAt": None,
               "stale": True, "ageHours": None, "reason": None, "criticalAtoms": [],
+              "dueRunAtoms": [],
               "retained": _retained_counts(None, load_retained(retained_path))}
     try:
         raw = Path(path).read_bytes()
@@ -201,6 +222,7 @@ def describe(path, now=None, max_age_hours=6.0, retained_path=None):
         result["status"] = status
     result["codes"] = _codes(data)
     result["criticalAtoms"] = _critical_atoms(data)
+    result["dueRunAtoms"] = _due_run_atoms(data)
     result["retained"] = _retained_counts(data, load_retained(retained_path))
     generated = _instant(data.get("generatedAt"))
     if generated is None:
@@ -235,6 +257,10 @@ def alert_atoms(info, unit_state, now=None):
         # The audit derives "critical" from its critical issues; keep that
         # coupling so a warning-level artifact never pages on its own.
         atoms.update(info.get("criticalAtoms") or ["audit_status_critical|*"])
+    if status in STATUS_VALUES and not info.get("stale"):
+        # A fresh audit that ran but found a scheduled run missing is a real
+        # "should run but did not" event even though it is only a warning.
+        atoms.update(info.get("dueRunAtoms") or [])
     if status in ("missing", "unknown"):
         atoms.add(f"audit_result_{status}|{day}")
     elif info.get("stale"):
@@ -272,22 +298,47 @@ def _split_code(atom):
     return atom.split("|", 1)[0]
 
 
+def _is_observability(atom):
+    """Audit-level atoms describe the audit itself, not the business data."""
+    return _split_code(atom).startswith(OBSERVABILITY_PREFIX)
+
+
 def decide(info, unit_state, previous=None, now=None):
     """Return the notification decision and the state to commit afterwards."""
     now = (now or dt.datetime.now(CST)).astimezone(CST)
     current = alert_atoms(info, unit_state, now)
     prev_atoms = set(previous["atoms"]) if isinstance(previous, dict) else None
-    if prev_atoms is None:
-        added, recovered = list(current), []
-        kind = "first_observation" if current else "no_fault"
+    if isinstance(previous, dict):
+        if "businessAtoms" in previous:
+            prev_business = set(previous.get("businessAtoms") or [])
+        else:
+            # Legacy state written before R03 has no businessAtoms field. Inherit
+            # conservatively from its atoms (business atoms only) instead of
+            # treating the missing field as "no business faults", which would
+            # report every known fault as recovered on the first blind audit.
+            prev_business = {a for a in (previous.get("atoms") or []) if not _is_observability(a)}
     else:
-        added = sorted(set(current) - prev_atoms)
-        recovered = sorted(prev_atoms - set(current))
+        prev_business = None
+    audit_visible = not any(_is_observability(atom) for atom in current)
+    # A missing, unreadable or stale audit is not evidence of recovery. The last
+    # valid business fault set is carried forward so business faults are neither
+    # reported as recovered while the audit is blind, nor re-reported as new once
+    # a fresh audit can read them again.
+    effective = set(current)
+    if not audit_visible and prev_business is not None:
+        effective |= prev_business
+    if prev_atoms is None:
+        added, recovered = sorted(effective), []
+        kind = "first_observation" if effective else "no_fault"
+    else:
+        added = sorted(effective - prev_atoms)
+        recovered = sorted(prev_atoms - effective)
         kind = "unchanged"
     prev_codes = {_split_code(a) for a in (prev_atoms or set())}
     new_failure = [a for a in added if _split_code(a) not in prev_codes]
     worsened = [a for a in added if _split_code(a) in prev_codes]
-    not_run = [a for a in added if _split_code(a).startswith("audit_")]
+    not_run = [a for a in added
+               if _is_observability(a) or _split_code(a) in DUE_RUN_CODES]
     if prev_atoms is not None:
         if not_run:
             kind = "should_run_but_did_not"
@@ -298,7 +349,11 @@ def decide(info, unit_state, previous=None, now=None):
         elif recovered:
             kind = "recovered"
     notify = bool(added or recovered)
-    state = {"schemaVersion": STATE_SCHEMA_VERSION, "atoms": list(current), "fingerprint": fingerprint(current),
+    business = sorted(a for a in current if not _is_observability(a))
+    state = {"schemaVersion": STATE_SCHEMA_VERSION, "atoms": sorted(effective),
+             "fingerprint": fingerprint(sorted(effective)),
+             "businessAtoms": business if audit_visible else sorted(prev_business or []),
+             "auditVisible": audit_visible,
              "auditStatus": info.get("status") if info.get("status") in STATUS_VALUES else "unknown",
              # Evidence reference only; never part of the fingerprint.
              "evidence": {"auditGeneratedAt": info.get("generatedAt") if _instant(info.get("generatedAt")) else None,
