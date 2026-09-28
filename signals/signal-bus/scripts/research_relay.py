@@ -41,6 +41,10 @@ HASH_RE = re.compile(r"[a-f0-9]{64}\Z")
 REF_RE = re.compile(r"\[来源\s*([^\]\n]*)\]")
 ISO_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})\Z")
 URL_RE = re.compile(r"https?://[^\s<>\[\]）)]+", re.I)
+EVIDENCE_ROLES = {"上涨占优", "下跌占优", "成交额", "单日行情", "报告期利润同比"}
+INFERENCE_LIMIT = "未提供结构化反证来源；此限制只约束本条推断，不否定已核验事实。"
+LEGACY_RISK_LIMIT = "未提供结构化反证来源，不升级为事实结论。"
+CALENDAR_SOURCE_ID = "akshare:sina:trade-calendar"
 
 
 class Held(Exception):
@@ -154,7 +158,7 @@ def read_optional_json(root, relative, limit=65536):
     """Return None only when the artifact is absent; invalid artifacts still hold."""
     try:
         return read_json(root, relative, limit)
-    except OSError:
+    except FileNotFoundError:
         return None
 
 
@@ -249,16 +253,42 @@ def extract_summary(report, target_date, data_status, semantic_review):
     analysis_blocks = [block for block in _blocks(sections["6"]["lines"])
                        if re.match(r"^-\s+\[推断\]", block)]
     limitations = []
+    analysis_contract = None
     evidence, counter = [], []
     if analysis_blocks:
         chosen = next((b for b in analysis_blocks if re.match(r"^-\s+\[推断\]\s*摘要[：:]", b)), analysis_blocks[0])
         conclusion_lines = []
         destination = conclusion_lines
+        evidence_roles = []
+        period_note = None
+        inference_limit = None
         for line in chosen.splitlines():
             stripped = re.sub(r"^\s*-\s*", "", line).strip()
-            if re.match(r"支持证据\s*[：:]", stripped):
+            support = re.match(r"^支持证据(?:（([^）]+)）)?\s*[：:]", stripped)
+            if support:
+                role = support.group(1)
+                if role is not None:
+                    if role not in EVIDENCE_ROLES:
+                        hold("analysis_evidence_role_invalid")
+                    refs = references_in(stripped)
+                    if len(refs) != 1:
+                        hold("analysis_evidence_role_invalid")
+                    evidence_roles.append({"source_id": refs[0], "role": role})
                 destination = evidence
                 destination.append(stripped)
+            elif stripped.startswith("支持证据"):
+                hold("analysis_evidence_role_invalid")
+            elif stripped.startswith("期间："):
+                period = re.fullmatch(r"期间：行情 (\d{4}-\d{2}-\d{2})；利润同比报告期 (\d{4}-\d{2}-\d{2})。", stripped)
+                if not period or period_note is not None:
+                    hold("analysis_period_invalid")
+                if any(checked_date(value) >= checked_date(target_date) for value in period.groups()):
+                    hold("analysis_period_invalid")
+                period_note = stripped[len("期间："):-1]
+            elif stripped.startswith("推断限制："):
+                if stripped != "推断限制：" + INFERENCE_LIMIT or inference_limit is not None:
+                    hold("analysis_limit_invalid")
+                inference_limit = INFERENCE_LIMIT
             elif re.match(r"反证\s*[：:]", stripped):
                 destination = counter
                 destination.append(stripped)
@@ -275,16 +305,33 @@ def extract_summary(report, target_date, data_status, semantic_review):
             hold("analysis_support_missing")
         if any(not references_in(value) for value in evidence):
             hold("analysis_support_missing")
-        if not counter:
+        if not counter and inference_limit is None:
             hold("analysis_counter_missing")
-        for value in counter:
+        if counter and inference_limit is not None:
+            hold("analysis_limit_conflict")
+        original_counter = counter
+        counter = []
+        for value in original_counter:
             if references_in(value):
+                counter.append(value)
                 continue
             if (not re.match(r"^\[推断\]\s*风险[：:]", conclusion)
-                    or len(counter) != 1
+                    or len(original_counter) != 1
                     or re.fullmatch(r"(?:反证[：:]\s*)?未提供结构化反证来源，不升级为事实结论。", value) is None):
                 hold("analysis_counter_missing")
+            inference_limit = LEGACY_RISK_LIMIT
             limitations.append("原风险块明确未提供结构化反证来源；该缺失提示不是已核验反证，未补造来源。")
+        if inference_limit is not None:
+            if inference_limit == INFERENCE_LIMIT and not evidence_roles:
+                hold("analysis_evidence_role_invalid")
+            limitations.append("推断限制：" + inference_limit)
+        if period_note is not None:
+            limitations.append("期间：" + period_note + "。")
+        analysis_contract = {"version": 2, "claim_type": "inference",
+                             "inference_status": "unverified",
+                             "counter_evidence_status": "provided" if counter else "explicitly_missing",
+                             "evidence_roles": evidence_roles, "period_note": period_note,
+                             "inference_limit": inference_limit}
     else:
         base = sections.get("一句话结论", {}).get("lines", [])
         conclusion_lines = [line.strip() for line in base if line.strip()]
@@ -357,6 +404,10 @@ def extract_summary(report, target_date, data_status, semantic_review):
                    for key, values in summary.items() if key != "conclusion")
             or len(json.dumps(summary, ensure_ascii=False)) > MAX_SUMMARY_CHARS):
         hold("research_summary_too_large")
+    if analysis_contract is not None:
+        summary["analysis_contract"] = analysis_contract
+    if len(json.dumps(summary, ensure_ascii=False)) > MAX_SUMMARY_CHARS:
+        hold("research_summary_too_large")
     return as_of, summary
 
 
@@ -377,7 +428,7 @@ def prepare_research(project_root=PROJECT_ROOT, now=None):
     if o.get("childExitCode") != 0 or isinstance(o.get("childExitCode"), bool) or o.get("childSignal", "missing") is not None or o.get("timedOut") is not False or o.get("interrupted") is not False:
         hold("source_occurrence_not_successful")
     if o.get("status") == "skipped" and r.get("status") == "skipped":
-        return {"status": "skipped", "reason": "non_trading_day", "target_date": target}
+        return prepare_calendar_skip(project_root, now, occurrence, run)
     if o.get("status") != "success" or r.get("status") != "success" or r.get("phase") != "publish":
         hold("source_occurrence_not_successful")
     if r.get("publicationGate") != "passed" or r.get("evidenceReview") != "passed" or r.get("publicationBlockers") != [] or r.get("dataStatus") not in ("live", "partial"):
@@ -451,8 +502,65 @@ def prepare_research(project_root=PROJECT_ROOT, now=None):
         fresh = read_artifact(project_root, relative, limit)
         if fresh["fingerprint"] != prior["fingerprint"] or fresh["sha256"] != prior["sha256"]:
             hold("artifact_changed")
-    return {"status": "ready", "target_date": target, "as_of": as_of, "payload": payload,
+    return {"status": "ready", "kind": "research", "target_date": target, "as_of": as_of, "payload": payload,
             "proof": proof, "completed_at": re_}
+
+
+def prepare_calendar_skip(project_root, now, occurrence, run):
+    """Prove the current day's calendar skip from the claimed, hash-bound run.
+
+    This sends a separate signed no-research contract, never a fake report or
+    a prior-day research payload. Missing/invalid calendar material must hold.
+    """
+    target = now.astimezone(SHANGHAI).date().isoformat()
+    o, r = occurrence["value"], run["value"]
+    if (o.get("targetDate") != target or r.get("targetDate") != target
+            or o.get("status") != "skipped" or r.get("status") != "skipped"
+            or r.get("phase") != "collect" or r.get("tradingStatus") != "non_trading_day"
+            or r.get("publicationGate") != "not_applicable"
+            or not re.fullmatch(r"[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}", str(o.get("invocationId", "")))
+            or r.get("frozenCutoffInstant") != o.get("startedAt")):
+        hold("calendar_skip_run_invalid")
+    context_file = r.get("contextFile")
+    if (not isinstance(context_file, str) or not re.fullmatch(r"work/[A-Za-z0-9._/-]+\.json", context_file)
+            or ".." in context_file):
+        hold("calendar_skip_context_invalid")
+    context = read_json(project_root, context_file, 4 * 1024 * 1024)
+    if context["sha256"] != r.get("contextSha256"):
+        hold("calendar_skip_context_invalid")
+    data = context["value"].get("data")
+    calendar = data.get("tradingCalendar") if isinstance(data, dict) else None
+    if (not isinstance(calendar, dict) or calendar.get("targetDate") != target
+            or calendar.get("status") != "non_trading_day"
+            or not isinstance(calendar.get("sourceIds"), list)
+            or CALENDAR_SOURCE_ID not in calendar["sourceIds"]):
+        hold("calendar_skip_proof_invalid")
+    previous, following = calendar.get("previousTradingDate"), calendar.get("nextTradingDate")
+    if not checked_date(previous) < checked_date(target) < checked_date(following):
+        hold("calendar_skip_coverage_invalid")
+    observed = parse_instant(calendar.get("dataAsOf"))
+    if (observed.astimezone(SHANGHAI).date().isoformat() != target
+            or observed > parse_instant(r.get("completedAt"))):
+        hold("calendar_skip_time_invalid")
+    normalized_calendar = {"source_id": CALENDAR_SOURCE_ID, "target_date": target,
+                           "status": "non_trading_day", "previous_trading_date": previous,
+                           "next_trading_date": following, "data_as_of": calendar["dataAsOf"]}
+    proof = {"occurrence_sha256": occurrence["sha256"], "last_run_sha256": run["sha256"],
+             "context_sha256": context["sha256"], "calendar_sha256": sha256(encode_payload(normalized_calendar))}
+    skip = {"version": 1, "status": "not_scheduled", "reason": "non_trading_day",
+            "market": "XSHG", "target_date": target, "validated_at": o["completedAt"],
+            "calendar": normalized_calendar, "proof": proof}
+    payload = {"source": "nng8", "signal_type": "research_skip", "target_date": target,
+               "as_of": target, "produced_at": o["completedAt"], "research_skip": skip}
+    for relative, prior, limit in [
+            (f"work/orchestrator/states/morning-report-{target}.json", occurrence, 65536),
+            ("work/last-run.json", run, 65536), (context_file, context, 4 * 1024 * 1024)]:
+        fresh = read_artifact(project_root, relative, limit)
+        if fresh["fingerprint"] != prior["fingerprint"] or fresh["sha256"] != prior["sha256"]:
+            hold("artifact_changed")
+    return {"status": "ready", "kind": "skip", "target_date": target, "as_of": target,
+            "payload": payload, "proof": {**proof, "skip_sha256": sha256(encode_payload(skip))},
+            "completed_at": parse_instant(o["completedAt"])}
 
 
 def build_payload(project_root=PROJECT_ROOT, now=None):
@@ -769,11 +877,11 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
     try:
         now = observation_time(now)
         prepared = prepare_research(project_root, now)
-        if prepared["status"] == "skipped":
-            return {"status": "skipped", "reason": "non_trading_day", "sent": 0, "would_send": False}
+        kind = prepared.get("kind", "research")
+        identity_key = "skip_sha256" if kind == "skip" else "report_sha256"
         public = {"target_date": prepared["target_date"], "as_of": prepared["as_of"],
-                  "report_sha256": prepared["proof"]["report_sha256"],
-                  "data_status": prepared["payload"]["research_contract"]["data_status"]}
+                  identity_key: prepared["proof"][identity_key], "payload_kind": kind,
+                  "data_status": "not_scheduled" if kind == "skip" else prepared["payload"]["research_contract"]["data_status"]}
         within_window = send_window(now, prepared)
         if dry_run:
             # Deliberately before any post config, state/lock or sender access.
@@ -799,7 +907,9 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
             if existing is not None:
                 if existing.get("version") != 1 or existing.get("target_date") != target or existing.get("status") not in ("sending", "ambiguous", "confirmed", "accepted", "failed", "not_sent", "rejected"):
                     hold("delivery_state_invalid")
-                if existing.get("report_sha256") != prepared["proof"]["report_sha256"]:
+                if existing.get("payload_kind", "research") != kind:
+                    hold("same_day_contract_kind_changed")
+                if existing.get(identity_key) != prepared["proof"][identity_key]:
                     hold("same_day_report_changed")
                 if existing["status"] == "confirmed":
                     return {"status": "already_confirmed", **public, "sent": 0, "confirmed": True}
@@ -815,6 +925,7 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
                     if probed.get("status") == "confirmed":
                         upgraded = dict(existing, status="confirmed", reason="confirmed_via_read_only_query",
                                         confirmed_via="read_only_query",
+                                        receiver_storage="receiver_reported_stored",
                                         receiver_content_sha256=probed.get("receiver_content_sha256"),
                                         content_match=True)
                         if probed.get("receiver_record_id"):
@@ -855,7 +966,7 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
             if not send_window(send_now, fresh):
                 hold("outside_send_window")
             record = {"version": 1, "target_date": target, "as_of": prepared["as_of"],
-                      "report_sha256": prepared["proof"]["report_sha256"],
+                      "payload_kind": kind, identity_key: prepared["proof"][identity_key],
                       "last_run_sha256": prepared["proof"]["last_run_sha256"],
                       "status": "sending", "attempted_at": send_now.isoformat()}
             _write_state(directory, target, record)

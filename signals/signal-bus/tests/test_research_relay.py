@@ -470,7 +470,9 @@ class RelayTests(unittest.TestCase):
         self.report = self.report.replace("- [推断] 情景：这个块不应替代摘要。\n  支持证据：[来源 1]\n  反证：[来源 2]\n", "")
         self.write_fixture()
         summary = relay.build_payload(self.root, NOW)["research_summary"]
-        self.assertEqual(summary["counter_evidence"], ["反证：未提供结构化反证来源，不升级为事实结论。"])
+        self.assertEqual(summary["counter_evidence"], [])
+        self.assertEqual(summary["analysis_contract"]["counter_evidence_status"], "explicitly_missing")
+        self.assertEqual(summary["analysis_contract"]["inference_limit"], relay.LEGACY_RISK_LIMIT)
         self.assertIn("不是已核验反证", "\n".join(summary["limitations"]))
 
     def test_placeholder_cannot_bypass_missing_counter_on_summary(self):

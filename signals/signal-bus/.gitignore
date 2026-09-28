@@ -21,6 +21,9 @@ tests/*
 !tests/reference_receiver.py
 !tests/test_research_chain_alert.py
 !tests/test_alert_wiring.py
+!tests/test_research_protocol_v2.py
+!tests/test_calendar_skip_relay.py
+!tests/test_alert_protocol_v2.py
 !systemd/
 systemd/*
 !systemd/nng8-research-digest.service
@@ -39,3 +42,4 @@ systemd/astock-research-seal.service.d/*
 !systemd/research-chain-alert-post.service
 !docs/
 !docs/RESEARCH_CHAIN_ALERT_WIRING.md
+!docs/RESEARCH_PROTOCOL_V2.md

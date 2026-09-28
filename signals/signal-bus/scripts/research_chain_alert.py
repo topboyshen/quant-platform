@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -52,6 +53,7 @@ IN_FLIGHT_SECONDS = 300
 MAX_ATTEMPTS = 2
 
 BENIGN_REASONS = {"delivery_busy", "already_confirmed"}
+HASH_RE = re.compile(r"[a-f0-9]{64}\Z")
 
 
 class Sender:
@@ -231,35 +233,63 @@ def collect(root: Path = ROOT, bus: Path = BUS, date: str = "", now: datetime | 
                 capture_output=True, text=True, timeout=20, check=False).stdout
         except (OSError, subprocess.SubprocessError):
             relay_log = ""
+    calendar_skip = None
+    if occurrence and occurrence.get("status") == "skipped":
+        # Reuse the relay's full current-day proof, not status=skipped alone.
+        try:
+            spec = importlib.util.spec_from_file_location("research_relay_alert_readonly",
+                                                         Path(__file__).with_name("research_relay.py"))
+            relay = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(relay)
+            prepared = relay.prepare_research(root, now)
+            if prepared.get("kind") == "skip" and prepared.get("target_date") == date:
+                calendar_skip = prepared
+        except Exception:
+            calendar_skip = None
     return {"date": date, "now": now, "occurrence": occurrence, "last_run": last_run,
             "report_exists": report.is_file() and not report.is_symlink(),
             "report_sha256": report_sha, "seal": seal, "seal_mtime": seal_mtime,
-            "draft": draft, "delivery": delivery, "relay_runs": parse_relay_runs(relay_log)}
+            "draft": draft, "delivery": delivery, "relay_runs": parse_relay_runs(relay_log),
+            "calendar_skip": calendar_skip}
 
 
 def delivery_evidence(facts: dict) -> tuple[str, str, dict]:
-    """Delivery state from the receipt only, bound to date and report hash."""
+    """Delivery state bound to date, research/skip identity and stored content."""
     record, date = facts["delivery"], facts["date"]
     if not isinstance(record, dict):
         return "unconfirmed", "尚未确认（无投递回执）", {}
-    if not facts.get("report_sha256"):
+    skip = facts.get("calendar_skip")
+    identity_label = "休市证明" if skip else "报告"
+    identity_key = "skip_sha256" if skip else "report_sha256"
+    identity = skip.get("proof", {}).get(identity_key) if skip else facts.get("report_sha256")
+    if not identity:
         return "unverified", "未核验（当前报告哈希不可用，不能确认投递对应本日研究）", {}
     status = str(record.get("status", ""))
     reason = str(record.get("reason", ""))
     bound = (record.get("target_date") == date
-             and (not facts["report_sha256"] or record.get("report_sha256") == facts["report_sha256"]))
+             and record.get("payload_kind", "research") == ("skip" if skip else "research")
+             and record.get(identity_key) == identity)
     evidence = {"status": status, "reason": reason,
-                "report_sha256": record.get("report_sha256"),
+                "payload_kind": "skip" if skip else "research", identity_key: record.get(identity_key),
                 "receiver_storage": record.get("receiver_storage"),
                 "receiver_content_sha256": record.get("receiver_content_sha256"),
                 "record_id": record.get("receiver_record_id")}
+    payload_hash, receiver_hash = record.get("payload_sha256"), record.get("receiver_content_sha256")
+    storage_verified = (record.get("receiver_storage") == "receiver_reported_stored"
+                        or (record.get("confirmed_via") == "read_only_query"
+                            and record.get("receiver_storage") != "receiver_reported_not_stored"))
+    content_verified = (isinstance(payload_hash, str) and HASH_RE.fullmatch(payload_hash)
+                        and isinstance(receiver_hash, str) and HASH_RE.fullmatch(receiver_hash)
+                        and payload_hash == receiver_hash and record.get("content_match") is True)
+    if status == "confirmed" and bound and storage_verified and content_verified:
+        return "confirmed", f"已确认（reason={reason or 'accepted'}，日期与{identity_label}哈希匹配，接收端已保存且正文一致）", evidence
     if status == "confirmed" and bound:
-        return "confirmed", f"已确认（reason={reason or 'accepted'}，日期与报告哈希匹配）", evidence
+        return "unverified", "未核验（旧确认记录缺少接收端存储或正文一致性证据），不自动重发", evidence
     if status == "confirmed" and not bound:
-        return "uncertain", "结果不确定（回执日期或报告哈希与当前研究不一致）", evidence
-    if status in ("rejected", "not_sent") and bound:
+        return "uncertain", f"结果不确定（回执日期或{identity_label}哈希与当前合同不一致）", evidence
+    if status in ("rejected", "not_sent", "failed") and bound:
         return "failed", f"明确失败（reason={reason or 'unknown'}）", evidence
-    if status in ("sending", "ambiguous"):
+    if status in ("sending", "ambiguous", "accepted"):
         return "uncertain", f"结果不确定（status={status}，reason={reason or 'unknown'}），不盲目重发", evidence
     return "uncertain", f"结果不确定（status={status or 'unknown'}）", evidence
 
@@ -277,8 +307,9 @@ def classify(facts: dict) -> list[dict]:
             causes.append({"code": code, "detail": detail})
 
     occurrence, last_run = facts["occurrence"], facts["last_run"]
-    if isinstance(occurrence, dict) and occurrence.get("status") == "skipped":
-        return []                       # explicit non-trading day
+    calendar_skip = bool(facts.get("calendar_skip"))
+    if isinstance(occurrence, dict) and occurrence.get("status") == "skipped" and not calendar_skip:
+        add("calendar_skip_invalid", "跳过记录缺少当日哈希绑定的有效交易日历证明，不能认定今日无计划研究。")
     if isinstance(occurrence, dict) and (occurrence.get("status") == "failed"
                                          or occurrence.get("childExitCode") not in (0, None)):
         add("generation_failed", "研究生成任务失败（occurrence status=failed 或 childExitCode≠0），研究未产出。")
@@ -287,7 +318,7 @@ def classify(facts: dict) -> list[dict]:
     elif not isinstance(occurrence, dict) and now >= deadline and now.weekday() < 5:
         add("generation_not_run", "截止前没有该日的 occurrence 记录；不据此断言当天必然缺报。")
 
-    if facts["report_exists"] and isinstance(last_run, dict) and last_run.get("status") == "success" \
+    if not calendar_skip and facts["report_exists"] and isinstance(last_run, dict) and last_run.get("status") == "success" \
             and not valid_seal(facts["seal"], facts["report_sha256"], facts["date"]):
         add("seal_failed", "正式报告存在且 last-run 成功，但没有与该报告哈希绑定的有效研究密封"
                            "（以研究密封为准，不用 XHS 草稿判断）。")
@@ -296,7 +327,7 @@ def classify(facts: dict) -> list[dict]:
                                 "不追发当日日报，也不抹掉当日已缺报的事实。")
 
     draft = facts["draft"]
-    if isinstance(draft, dict) and str(draft.get("status", "")) not in ("", "draft_ready"):
+    if not calendar_skip and isinstance(draft, dict) and str(draft.get("status", "")) not in ("", "draft_ready"):
         add("draft_failed", f"XHS 草稿状态={draft.get('status')}，原因码={draft.get('reasonCodes') or ['未提供']}；"
                             "仅描述草稿环节，不能据此断言研究未投递。")
 
@@ -306,25 +337,33 @@ def classify(facts: dict) -> list[dict]:
     real_runs = [] if in_flight else [run for run in facts["relay_runs"] if run.get("status")]
     scheduled_gap = now < now.replace(hour=RELAY_FIRST_RUN[0], minute=RELAY_FIRST_RUN[1],
                                       second=0, microsecond=0)
-    for run in real_runs:
+    # If the current receipt proves success, historic research errors are not
+    # current causes. A draft failure remains independently classified above.
+    relay_ok, _ = _success_evidence(facts)
+    for run in ([] if relay_ok else real_runs):
         reason = str(run.get("reason") or "")
-        if run["status"] in ("held", "rejected", "not_sent") and reason not in BENIGN_REASONS:
+        if run["status"] in ("held", "rejected", "not_sent", "failed", "already_failed") and reason not in BENIGN_REASONS:
             add("relay_blocked", f"relay 结果 status={run['status']} reason={reason or 'unparseable_output'}；"
                                  f"投递状态：{wording}。")
-    if isinstance(facts["delivery"], dict):
+        elif run["status"] in ("ambiguous", "accepted", "already_accepted", "unknown"):
+            add("relay_unconfirmed", f"relay 结果未确认：status={run['status']} reason={reason or 'unknown'}；{wording}。")
+    if not relay_ok and isinstance(facts["delivery"], dict):
         reason = str(facts["delivery"].get("reason", ""))
         status = str(facts["delivery"].get("status", ""))
-        if status in ("held", "rejected", "not_sent") and reason not in BENIGN_REASONS \
+        if status in ("held", "rejected", "not_sent", "failed") and reason not in BENIGN_REASONS \
                 and not any(item["code"] == "relay_blocked" for item in causes):
             add("relay_blocked", f"relay 状态文件 status={status} reason={reason or 'unknown'}；投递状态：{wording}。")
+        elif status in ("ambiguous", "accepted"):
+            add("relay_unconfirmed", f"relay 状态文件 status={status} reason={reason or 'unknown'}；投递状态：{wording}。")
 
     latest = facts["relay_runs"][-1] if facts["relay_runs"] else None
     in_flight = bool(latest and latest.get("status") is None and latest.get("started")
                      and timedelta(0) <= (now - latest["started"]) <= timedelta(seconds=IN_FLIGHT_SECONDS))
     ok, success_evidence = _success_evidence(facts)
     if not causes and not ok and now >= deadline and now < window_end and not in_flight and not scheduled_gap:
-        add("predeadline_not_ready", "距离日报窗口结束仅剩几分钟，研究尚未确认就绪；"
-                                     "不提前断言当天必然缺报。")
+        add("predeadline_not_ready", ("距离日报窗口结束仅剩几分钟，休市证明尚未确认送达；" if calendar_skip else
+                                      "距离日报窗口结束仅剩几分钟，研究尚未确认就绪；")
+                                     + "不提前断言当天必然缺报。")
     if not causes and not ok and now >= window_end and now.weekday() < 5:
         add("delivery_unconfirmed", f"窗口结束后仍无确认证据；投递状态：{wording}。")
 
@@ -339,8 +378,9 @@ def _success_evidence(facts: dict) -> tuple[bool, dict]:
     """Recovery requires a hash-bound seal and a matching confirmed receipt."""
     state, _, evidence = delivery_evidence(facts)
     seal_ok = valid_seal(facts["seal"], facts["report_sha256"], facts["date"])
-    ok = bool(state == "confirmed" and seal_ok)
-    return ok, {"seal_bound": seal_ok, "delivery_state": state, "receipt": evidence}
+    calendar_ok = bool(facts.get("calendar_skip"))
+    ok = bool(state == "confirmed" and (seal_ok or calendar_ok))
+    return ok, {"seal_bound": seal_ok, "calendar_bound": calendar_ok, "delivery_state": state, "receipt": evidence}
 
 
 # --------------------------------------------------------------------- state
@@ -462,14 +502,18 @@ def process(incidents: list[dict], state_dir: Path, now: datetime, *, date: str,
         research_success = bool(success and not any(cause["code"] == "draft_failed"
                                                     for cause in item["causes"]))
         if research_success:              # only research causes are cleared by success
-            if incident and incident.get("notified_at"):
+            if incident is not None:
                 incident["resolved_at"] = now.isoformat()
+                incident["resolution"] = success_evidence or {}
                 state["history"] = state.get("history", []) + [incident]
                 state["incident"] = None
                 state["notified_once"] = True
                 summary["recovered"] += 1
                 _append_log(state_dir, {"at": now.isoformat(), "event": "recovered",
-                                        "key": incident.get("key"), "evidence": success_evidence or {}})
+                                        "key": incident.get("key"),
+                                        "was_notified": bool(incident.get("notified_at")),
+                                        "causes": [cause["code"] for cause in incident.get("causes", [])],
+                                        "evidence": success_evidence or {}})
             _save_state(path, state)
             return summary
 
@@ -543,6 +587,8 @@ def main(argv=None) -> int:
     parser.add_argument("--now")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--relay-status", choices=("held", "rejected", "not_sent", "failed", "already_failed",
+                                                   "ambiguous", "accepted", "already_accepted", "unknown"))
     parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
     args = parser.parse_args(argv)
     now = datetime.fromisoformat(args.now).astimezone(TZ) if args.now else datetime.now(TZ)
@@ -569,6 +615,12 @@ def main(argv=None) -> int:
             return 3
         return 0 if summary["notified"] == 1 else 1
     facts = collect(date=date, now=now)
+    if args.relay_status and args.phase == "post":
+        # The wrapper has the completed result before journald necessarily
+        # exposes it. Carry only its bounded status; never accept body/secrets.
+        runs = facts["relay_runs"]
+        if not runs or runs[-1].get("status") != args.relay_status:
+            runs.append({"started": None, "status": args.relay_status, "reason": None})
     incidents = classify(facts)
     if args.phase == "generation" and not incidents:
         incidents = [{"key": f"{date}:research_chain", "date": date,

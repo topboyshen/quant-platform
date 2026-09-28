@@ -18,6 +18,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -25,9 +26,10 @@ import socket
 
 DAY = "2026-09-09"
 NOW = dt.datetime(2026, 9, 9, 0, 5, tzinfo=dt.timezone.utc)
-ASTOCK = Path("/home/ubuntu/AStock_AI_System")
-NODE = "/usr/local/bin/node"
 BUS = Path(__file__).resolve().parents[1]
+SIBLING = BUS.parent / "astock"
+ASTOCK = Path(os.environ.get("ASTOCK_TEST_ROOT", str(SIBLING if SIBLING.is_dir() else "/home/ubuntu/AStock_AI_System")))
+NODE = os.environ.get("NODE", shutil.which("node") or "/usr/local/bin/node")
 BUILDER = BUS / "scripts" / "build_cninfo_seal_fixture.mjs"
 
 MODULE = BUS / "scripts" / "research_relay.py"
@@ -80,7 +82,7 @@ class CninfoSealRelayChainTests(unittest.TestCase):
             cwd=str(ASTOCK),
             capture_output=True,
             text=True,
-            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "ASTOCK_TEST_ROOT": str(ASTOCK)},
             check=False,
         )
         if proc.returncode != 0:

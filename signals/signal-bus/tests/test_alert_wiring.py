@@ -45,6 +45,7 @@ class UnitFileTests(unittest.TestCase):
                 self.assertIn(env_line, text)
         self.assertNotIn("%i", pre)
         self.assertNotIn("Environment=RESEARCH_CHAIN_TELEGRAM_CHAT=", pre)
+        self.assertIn("TimeoutStartSec=120s", digest)  # POST + journal + Hermes alert budget
 
     def test_seal_and_draft_onfailure_reset_the_old_alert(self):
         for rel in ("astock-research-seal.service.d/failure-alert.conf",
@@ -115,7 +116,7 @@ class WrapperIntegrationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertTrue(self.marker.is_file(), result.stdout)
         payload = json.loads(self.marker.read_text(encoding="utf-8"))
-        self.assertEqual(payload["argv"], ["--phase", "post", "--json"])
+        self.assertEqual(payload["argv"], ["--phase", "post", "--relay-status", "held", "--json"])
         self.assertTrue(payload["chat_configured"])
         self.assertTrue(payload["chat_matches"])
 
@@ -124,7 +125,7 @@ class WrapperIntegrationTests(unittest.TestCase):
                                   FAKE_RELAY_REASON="", FAKE_RELAY_RC="0")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.marker.exists())
-        self.assertIn("research_relay confirmed", result.stdout)
+        self.assertIn("research_relay confirmed_or_not_scheduled", result.stdout)
 
     def test_benign_hold_does_not_alert_and_keeps_zero(self):
         result = self.run_wrapper(FAKE_RELAY_STATUS="held", FAKE_RELAY_SENT="0",

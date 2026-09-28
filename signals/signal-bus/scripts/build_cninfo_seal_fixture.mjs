@@ -6,7 +6,9 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { buildXhsDraft } from "/home/ubuntu/AStock_AI_System/src/xhs-draft.mjs";
+import { pathToFileURL } from "node:url";
+const projectRoot = process.env.ASTOCK_TEST_ROOT || "/home/ubuntu/AStock_AI_System";
+const { buildXhsDraft } = await import(pathToFileURL(path.join(projectRoot, "src/xhs-draft.mjs")));
 
 function argValue(flag) {
   const i = process.argv.indexOf(flag);

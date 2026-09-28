@@ -25,7 +25,10 @@ rc=$?
 set -e
 printf '%s\n' "$out"
 
-mapfile -t fields < <("$PYTHON" -c 'import json,sys
+fields=()
+while IFS= read -r field; do
+  fields+=("$field")
+done < <("$PYTHON" -c 'import json,sys
 try:
   d=json.loads(sys.argv[1])
 except Exception:
@@ -39,17 +42,30 @@ r_status="${fields[0]:-}"
 r_sent="${fields[1]:-}"
 r_reason="${fields[2]:-}"
 
-if [[ "$r_status" == "held" && "$r_sent" == "0" ]]; then
-  case "$r_reason" in
-    outside_send_window|already_confirmed|delivery_busy)
-      echo "research_relay benign=$r_reason; no alert needed"
-      ;;
-    *)
-      echo "research_relay held=$r_reason; triggering unified alert"
-      "$PYTHON" -B "$ALERT" --phase post --json || true
-      ;;
-  esac
-elif [[ "$r_status" == "confirmed" ]]; then
-  echo "research_relay confirmed; no alert needed"
-fi
+case "$r_status" in
+  confirmed|already_confirmed|confirmed_from_query|skipped)
+    echo "research_relay confirmed_or_not_scheduled; no alert needed"
+    ;;
+  held)
+    case "$r_reason" in
+      outside_send_window|already_confirmed|delivery_busy)
+        echo "research_relay benign=$r_reason; no alert needed"
+        ;;
+      *)
+        echo "research_relay held=$r_reason; triggering unified alert"
+        "$PYTHON" -B "$ALERT" --phase post --relay-status held --json || true
+        ;;
+    esac
+    ;;
+  *)
+    # Failures, uncertain HTTP acceptance, or malformed output all need the
+    # same evidence-aware classifier. It owns deduplication, never POST retries.
+    echo "research_relay unresolved_result; triggering unified alert"
+    case "$r_status" in
+      rejected|not_sent|failed|already_failed|ambiguous|accepted|already_accepted) alert_status="$r_status" ;;
+      *) alert_status="unknown" ;;
+    esac
+    "$PYTHON" -B "$ALERT" --phase post --relay-status "$alert_status" --json || true
+    ;;
+esac
 exit "$rc"

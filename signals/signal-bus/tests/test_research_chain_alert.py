@@ -51,6 +51,7 @@ def seal(report_sha=REPORT_SHA, **over):
 def receipt(status="confirmed", **over):
     value = {"status": status, "reason": "accepted", "target_date": DATE, "report_sha256": REPORT_SHA,
              "receiver_storage": "receiver_reported_stored", "receiver_content_sha256": "c" * 64,
+             "payload_sha256": "c" * 64, "content_match": True,
              "receiver_record_id": "rr_test"}
     value.update(over)
     return value
