@@ -12,6 +12,7 @@ import json
 import math
 import numbers
 import os
+import re
 import sqlite3
 import stat
 import sys
@@ -58,6 +59,84 @@ SNAPSHOT_DEFERRED_EXIT = 69
 QLIB_MIN_ELIGIBLE = 5000
 QLIB_MIN_COVERAGE = 0.995  # 容忍每日正常停牌（~28只），大规模数据缺失仍告警
 SQLITE_TIMEOUT = 30
+_RUN_PROGRESS = {}
+
+
+def _supervised_run_id():
+    value = os.environ.get("RESEARCH_DATA_SUPERVISED_RUN_ID")
+    if value is None:
+        return None
+    if re.fullmatch(r"[0-9a-f]{32}", value) is None:
+        raise SnapshotUsageError("supervised run ID is invalid")
+    return value
+
+def _await_supervisor_gate():
+    """Do not begin any source work until the watchdog acknowledges the PGID."""
+    if _supervised_run_id() is None:
+        return
+    fd_text = os.environ.pop("RESEARCH_DATA_SUPERVISOR_GATE_FD", None)
+    parent_text = os.environ.get("RESEARCH_DATA_SUPERVISOR_PID")
+    if fd_text is None or parent_text is None:
+        raise SnapshotUsageError("supervisor start gate is missing")
+    try:
+        gate_fd = int(fd_text)
+        expected_parent = int(parent_text)
+        released = os.read(gate_fd, 1)
+    except (OSError, ValueError) as exc:
+        raise SnapshotTemporaryError("supervisor start gate unavailable") from exc
+    finally:
+        try:
+            os.close(gate_fd)
+        except (OSError, UnboundLocalError):
+            pass
+    if released != b"G" or os.getppid() != expected_parent:
+        raise SnapshotTemporaryError("supervisor exited before worker release")
+
+def _supervised_soft_deadline(phase):
+    value = os.environ.get("RESEARCH_DATA_SOFT_DEADLINE_EPOCH")
+    if value is None:
+        return
+    try:
+        deadline = float(value)
+    except ValueError as exc:
+        raise SnapshotUsageError("supervised deadline is invalid") from exc
+    if time.time() >= deadline:
+        raise SnapshotTemporaryError(f"safe snapshot window ended before {phase}")
+
+def write_run_checkpoint(run_id, **fields):
+    """The worker records only its own progress; the supervisor owns last-run."""
+    if _supervised_run_id() is None:
+        return
+    if run_id != _supervised_run_id():
+        raise SnapshotUsageError("supervised run ID differs from worker")
+    _RUN_PROGRESS.update(fields)
+    _RUN_PROGRESS.update({"runId": run_id, "status": "running"})
+    state_dir = STATE_DIR
+    os.makedirs(os.path.join(state_dir, "runs"), mode=0o700, exist_ok=True)
+    path = os.path.join(state_dir, "runs", f"{run_id}.json")
+    _atomic_run_json(path, _RUN_PROGRESS)
+
+def _atomic_run_json(path, record):
+    temporary_path = f"{path}.{os.getpid()}.tmp"
+    payload = _snapshot_payload(record) + "\n"
+    with open(temporary_path, "w", encoding="utf-8") as state_file:
+        state_file.write(payload)
+        state_file.flush()
+        os.fsync(state_file.fileno())
+    os.replace(temporary_path, path)
+
+def _verify_supervisor_lock():
+    descriptor = os.environ.get("RESEARCH_DATA_SUPERVISOR_LOCK_FD")
+    if descriptor is None:
+        raise SnapshotUsageError("supervised snapshot lock descriptor missing")
+    try:
+        fd = int(descriptor)
+        inherited = os.fstat(fd)
+        lock = os.stat(os.path.join(STATE_DIR, "snapshot.lock"))
+    except (ValueError, OSError) as exc:
+        raise SnapshotUsageError("supervised snapshot lock invalid") from exc
+    if (inherited.st_dev, inherited.st_ino) != (lock.st_dev, lock.st_ino):
+        raise SnapshotUsageError("supervised snapshot lock mismatch")
 
 
 class QlibDateError(ValueError):
@@ -145,14 +224,15 @@ def _strict_json(raw):
 def write_last_run(record, state_dir=None):
     state_dir = state_dir or STATE_DIR
     os.makedirs(state_dir, exist_ok=True)
-    path = os.path.join(state_dir, "last-run.json")
-    temporary_path = f"{path}.{os.getpid()}.tmp"
-    payload = _snapshot_payload(record) + "\n"
-    with open(temporary_path, "w", encoding="utf-8") as state_file:
-        state_file.write(payload)
-        state_file.flush()
-        os.fsync(state_file.fileno())
-    os.replace(temporary_path, path)
+    supervised = _supervised_run_id()
+    if supervised is None:
+        path = os.path.join(state_dir, "last-run.json")
+    else:
+        if record.get("runId") != supervised:
+            raise SnapshotUsageError("supervised final record has wrong run ID")
+        os.makedirs(os.path.join(state_dir, "runs"), mode=0o700, exist_ok=True)
+        path = os.path.join(state_dir, "runs", f"{supervised}.json")
+    _atomic_run_json(path, record)
 
 
 def emit_status(record, stream=None):
@@ -244,6 +324,14 @@ def existing_snapshot(date, db_path=None):
 
 def store_snapshot(snapshot, db_path=None):
     """Persist one immutable snapshot, allowing only an exact-payload retry."""
+    _supervised_soft_deadline("SQLite snapshot transaction")
+    if _supervised_run_id() is not None:
+        # Only the live invocation can write. Existing historical records are
+        # readable but cannot be recreated or relabelled by today's collector.
+        today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date().isoformat()
+        if snapshot.get("date") != today:
+            raise SnapshotValidationError("historical_snapshot_write_forbidden")
+        write_run_checkpoint(_supervised_run_id(), activePhase="sqlite_transaction")
     db_path = db_path or DB
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     payload = _snapshot_payload(snapshot)
@@ -321,17 +409,57 @@ def json_scalar(value, allow_nan_as_null=False):
     return value
 
 
-def collect_source(func, *args, attempts=2, **kwargs):
+def collect_source(func, *args, attempts=2, _allow_error_payload=False, **kwargs):
     """Retry read-only source collection on exceptions or explicit error payloads."""
     last_error = None
+    supervised_failures = []
     for attempt in range(1, attempts + 1):
         try:
+            _supervised_soft_deadline("source collection")
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-                result = func(*args, **kwargs)
+                if _supervised_run_id() is not None:
+                    from bounded_source import call, CollectionBoundaryError, CollectionFailure
+                    source_name = getattr(func, "__name__", "source")
+                    provider = "akshare" if source_name in {"collect_market_attempt", "akshare_market"} else "source_collection"
+                    write_run_checkpoint(_supervised_run_id(), activeSource=source_name,
+                                         sourceAttempt=attempt, activeEndpoint=None)
+                    budget = min(75, float(os.environ["RESEARCH_DATA_SOFT_DEADLINE_EPOCH"]) - time.time())
+                    try:
+                        result = call(func, args, kwargs, timeout=budget, state_dir=STATE_DIR)
+                    except CollectionBoundaryError as exc:
+                        failure = SnapshotTemporaryError(str(exc))
+                        detail = {"attempt": attempt, "errorType": "TimeoutError" if str(exc) in {
+                            "collector_budget_exhausted", "collector_deadline_exceeded", "collector_budget_exceeded"
+                        } else "RuntimeError"}
+                        try:
+                            with open(os.path.join(STATE_DIR, "runs", _supervised_run_id() + ".json"), encoding="utf-8") as progress_file:
+                                progress = _strict_json(progress_file.read())
+                            if (provider == "akshare" and progress.get("runId") == _supervised_run_id()
+                                    and progress.get("activeSource") == source_name and progress.get("activeEndpoint") in {
+                                    "stock_board_industry_summary_ths", "stock_market_activity_legu"}):
+                                detail["endpoint"] = progress["activeEndpoint"]
+                        except (OSError, ValueError, TypeError, AttributeError):
+                            pass  # Unknown endpoint stays unknown; never infer from call order.
+                        supervised_failures.append(detail)
+                        failure.source_failure = {"provider": provider, "attemptCount": attempt,
+                                                  "attempts": supervised_failures}
+                        raise failure from None
+                    except CollectionFailure as exc:
+                        details = {"attempt": attempt, "errorType": exc.error_type}
+                        if exc.endpoint is not None:
+                            details["endpoint"] = exc.endpoint
+                        supervised_failures.append(details)
+                        exc.source_failure = {"provider": provider, "attemptCount": attempt,
+                                              "attempts": list(supervised_failures)}
+                        raise
+                else:
+                    result = func(*args, **kwargs)
             errors = source_error_paths(result)
-            if errors:
+            if errors and not _allow_error_payload:
                 raise RuntimeError(f"error payloads: {', '.join(errors[:5])}")
             return result
+        except SnapshotTemporaryError:
+            raise
         except Exception as exc:
             last_error = exc
             if attempt < attempts:
@@ -601,7 +729,12 @@ def load_akshare_market_stage(trade_date, stage_dir=None):
 def seal_akshare_market_stage(
     akshare_payload, collection_started_at, collection_completed_at, stage_dir=None
 ):
+    _supervised_soft_deadline("AkShare stage seal")
     trade_date = validate_akshare_market_payload(akshare_payload)
+    if _supervised_run_id() is not None:
+        today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date().isoformat()
+        if trade_date != today:
+            raise SnapshotDeferredError("historical_stage_write_forbidden", target=today)
     started_at = _validate_iso_timestamp(collection_started_at, "startedAt")
     completed_at = _validate_iso_timestamp(collection_completed_at, "completedAt")
     if completed_at < started_at:
@@ -626,6 +759,11 @@ def seal_akshare_market_stage(
         "payloadSha256": payload_sha256,
     }
     document["recordSha256"] = _payload_sha256(_snapshot_payload(document))
+    if _supervised_run_id() is not None:
+        write_run_checkpoint(_supervised_run_id(), activePhase="stage_seal",
+                             stageCandidateTradeDate=trade_date,
+                             stageCandidatePayloadSha256=document["payloadSha256"],
+                             stageCandidateRecordSha256=document["recordSha256"])
     encoded = (_snapshot_payload(document) + "\n").encode("utf-8")
     if len(encoded) > AKSHARE_STAGE_MAX_BYTES:
         raise SnapshotValidationError("AkShare stage exceeds the size limit")
@@ -720,7 +858,7 @@ def capture_current_akshare_market(stage_dir=None):
     try:
         akshare_payload = collect_source(collect_market_attempt)
     except Exception as exc:
-        source_failure = {
+        source_failure = getattr(exc, "source_failure", None) or {
             "provider": "akshare",
             "attemptCount": attempt_count,
             "attempts": attempt_failures,
@@ -1003,6 +1141,7 @@ def qlib_market(date):
 def akshare_market():
     import akshare as ak
     try:
+        write_run_checkpoint(_supervised_run_id(), activeEndpoint="stock_board_industry_summary_ths")
         sectors = ak.stock_board_industry_summary_ths()
         sector_list = []
         for _, r in sectors.iterrows():
@@ -1017,12 +1156,14 @@ def akshare_market():
     except Exception as exc:
         raise AkshareMarketSourceError("stock_board_industry_summary_ths", exc) from None
     try:
+        write_run_checkpoint(_supervised_run_id(), activeEndpoint="stock_market_activity_legu")
         activity = ak.stock_market_activity_legu()
         act = {}
         for _, r in activity.iterrows():
             act[str(r["item"])] = json_scalar(r["value"])
     except Exception as exc:
         raise AkshareMarketSourceError("stock_market_activity_legu", exc) from None
+    write_run_checkpoint(_supervised_run_id(), activeEndpoint=None)
     return {"sectors": sector_list, "activity": act}
 
 
@@ -1341,11 +1482,15 @@ def global_markets():
     return result
 
 
-def run_snapshot(run_id, started_monotonic):
+def run_snapshot(run_id, started_monotonic, expected_day=None):
     date = requested_trade_date(sys.argv[1:])
     q = qlib_market(date)
     qlib_tag = (q.get("generation") or {}).get("tag")
+    if expected_day is not None and q["date"] != expected_day:
+        raise SnapshotDeferredError("qlib_not_current_for_expected_trading_day", target=expected_day, qlib_tag=qlib_tag)
     prior = existing_snapshot(q["date"])
+    write_run_checkpoint(run_id, target=q["date"], qlibTag=qlib_tag,
+                         preexistingRowSha256=prior["payloadSha256"] if prior else None)
     target_stage = None
     if prior is None:
         target_stage = load_akshare_market_stage(q["date"])
@@ -1373,6 +1518,10 @@ def run_snapshot(run_id, started_monotonic):
         }
 
     if prior is not None:
+        if current_stage is None:
+            raise SnapshotDeferredError("current_market_stage_unavailable_even_with_existing_snapshot",
+                                        target=q["date"], qlib_tag=qlib_tag,
+                                        source_failure=getattr(staging_error, "source_failure", None))
         captured_date = None
         if current_stage is not None:
             try:
@@ -1466,7 +1615,7 @@ def run_snapshot(run_id, started_monotonic):
         bv = collect_source(baostock_valuation, watch_codes, days=30)
     except Exception as e:
         bv = {"error": str(e)}
-    anns = collect_cninfo_announcements(watch_codes)
+    anns = collect_source(collect_cninfo_announcements, watch_codes, _allow_error_payload=True)
     try:
         news = collect_source(cls_telegraph, 20)
     except Exception as e:
@@ -1475,8 +1624,8 @@ def run_snapshot(run_id, started_monotonic):
         nb = collect_source(northbound_flow)
     except Exception as e:
         nb = {"error": str(e)}
-    concepts = collect_concepts(watch_codes)
-    insiders = collect_shareholders(watch_codes)
+    concepts = collect_source(collect_concepts, watch_codes, _allow_error_payload=True)
+    insiders = collect_source(collect_shareholders, watch_codes, _allow_error_payload=True)
     try:
         hot = collect_source(hot_stocks)
     except Exception as e:
@@ -1594,6 +1743,8 @@ def run_snapshot(run_id, started_monotonic):
         "hotStocks": hot,
         "globalMarkets": global_mkts,
     }
+    write_run_checkpoint(run_id, snapshotCandidateSha256=_payload_sha256(_snapshot_payload(snapshot)),
+                         snapshotCandidateTradeDate=q["date"])
     stored = store_snapshot(snapshot)
     status_record = {
         "runId": run_id,
@@ -1622,15 +1773,37 @@ def run_snapshot(run_id, started_monotonic):
     return 0
 
 
+def run_current_day(run_id, started_monotonic):
+    """Mandatory independent calendar gate for every live writer entry."""
+    requested_trade_date(sys.argv[1:])
+    from calendar_evidence import load_calendar_evidence
+    from core_contract import validate_calendar_evidence
+    now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
+    root = os.environ.get("RESEARCH_DATA_CORE_CALENDAR_PROJECT_ROOT", "/home/ubuntu/AStock_AI_System")
+    try:
+        evidence = load_calendar_evidence(root, now)
+        calendar = validate_calendar_evidence(evidence, now)
+    except (OSError, ValueError, TypeError, KeyError, SnapshotDeferredError):
+        raise SnapshotDeferredError("independent_expected_day_unavailable") from None
+    if calendar["status"] == "closed":
+        emit_status({"runId": run_id, "status": "skipped_non_trading", "target": calendar["previousTradingDate"],
+                     "calendarEvidence": evidence, "durationSeconds": round(time.monotonic() - started_monotonic, 3)})
+        return 0
+    return run_snapshot(run_id, started_monotonic, expected_day=calendar["targetDate"])
+
+
 def main(run_id=None, started_monotonic=None):
     run_id = run_id or uuid.uuid4().hex
     started_monotonic = started_monotonic or time.monotonic()
+    if _supervised_run_id() is not None:
+        _verify_supervisor_lock()
+        return run_current_day(run_id, started_monotonic)
     with snapshot_run_lock():
-        return run_snapshot(run_id, started_monotonic)
+        return run_current_day(run_id, started_monotonic)
 
 
 def emit_deferred_status(run_id, started_monotonic, error, stream=None):
-    """Persist the target only after Qlib established it for this run."""
+    """Persist only a target established by independent calendar or Qlib evidence."""
     record = {
         "runId": run_id,
         "status": "deferred",
@@ -1647,9 +1820,17 @@ def emit_deferred_status(run_id, started_monotonic, error, stream=None):
 
 
 if __name__ == "__main__":
-    _run_id = uuid.uuid4().hex
+    if _supervised_run_id() is None:
+        # All CLI invocations use the bounded entry. No opt-out flag is offered.
+        from snapshot_supervisor import run_supervised
+        _record, _code = run_supervised(worker_args=sys.argv[1:])
+        print(json.dumps(_record, ensure_ascii=False))
+        raise SystemExit(_code)
+    _run_id = _supervised_run_id()
     _started_monotonic = time.monotonic()
     try:
+        _await_supervisor_gate()
+        write_run_checkpoint(_run_id, timestamp=datetime.datetime.now().astimezone().isoformat())
         raise SystemExit(main(_run_id, _started_monotonic))
     except SnapshotUsageError as exc:
         emit_status({

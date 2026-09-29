@@ -11,26 +11,28 @@
 ```text
 22:00  独立 Qlib 更新任务
   ↓
-22:30  读取 Qlib 目标日与已有快照/封存
+22:30  有界监督入口 → 读取独立、当日已绑定的交易日历
   ↓
-       尝试封存当日 AkShare 市场截面
+       休市正常结束；交易日要求 Qlib 目标为当日
   ↓
-       用目标日的同日封存数据组装 daily_snapshot.py
+       full 合同：当日 AkShare 暂存与原完整性门禁
+       core 合同（须独立启用）：只读 Qlib 摘要，不称完整快照
   ↓
 snapshot.db（SQLite，本地 append-only 快照）
 ```
 
 - 22:00 的 Qlib 更新脚本位于 Qlib 部署目录，不属于本仓库。它检查上游 release、验证下载包，并以目录替换方式安装新一代数据。
-- 22:30 的任务先从本地 Qlib 确定最新完整交易日并检查已有快照/同日封存，再把 AkShare 市场活跃度和行业摘要按其自身统计日期封存为不可变暂存文件。
-- 目标日期尚无快照时，只能加载同交易日的 AkShare 封存文件，再采集其余带有明确 `observed_at` 语义的来源并尝试插入一行。Qlib 尚未追上当日数据时，暂存文件会留给后续自然运行使用。
-- 目标日期已有快照时仍会尝试封存当天 AkShare 数据，然后返回 `skipped_existing`。当天封存失败会记录在 `akshareStage` 和 `warnings`，但不会阻断已验证旧行的幂等结果。
+- 22:30 的任务先读取已有、当日、受身份/哈希约束的交易日历；没有可信日历则 deferred，不能仅按 Qlib 旧目标或星期推断今天无需运行。
+- 交易日 Qlib 目标必须等于当天；落后时先 deferred，不查旧行伪装成功，不采集今天数据组装过去日期。
+- full 合同在当日完整门禁下封存 AkShare 并追加；旧行存在不能把本次上游不可读变成正常跳过。休市在入口结束，不采集、不补历史行。
+- 两种 CLI 都经过单次监督者：调用预算、整件任务预算、同 runId 终态、锁、失败关闭；发生不可确认提交时只读检查并保留 reconciliation 状态，不自行补写。
 - 调度的权威配置是生产用户的 crontab。文档只描述依赖顺序，不复制完整 crontab 命令；部署检查时应使用 `crontab -l` 核对。
 
 这是 cron 驱动的批处理项目，没有常驻的 `research-data.service`。缺少常驻业务服务不是故障；应通过 cron、结构化运行记录和 SQLite 状态判断健康度。
 
 ## 快照安全模型
 
-`daily_snapshot.py` 不接受历史日期参数，只处理本地 Qlib 当前最新的完整交易日。
+`daily_snapshot.py` 不接受历史日期参数；live 入口只处理独立日历确认的当前上海交易日。只读兼容历史产物不代表允许新的历史补写。
 
 写入前会执行以下门禁：
 
@@ -46,7 +48,7 @@ AkShare 暂存文件默认位于 `~/.local/state/research-data/akshare-market/YY
 
 - 新目标日期通过全部门禁后使用普通 `INSERT` 新增一行。
 - 已存在且内部日期、来源状态和 JSON 均有效的目标日期返回 `skipped_existing`；该快速路径会先尝试当天 AkShare 封存，但在其余外部来源采集前结束，并且不替换旧行。
-- 若目标日封存已经有效，当天新封存暂时失败不会阻断目标日的合法追加；最终状态会保留 `warnings`，供验收发现下一日证据缺口。
+- 已封存的旧 stage/行保留原样；本次采集失败不得通过它们掩盖今天未成功运行。
 - 底层存储层只允许完全相同 payload 的幂等重试；同一日期的不同 payload 会被拒绝为冲突。
 - 旧的异常历史行不会被自动改写，也不会阻止新的干净日期追加。
 
@@ -70,11 +72,12 @@ AkShare 暂存文件默认位于 `~/.local/state/research-data/akshare-market/YY
 - `RESEARCH_DATA_STATE_DIR`
 - `RESEARCH_DATA_AKSHARE_STAGE_DIR`
 
-每次运行会把同一结构化结果写到标准输出、syslog 和 `last-run.json`。常见状态包括：
+受监督 worker 记录同 runId 单次证据，外层监督者核对退出码和终态后才发布 `last-run.json`；标准输出/syslog 保留运行证据。常见状态包括：
 
 - `inserted`：新日期已追加。
 - `skipped_existing`：目标日期已有经过验证的不可变快照。
-- `deferred`：本次已尽可能封存当前 AkShare 数据，但 Qlib 目标日对应的不可变暂存尚不存在；退出码为 69，数据库不写入，应等待后续自然调度。
+- `skipped_non_trading`：当日受绑定日历证明休市，在入口结束，不采集或写业务行。
+- `deferred`：期望日期未能证明、Qlib 落后或必需当日来源不可用；退出码为 69，不用旧日成功遮蔽本次结果。
 - `rejected`：数据或完整性门禁未通过。
 - `temporary_failure`：进程锁或 SQLite busy 等临时条件阻止运行。
 - `usage_error`：调用方式不受支持，例如传入历史日期。
@@ -137,9 +140,15 @@ AkShare 暂存文件默认位于 `~/.local/state/research-data/akshare-market/YY
 
 新 AkShare 封存增加采集时间保护：同日窗口必须从 15:10 CST 起，不接受未来来源日、
 逆序或跨 CST 日窗口。早间不得永久占用当天不可变文件。旧封存读取不重判当下时钟，
-目标日原始封存和真实时间窗仍保留。较早目标日延后组装只能记录真实的新观察时间，
-不能称作目标日当晚实时快照的复刻。新行和状态通过 `assemblyKind=delayed_observation`
-明确标注跨日组装，同日则为 `same_day_observation`。详见 [本次修复说明](SOURCE_REPAIR_2026-09-10.md)。
+目标日原始封存和真实时间窗仍保留。旧实现的延后组装曾通过 `assemblyKind=delayed_observation`
+标注真实观察时间，这些历史件和读兼容仍保留；当前受监督 live 入口拒绝旧日新写，不能凭旧件说明恢复历史补写。
+同日记录仍为 `same_day_observation`。历史设计见 [当时修复说明](SOURCE_REPAIR_2026-09-10.md)。
+
+### 候选轻量化与统一告警
+
+`snapshot-contract.json` 缺失时仍选 `research.full-snapshot.v1`；只有独立批准的 policy 与首个生效交易日才切换 `research.core-market.v1`。core 使用独立库/表/状态，是 Qlib 市场摘要，明确非完整价格归档，附录为按需 `not_requested`，不放宽旧 full 合同。
+
+定时 wrapper 不发送通知；现有健康告警状态机统一判新增、恶化、恢复和未运行，23:00 独立检查当日审计是否真实产出。`businessAtoms` 在不可观测阶段保留，历史缺口不每日重报。timer/override 为待审候选，不因文件存在而认为已安装或自然验收通过。
 
 ## 开发环境
 

@@ -16,7 +16,7 @@ import struct
 import sys
 
 
-def _load_source_policy():
+def _load_source_policy(filename="source_policy.py"):
     """Load the sibling policy module by path.
 
     This file is executed both as a script and loaded by qlib's read-only
@@ -25,7 +25,7 @@ def _load_source_policy():
     ModuleNotFoundError inside the nightly qlib run (2026-09-19 22:00). Loading
     by path keeps the single shared policy without mutating ``sys.path``.
     """
-    path = Path(__file__).resolve().with_name("source_policy.py")
+    path = Path(__file__).resolve().with_name(filename)
     spec = importlib.util.spec_from_file_location("_nng8_source_policy", path)
     if spec is None or spec.loader is None:
         raise ImportError("source_policy module unavailable")
@@ -36,6 +36,10 @@ def _load_source_policy():
 
 _source_policy = _load_source_policy()
 is_optional_source_error = _source_policy.is_optional_source_error
+_core_contract = _load_source_policy("core_contract.py")
+_contract_selector = _load_source_policy("snapshot_contract.py")
+_absence_policy = _load_source_policy("absence_policy.py")
+_calendar_evidence = _load_source_policy("calendar_evidence.py")
 
 CST = dt.timezone(dt.timedelta(hours=8))
 # 已证明源缺失的分级守卫：仅在“数量在既定有界容忍内、且影响日期数不超过上界”时记 information；
@@ -616,7 +620,7 @@ def recent_run(path, now):
         record = strict_json(read_file(path))
         when = timestamp(record["timestamp"])
         if (when > now + dt.timedelta(minutes=5)
-                or record.get("status") not in FAILURES | {"inserted", "skipped_existing", "idempotent", "success"}
+                or record.get("status") not in FAILURES | {"inserted", "skipped_existing", "idempotent", "success", "skipped_non_trading"}
                 or (record.get("akshareStage") is not None and not isinstance(record["akshareStage"], dict))):
             raise EvidenceError("invalid_run_record")
         if record.get("target") is not None and iso_date(record["target"]) > now.date():
@@ -625,6 +629,20 @@ def recent_run(path, now):
                    "target": record.get("target"), "qlibTag": record.get("qlibTag"),
                    "hasWarnings": bool(record.get("warnings")),
                    "stageUnavailable": (record.get("akshareStage") or {}).get("status") == "unavailable"}
+        if record.get("startedAt") is not None:
+            started = timestamp(record["startedAt"])
+            if started > when:
+                raise EvidenceError("run_start_after_completion")
+            summary["startedAt"] = started.isoformat()
+        if record["status"] == "skipped_non_trading":
+            closed = _core_contract.validate_calendar_evidence(record.get("calendarEvidence"), when)
+            if closed["status"] != "closed" or record.get("target") != closed["previousTradingDate"] or record.get("payloadSha256") is not None:
+                raise EvidenceError("unproven_non_trading_skip")
+            summary["calendarClosedVerified"] = True
+            summary["calendarTargetDate"] = closed["targetDate"]
+            summary["previousTradingDate"] = closed["previousTradingDate"]
+            summary["calendarEvidenceSha256"] = record["calendarEvidence"]["sha256"]
+            summary["calendarSourceEvidenceSha256"] = calendar_source(record["calendarEvidence"])["sha256"]
         run_id = record.get("runId")
         if isinstance(run_id, str) and re.fullmatch(r"[0-9a-f]{32}", run_id):
             summary["runId"] = run_id
@@ -666,7 +684,215 @@ def validate_hash(value):
         raise EvidenceError("invalid_sha256")
 
 
-def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=None):
+def read_contract_policy(path):
+    """Default is legacy. Presence of a core database never switches contracts."""
+    try:
+        return _contract_selector.read_policy(path)
+    except (OSError, ValueError, TypeError):
+        raise EvidenceError("invalid_contract_policy") from None
+
+
+def core_market_rows(path, now):
+    """Pure read-only contract checks; does not import the networked collector."""
+    if path is None or not path.exists():
+        return {}, "missing"
+    if path.is_symlink() or not path.is_file():
+        return {}, "invalid"
+    rows = {}
+    try:
+        with closing(sqlite3.connect(path.absolute().as_uri() + "?mode=ro", uri=True, timeout=3)) as conn:
+            conn.execute("PRAGMA query_only=ON")
+            conn.execute("BEGIN")
+            if conn.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
+                raise EvidenceError("core_database_quick_check_failed")
+            tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if tables & {"snapshot", "research_appendix"}:
+                raise EvidenceError("mixed_snapshot_contract_database")
+            for day, schema, raw, claimed in conn.execute("SELECT date,schema,payload,payload_sha256 FROM core_market ORDER BY date"):
+                iso_date(day)
+                if not isinstance(raw, str):
+                    raise EvidenceError("non_text_core_payload")
+                actual = hashlib.sha256(raw.encode()).hexdigest()
+                row = {"payloadSha256": actual, "state": "valid"}
+                try:
+                    value = strict_json(raw)
+                    _core_contract.validate_core(value)
+                    if value["date"] != day or schema != _core_contract.SCHEMA or claimed != actual:
+                        raise EvidenceError("core_identity_or_hash_mismatch")
+                    if timestamp(value["generatedAt"]) > now + dt.timedelta(minutes=5) or iso_date(day) > now.date():
+                        raise EvidenceError("core_evidence_in_future")
+                    coverage = value["qlib"]["coverage"]
+                    row["quality"] = {"targetDate": day, "payloadSha256": actual,
+                                      "priceStatus": "partial" if coverage["invalid"] else "complete",
+                                      "valid": coverage["valid"], "invalid": coverage["invalid"],
+                                      "eligible": coverage["eligible"], "ratio": coverage["ratio"],
+                                      "generationTag": value["qlib"]["generation"]["tag"],
+                                      "scope": "sealed_core_qlib_summary"}
+                except (ValueError, KeyError, TypeError, AttributeError):
+                    row.update(state="invalid", reason="invalid_core_contract_or_binding")
+                rows[day] = row
+    except (sqlite3.Error, OSError, ValueError):
+        return {}, "invalid"
+    return rows, "checked"
+
+
+def recent_core_run(path, now):
+    if path is None:
+        return {"status": "unknown", "reason": "core_last_run_not_configured"}, None
+    try:
+        value = strict_json(read_file(path))
+        if (value.get("schema") != _core_contract.SCHEMA or value.get("scope") != "core_market"
+                or value.get("fullSnapshot") is not False):
+            raise EvidenceError("wrong_run_contract")
+        if value.get("status") == "skipped_non_trading":
+            when = timestamp(value["timestamp"])
+            calendar = _core_contract.validate_calendar_evidence(value.get("calendarEvidence"), when)
+            if (when > now or calendar["status"] != "closed"
+                    or value.get("target") != calendar["previousTradingDate"]
+                    or not isinstance(value.get("runId"), str) or not re.fullmatch(r"[0-9a-f]{32}", value["runId"])
+                    or value.get("payloadSha256") is not None):
+                raise EvidenceError("unproven_non_trading_skip")
+            result = {"status": "skipped_non_trading", "timestamp": when.isoformat(), "target": value["target"],
+                    "runId": value["runId"], "calendarTargetDate": calendar["targetDate"],
+                    "calendarClosedVerified": True, "previousTradingDate": calendar["previousTradingDate"],
+                    "calendarEvidenceSha256": value["calendarEvidence"]["sha256"],
+                    "calendarSourceEvidenceSha256": calendar_source(value["calendarEvidence"])["sha256"],
+                    "hasWarnings": False, "stageUnavailable": False}
+            if value.get("startedAt") is not None:
+                started = timestamp(value["startedAt"])
+                if started > when:
+                    raise EvidenceError("run_start_after_completion")
+                result["startedAt"] = started.isoformat()
+            return result, when
+        result, when = recent_run(path, now)
+        if value.get("status") in {"inserted", "skipped_existing", "idempotent", "success"}:
+            if when is None:
+                raise EvidenceError("invalid_core_run_time")
+            calendar = _core_contract.validate_calendar_evidence(value.get("calendarEvidence"), when)
+            if calendar["status"] != "open" or value.get("target") != calendar["targetDate"]:
+                raise EvidenceError("core_success_target_not_current_calendar_day")
+            result["calendarTargetDate"] = calendar["targetDate"]
+            result["calendarEvidenceSha256"] = value["calendarEvidence"]["sha256"]
+        if value.get("sourceWarning"):
+            result["hasWarnings"] = True
+        return result, when
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return {"status": "unknown", "reason": "missing_or_invalid_core_last_run"}, None
+
+
+def calendar_source(evidence):
+    """Original validated identity; an interval's derivation time is not observation time."""
+    return evidence["binding"].get("sourceEvidence", evidence)
+
+
+def active_run_decision(*, contract, last, rows, stages, now, calendar, evidence, issues, known_trading_dates):
+    """One audit verdict for today's scheduled occurrence, preserving historical issues.
+
+    The existing run record remains execution evidence. This result is a pure
+    view over already-validated audit inputs; it creates no additional state.
+    """
+    day = now.astimezone(CST).date()
+    scheduled = dt.datetime.combine(day, dt.time(22, 30), CST)
+    deadline = dt.datetime.combine(day, dt.time(22, 45), CST)
+    target = last.get("target")
+    row = rows.get(target, {})
+    run_id = last.get("runId")
+    reasons = set()
+    current_codes, historical_codes = set(), set()
+    direct = {"independent_expected_day_unavailable", "qlib_not_current_for_expected_trading_day",
+              "scheduled_core_market_missing" if contract == _core_contract.SCHEMA else "scheduled_snapshot_missing",
+              "last_core_market_not_successful" if contract == _core_contract.SCHEMA else "last_snapshot_not_successful",
+              "core_market_run_missing_or_mismatched" if contract == _core_contract.SCHEMA else "last_run_snapshot_missing_or_mismatched"}
+    integrity = {"business_mode_not_frozen", "historical_rows_changed_or_missing", "future_snapshot_date",
+                 "legacy_full_rows_after_cutover", "core_calendar_schedule_conflict"}
+    for item in issues:
+        code = item["code"]
+        dates = set(item.get("dates") or item.get("affectedDates") or item.get("overdueStageDates") or [])
+        dates.update(x for x in (item.get("tradeDate"), item.get("target"), item.get("dueDate")) if x)
+        current = code in integrity or (code in direct and (not dates or day.isoformat() in dates))
+        current = current or (calendar is not None and calendar["status"] == "open" and calendar["targetDate"] in dates)
+        (current_codes if current else historical_codes).add(code)
+        if dates - {day.isoformat()}:
+            historical_codes.add(code)
+    try:
+        completed = timestamp(last["timestamp"])
+    except (ValueError, KeyError, TypeError):
+        completed = None
+    try:
+        started = timestamp(last["startedAt"])
+    except (ValueError, KeyError, TypeError):
+        started = None
+    current_run = (started is not None and completed is not None and isinstance(run_id, str)
+                   and re.fullmatch(r"[0-9a-f]{32}", run_id) is not None
+                   and scheduled <= started <= completed <= now and completed.date() == day)
+    expected = (calendar["targetDate"] if calendar and calendar["status"] == "open"
+                else calendar["previousTradingDate"] if calendar else None)
+    source = calendar_source(evidence) if evidence is not None else None
+    calendar_identity = ({"status": calendar["status"], "targetDate": calendar["targetDate"],
+                          "previousTradingDate": calendar["previousTradingDate"], "nextTradingDate": calendar["nextTradingDate"],
+                          "evidenceSha256": evidence["sha256"], "sourceEvidenceSha256": source["sha256"],
+                          "sourceDate": source["document"]["targetDate"], "observedAt": source["document"]["observedAt"],
+                          "proofKind": evidence["binding"].get("kind", "sealed_archive")} if calendar else None)
+    status = last.get("status", "unknown")
+    if not current_run:
+        state = "pending" if now < deadline else "insufficient"
+        reasons.add("scheduled_run_pending" if now < deadline else "current_run_identity_missing_or_outside_window")
+    elif status in FAILURES:
+        state = "fail"
+        reasons.add("current_run_not_successful")
+    elif calendar is None:
+        state = "insufficient"
+        reasons.add("calendar_evidence_unavailable")
+    elif completed > deadline:
+        state = "fail"
+        reasons.add("current_run_completed_after_deadline")
+    elif current_codes & integrity:
+        state = "fail"
+        reasons.update(current_codes & integrity)
+    elif status == "skipped_non_trading":
+        closed = (calendar["status"] == "closed" and last.get("calendarClosedVerified") is True
+                  and last.get("calendarTargetDate") == day.isoformat() and target == expected
+                  and last.get("calendarSourceEvidenceSha256") == source["sha256"]
+                  and day.isoformat() not in known_trading_dates
+                  and last.get("payloadSha256") is None)
+        state = "not_required" if closed else "fail"
+        if not closed:
+            reasons.add("current_closed_skip_binding_mismatch")
+    elif status in {"inserted", "skipped_existing", "idempotent", "success"}:
+        if calendar["status"] != "open" or target != expected:
+            reasons.add("current_run_target_calendar_mismatch")
+        if row.get("state") != "valid" or not last.get("payloadSha256") or row.get("payloadSha256") != last["payloadSha256"]:
+            reasons.add("current_run_artifact_missing_or_mismatched")
+        if contract == _core_contract.LEGACY_SCHEMA and stages.get(target, {}).get("state") != "valid":
+            reasons.add("current_full_stage_missing_or_invalid")
+        reasons.update(current_codes & direct)
+        state = "fail" if reasons else "pass"
+    else:
+        state = "insufficient"
+        reasons.add("current_run_terminal_unconfirmed")
+    warning_code = "core_market_material_warning" if contract == _core_contract.SCHEMA else "last_snapshot_material_warning"
+    material_warnings = [warning_code] if current_run and (last.get("hasWarnings") or last.get("stageUnavailable")) else []
+    current_codes.update(material_warnings)
+    return {"schema": "research.active-run-decision.v1", "contract": contract,
+            "scope": "core_market" if contract == _core_contract.SCHEMA else "full_snapshot",
+            "fullSnapshot": contract == _core_contract.LEGACY_SCHEMA,
+            "artifactKind": "qlib_market_summary" if contract == _core_contract.SCHEMA else "full_snapshot",
+            "scheduledDate": day.isoformat(), "scheduledFor": scheduled.isoformat(), "deadlineAt": deadline.isoformat(),
+            "evaluatedAt": now.isoformat(), "expectedTargetDate": expected,
+            "run": {"runId": run_id, "status": status, "targetDate": target,
+                    "startedAt": started.isoformat() if started else None,
+                    "completedAt": completed.isoformat() if completed else None},
+            "verification": {"status": state, "reasons": sorted(reasons),
+                             "scope": "local_run_artifact_calendar_identity", "currentIssueCodes": sorted(current_codes),
+                             "materialWarningCodes": material_warnings,
+                             "historicalIssueCodes": sorted(historical_codes)},
+            "artifact": {"payloadSha256": last.get("payloadSha256"), "rowState": row.get("state", "missing"),
+                         "quality": row.get("quality") if last.get("payloadSha256")
+                         and last["payloadSha256"] == row.get("payloadSha256") else None}, "calendar": calendar_identity}
+
+
+def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=None,
+          contract_policy=None, core_db=None, core_last_run=None, calendar_project=None):
     since, monitor_since = iso_date(since), iso_date(monitor_since)
     if since > monitor_since or monitor_since > now.date():
         raise EvidenceError("invalid_audit_window")
@@ -674,6 +900,13 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
     if calendar[0] > since.isoformat() or iso_date(complete) > now.date():
         raise EvidenceError("calendar_coverage_or_complete_date_invalid")
     rows = snapshot_rows(db)
+    policy = read_contract_policy(contract_policy)
+    effective = policy["effectiveTradeDate"]
+    core_active = effective is not None and now.date().isoformat() >= effective
+    core_rows, core_read_state = (core_market_rows(core_db, now) if effective is not None
+                                 else ({}, "not_configured"))
+    core_last, core_last_time = (recent_core_run(core_last_run, now) if effective is not None
+                                 else ({"status": "not_configured"}, None))
     stage_rows, stage_state = stage_evidence(stages, now)
     last, last_time = recent_run(last_run, now)
     business_mode = read_file(mode, 32).decode().strip()
@@ -702,14 +935,28 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
             eligible = coverage_last.get("eligible") if isinstance(coverage_last.get("eligible"), int) else 0
             tolerance = max(ABSENCE_TOLERANCE_MIN, ABSENCE_TOLERANCE_RATIO * eligible)
             affected = [row["target_date"] for row in coverage_rows if row["invalid"]]
-            invalid_count = quality.get("invalid") if isinstance(quality.get("invalid"), int) else len(missing_members)
-            severity, escalation = absence_severity(proven, invalid_count, affected, eligible)
+            # Counts and threshold refer to the same full-market coverage row.
+            # CSI union is disclosed separately, never paired with eligible.
+            invalid_count = coverage_last.get("invalid")
+            if type(invalid_count) is not int or invalid_count < 0 or type(eligible) is not int or eligible <= 0:
+                proven, invalid_count = False, 0
+            scoped = _absence_policy.scopes(calendar, complete, coverage_last, index,
+                                             absence_dates, quality.get("lastQuotedDate") or {}, proven)
+            failures = {scope: value["escalation"] for scope, value in scoped.items() if value["escalation"]}
+            severity = "warning" if failures else "information"
+            escalation = ";".join(f"{scope}:{reason}" for scope, reason in sorted(failures.items())) or None
+            proven = all(value["proven"] for value in scoped.values())
             issue("qlib_source_absence", severity=severity,
                   dataQuality="partial", validationScope="local_manifest_calendar_and_reference_only",
                   affectedDates=[row["target_date"] for row in quality["dailyCoverage"] if row["invalid"]],
                   currentInventoryQuality=quality["priceStatus"], csiInventoryQuality=index["status"],
                   meaning=index["absenceMeaning"], proven=proven,
                   absenceTolerance=round(tolerance, 1), invalidCount=invalid_count,
+                  countScope="full_market_daily_coverage", eligibleCount=eligible,
+                  csiMissingMemberCount=len(missing_members),
+                  csiMissingQuoteMembers=index["missingQuoteMembers"],
+                  csiMissingPreviousCloseMembers=index["missingPreviousCloseMembers"],
+                  absenceScopes=scoped,
                   escalation=escalation,
                   sourceAbsenceSlotsVerified=index["sourceAbsenceSlotsVerified"])
         if index["legacyUnquotedMembers"]:
@@ -734,12 +981,18 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
         issue("future_snapshot_date", "critical")
     if any(d > complete for d in rows):
         issue("snapshot_ahead_of_qlib_reference")
-    if stage_state != "checked" or any(v["state"] != "valid" for v in stage_rows.values()):
-        issue("market_stage_missing_or_invalid")
-    elif not stage_rows:
+    # AkShare market stage is mandatory only for the old full contract. On
+    # cutover, keep its historical evidence and anomalies without making a
+    # missing optional current stage a new core failure.
+    mandatory_stages = {d: v for d, v in stage_rows.items() if effective is None or d < effective}
+    if ((not core_active and stage_state != "checked")
+            or any(v["state"] != "valid" for v in mandatory_stages.values())):
+        issue("market_stage_missing_or_invalid", contract=_core_contract.LEGACY_SCHEMA,
+              historicalOnly=core_active)
+    elif not core_active and not stage_rows:
         issue("no_sealed_market_evidence")
     calendar_set = set(calendar)
-    for kind, records in (("snapshot", rows), ("stage", stage_rows)):
+    for kind, records in (("snapshot", rows), ("stage", mandatory_stages)):
         outside = [d for d in records if calendar[0] <= d <= calendar[-1] and d not in calendar_set]
         if outside:
             issue(kind + "_outside_known_trading_calendar", dates=sorted(outside))
@@ -775,17 +1028,38 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
     deadline = dt.datetime.combine(now.date(), dt.time(22, 45), CST)
     due_date = now.date() if now >= deadline else now.date() - dt.timedelta(days=1)
     due_start = dt.datetime.combine(due_date, dt.time(22, 30), CST)
-    if last_time is None or last_time < due_start:
+    # CLI always supplies the independent, already-collected calendar. Library
+    # callers without a calendar retain a historical-only view, never a claim
+    # that Qlib alone establishes today's expected target.
+    expected = None
+    expected_evidence = expected_calendar = None
+    if calendar_project is not None:
+        try:
+            expected_evidence = _calendar_evidence.load_calendar_evidence(calendar_project, now)
+            expected_calendar = _core_contract.validate_calendar_evidence(expected_evidence, now)
+            expected = (expected_calendar["targetDate"] if expected_calendar["status"] == "open"
+                        else expected_calendar["previousTradingDate"])
+        except (ValueError, OSError, TypeError, KeyError):
+            expected_evidence = expected_calendar = None
+            if now >= deadline:
+                issue("independent_expected_day_unavailable", dueDate=due_date.isoformat())
+        else:
+            if now >= deadline and complete != expected:
+                issue("qlib_not_current_for_expected_trading_day", dueDate=due_date.isoformat(),
+                      expectedTarget=expected, actualTarget=complete,
+                      calendarEvidenceSha256=expected_evidence["sha256"])
+    full_run_due = effective is None or due_date.isoformat() < effective
+    if full_run_due and (last_time is None or last_time < due_start):
         issue("scheduled_snapshot_missing", dueDate=due_date.isoformat())
-    if last["status"] in FAILURES:
-        details = {"status": last["status"], "target": last.get("target"),
+    if full_run_due and last["status"] in FAILURES:
+        details = {"status": last["status"], "target": last.get("target"), "dueDate": due_date.isoformat(),
                    "runAt": last.get("timestamp")}
         if last.get("runId"):
             details["runId"] = last["runId"]
         if last.get("sourceFailure"):
             details["sourceFailure"] = last["sourceFailure"]
         issue("last_snapshot_not_successful", **details)
-    if last.get("hasWarnings") or last.get("stageUnavailable"):
+    if full_run_due and (last.get("hasWarnings") or last.get("stageUnavailable")):
         details = {"runStatus": last["status"], "target": last.get("target"),
                    "runAt": last.get("timestamp"),
                    "stageUnavailable": bool(last.get("stageUnavailable"))}
@@ -796,43 +1070,109 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
         issue("last_snapshot_material_warning", **details)
     ledger = []
     new_due_gaps = []
-    for day in (d for d in calendar if since.isoformat() <= d <= complete):
+    ledger_calendar = sorted(set(calendar) | ({expected} if expected is not None else set()))
+    ledger_end = max(complete, expected or complete)
+    for day in (d for d in ledger_calendar if since.isoformat() <= d <= ledger_end):
         row = rows.get(day, {"state": "missing"})
         stage = stage_rows.get(day, {"state": "missing"})
         legacy = day < monitor_since.isoformat()
         pending = day == now.date().isoformat() and now < deadline
+        full_expected = effective is None or day < effective
         item = {"tradeDate": day, "snapshotState": row["state"], "stageState": stage["state"],
+                "contract": _core_contract.LEGACY_SCHEMA, "fullSnapshot": True,
+                "expectedUnderContract": full_expected,
                 "classification": "legacy" if legacy else "monitored", "pendingWindow": pending,
-                "qlibAvailability": "calendar_and_reference_evidence_only",
+                "qlibAvailability": "not_current" if day > complete else "calendar_and_reference_evidence_only",
                 "recoveryReadiness": "not_applicable" if row["state"] == "valid" else (
                     "partial_evidence_only" if stage["state"] == "valid" else "missing_or_invalid_market_evidence")}
         if row["state"] != "missing":
             item["payloadSha256"] = row["payloadSha256"]
         if row.get("reason"):
             item["reason"] = row["reason"]
-        if row["state"] != "valid" and not legacy and not pending:
+        if row["state"] != "valid" and not legacy and not pending and full_expected:
             new_due_gaps.append(day)
         ledger.append(item)
-    legacy_bad = [row["tradeDate"] for row in ledger if row["classification"] == "legacy" and row["snapshotState"] != "valid"]
+    legacy_bad = [row["tradeDate"] for row in ledger if row["classification"] == "legacy" and row["snapshotState"] != "valid" and row["expectedUnderContract"]]
     if legacy_bad:
         issue("legacy_gaps_or_invalid_rows", dates=legacy_bad)
     if new_due_gaps:
         issue("unresolved_trading_day_gaps", "critical" if len(new_due_gaps) >= 2 else "warning", dates=new_due_gaps)
-    latest_stage = max((d for d, v in stage_rows.items() if v["state"] == "valid"), default=None)
+    core_ledger = []
+    core_gaps = []
+    if effective is not None:
+        unexpected_full = sorted(d for d in rows if d >= effective)
+        if unexpected_full:
+            issue("legacy_full_rows_after_cutover", "critical", dates=unexpected_full)
+        for day in (d for d in ledger_calendar if max(effective, since.isoformat()) <= d <= ledger_end):
+            row = core_rows.get(day, {"state": "missing"})
+            pending = day == now.date().isoformat() and now < deadline
+            core_ledger.append({"tradeDate": day, "coreState": row["state"], "pendingWindow": pending,
+                                "contract": _core_contract.SCHEMA, "fullSnapshot": False,
+                                **{k: row[k] for k in ("payloadSha256", "reason") if k in row}})
+            if row["state"] != "valid" and not pending:
+                core_gaps.append(day)
+        if core_active and core_read_state != "checked" and (core_ledger or core_read_state == "invalid"):
+            issue("core_market_evidence_unavailable", readState=core_read_state)
+        if not full_run_due:
+            if core_last_time is None or core_last_time < due_start:
+                issue("scheduled_core_market_missing", dueDate=due_date.isoformat())
+            if core_last["status"] in FAILURES:
+                issue("last_core_market_not_successful", status=core_last["status"],
+                      target=core_last.get("target"), runAt=core_last.get("timestamp"), dueDate=due_date.isoformat())
+            if (core_last["status"] == "skipped_non_trading"
+                    and core_last.get("calendarTargetDate") in calendar_set):
+                issue("core_calendar_schedule_conflict", "critical", dates=[core_last["calendarTargetDate"]])
+            if core_last.get("hasWarnings") or core_last.get("stageUnavailable"):
+                issue("core_market_material_warning", target=core_last.get("target"), runAt=core_last.get("timestamp"))
+            if core_last["status"] in {"inserted", "skipped_existing", "idempotent", "success"}:
+                claimed = core_rows.get(core_last.get("target"), {})
+                if (claimed.get("state") != "valid" or not core_last.get("payloadSha256")
+                        or claimed.get("payloadSha256") != core_last["payloadSha256"]):
+                    issue("core_market_run_missing_or_mismatched", "critical", tradeDate=core_last.get("target"))
+        if core_gaps:
+            issue("unresolved_core_market_gaps", "critical" if len(core_gaps) >= 2 else "warning", dates=core_gaps)
+        outside = sorted(d for d in core_rows if calendar[0] <= d <= calendar[-1] and d not in calendar_set)
+        if outside:
+            issue("core_market_outside_known_trading_calendar", dates=outside)
+    latest_stage = max((d for d, v in mandatory_stages.items() if v["state"] == "valid"), default=None)
     pending_upstream = bool(latest_stage and latest_stage > complete
                             and latest_stage == now.date().isoformat() and now < deadline)
-    overdue_stages = sorted(d for d, value in stage_rows.items() if value["state"] == "valid"
+    overdue_stages = sorted(d for d, value in mandatory_stages.items() if value["state"] == "valid"
                             and d > complete and (d < now.date().isoformat() or now >= deadline))
     if overdue_stages:
         issue("qlib_behind_observed_market_stage", pendingWindow=False,
+              contract=_core_contract.LEGACY_SCHEMA, historicalOnly=core_active,
               overdueStageDates=overdue_stages, latestStageDate=latest_stage, qlibCompleteDate=complete)
     if generation(qlib) != gen:
         raise EvidenceError("qlib_generation_changed_during_audit")
+    active_contract = _core_contract.SCHEMA if core_active else _core_contract.LEGACY_SCHEMA
+    decision = active_run_decision(contract=active_contract, last=core_last if core_active else last,
+                                   rows=core_rows if core_active else rows, stages=stage_rows, now=now,
+                                   calendar=expected_calendar, evidence=expected_evidence, issues=issues,
+                                   known_trading_dates=calendar_set)
     return {"schemaVersion": 1, "generatedAt": now.isoformat(), "readOnly": True,
+            "activeContract": _core_contract.SCHEMA if core_active else _core_contract.LEGACY_SCHEMA,
+            "effectiveTradeDate": effective, "contractPolicy": policy,
+            "activeLastRun": core_last if core_active else last,
+            "activeRunDecision": decision,
+            "legacyFullSnapshot": {"contract": _core_contract.LEGACY_SCHEMA, "scheduledBefore": effective,
+                                   "status": "historical_only" if core_active else "active"},
+            "coreMarket": {"contract": _core_contract.SCHEMA, "fullSnapshot": False,
+                           "artifactKind": "qlib_market_summary", "includesCompletePriceArchive": False,
+                           "readState": core_read_state, "rowCount": len(core_rows),
+                           "latestValidDate": max((d for d, v in core_rows.items() if v["state"] == "valid"), default=None),
+                           "rowHashes": {d: v["payloadSha256"] for d, v in core_rows.items()},
+                           "lastRun": core_last, "ledger": core_ledger, "expectedFrom": effective,
+                           "quality": (core_rows.get(core_last.get("target"), {}).get("quality")
+                                       if core_last.get("payloadSha256") == core_rows.get(core_last.get("target"), {}).get("payloadSha256")
+                                       and core_last.get("status") in {"inserted", "skipped_existing", "idempotent", "success"}
+                                       else None)},
             "status": "critical" if any(i["severity"] == "critical" for i in issues) else "warning" if issues else "ok",
             "scope": "local_evidence_only", "businessMode": business_mode,
             "auditSince": since.isoformat(), "monitorSince": monitor_since.isoformat(),
             "schedule": {"expectedLastRunDate": due_date.isoformat(), "todayDeadline": deadline.isoformat()},
+            "independentExpectedMarketDate": expected,
+            "independentCalendarStatus": "verified" if expected is not None else "unavailable",
             "qlib": {"releaseTag": gen[1], "calendarLastDate": calendar[-1], "referenceCompleteDate": complete,
                      "dataGeneration": "same_source_dolt_incremental" if gen[3] is not None else "release",
                      "dataQuality": gen[3][9]["status"] if gen[3] is not None else "unknown",
@@ -891,12 +1231,18 @@ def main():
     parser.add_argument("--since", required=True)
     parser.add_argument("--monitor-since", required=True)
     parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--contract-policy", type=Path)
+    parser.add_argument("--core-db", type=Path)
+    parser.add_argument("--core-last-run", type=Path)
+    parser.add_argument("--calendar-project", type=Path,
+                        default=Path("/home/ubuntu/AStock_AI_System"))
     parser.add_argument("--pretty", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
         result = audit(args.db, args.qlib, args.stages, args.last_run, args.mode,
-                       args.since, args.monitor_since, dt.datetime.now(CST), args.baseline)
+                       args.since, args.monitor_since, dt.datetime.now(CST), args.baseline,
+                       args.contract_policy, args.core_db, args.core_last_run, args.calendar_project)
     except (OSError, ValueError, KeyError, TypeError, sqlite3.Error) as exc:
         # No paths, raw database data, or arbitrary exception text in journal.
         result = {"schemaVersion": 1, "readOnly": True, "status": "unknown",

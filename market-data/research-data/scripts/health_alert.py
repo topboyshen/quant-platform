@@ -22,6 +22,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -39,10 +40,18 @@ MAX_STATE_BYTES = 256 * 1024
 MAX_MESSAGE_CHARS = 1200
 MAX_ATOMS = 2000
 OBSERVABILITY_PREFIX = "audit_"
-DUE_RUN_CODES = ("scheduled_snapshot_missing",)
+DUE_RUN_CODES = ("scheduled_snapshot_missing", "scheduled_core_market_missing")
+CORE_OPERATIONAL_CODES = ("last_core_market_not_successful", "last_snapshot_not_successful",
+                          "independent_expected_day_unavailable", "qlib_not_current_for_expected_trading_day")
 CST = dt.timezone(dt.timedelta(hours=8))
 RECEIPT_SCHEMA_VERSION = 1
 STATE_SCHEMA_VERSION = 1
+RUN_DECISION_SCHEMA = "research.active-run-decision.v1"
+RUN_VERDICTS = ("pass", "fail", "insufficient", "pending", "not_required")
+RUN_STATUSES = ("inserted", "skipped_existing", "idempotent", "success", "skipped_non_trading",
+                "rejected", "deferred", "failed", "temporary_failure", "usage_error", "unknown", "not_configured")
+RUN_CONTRACTS = {"research.full-snapshot.v1": ("full_snapshot", True, "full_snapshot"),
+                 "research.core-market.v1": ("core_market", False, "qlib_market_summary")}
 RETAINED_CODES = ("unresolved_trading_day_gaps", "legacy_gaps_or_invalid_rows")
 DEFAULT_RETAINED_PATH = Path(__file__).resolve().parents[1] / "config" / "health-alert-retained.json"
 # Date-bearing issue fields that define WHICH dates/targets a fault affects.
@@ -59,6 +68,13 @@ def _instant(value):
         return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _iso_day(value):
+    try:
+        return isinstance(value, str) and dt.date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
 
 
 def _codes(data):
@@ -90,7 +106,7 @@ def _issue_dates(issue):
 
 
 def _due_run_atoms(data):
-    """Explicit "should have run but did not" events, keyed by their due date.
+    """Explicit missing-run/core-failed-run events, keyed only by due date.
 
     These are deliberately not critical atoms: the audit severity is unchanged and
     ordinary warnings still never page on their own. Only a new code+dueDate is a
@@ -99,11 +115,11 @@ def _due_run_atoms(data):
     atoms = set()
     if isinstance(data, dict):
         for issue in data.get("issues") or []:
-            if not isinstance(issue, dict) or issue.get("code") not in DUE_RUN_CODES:
+            if not isinstance(issue, dict) or issue.get("code") not in DUE_RUN_CODES + CORE_OPERATIONAL_CODES:
                 continue
             code = issue["code"]
-            for date in _issue_dates(issue):
-                atoms.add(f"{code}|{date}")
+            due = issue.get("dueDate")
+            atoms.add(f"{code}|{due if isinstance(due, str) and DATE_RE.fullmatch(due) else '*'}")
     return sorted(atoms)
 
 
@@ -125,6 +141,104 @@ def _critical_atoms(data):
                 if len(atoms) >= MAX_ATOMS:
                     return sorted(atoms)
     return sorted(atoms)
+
+
+def _run_decision(data, generated):
+    """Project the audit's verdict, checking identity only, never business gates.
+
+    Absence is the legacy contract. Presence with a broken schema/binding is an
+    observability failure, not permission to reuse a previous successful run.
+    """
+    if "activeRunDecision" not in data:
+        return None
+    value, last = data["activeRunDecision"], data.get("activeLastRun")
+    fields = {"schema", "contract", "scope", "fullSnapshot", "artifactKind", "scheduledDate", "scheduledFor",
+              "deadlineAt", "evaluatedAt", "expectedTargetDate", "run", "verification", "artifact", "calendar"}
+    if not isinstance(value, dict) or not fields <= value.keys() or not isinstance(last, dict):
+        raise ValueError("invalid_run_decision")
+    contract = value.get("contract")
+    if (type(data.get("schemaVersion")) is not int or data["schemaVersion"] != 1
+            or value.get("schema") != RUN_DECISION_SCHEMA
+            or contract not in RUN_CONTRACTS or data.get("activeContract") != contract
+            or _instant(value.get("evaluatedAt")) != generated):
+        raise ValueError("invalid_run_decision_identity")
+    scope, full, kind = RUN_CONTRACTS[contract]
+    if (value.get("scope") != scope or value.get("fullSnapshot") is not full
+            or value.get("artifactKind") != kind):
+        raise ValueError("invalid_run_decision_contract")
+    day = value.get("scheduledDate")
+    if not _iso_day(day) or day != generated.astimezone(CST).date().isoformat():
+        raise ValueError("invalid_run_decision_day")
+    scheduled, deadline = _instant(value.get("scheduledFor")), _instant(value.get("deadlineAt"))
+    if (scheduled is None or deadline is None or scheduled > deadline
+            or scheduled.astimezone(CST).date().isoformat() != day
+            or deadline.astimezone(CST).date().isoformat() != day):
+        raise ValueError("invalid_run_decision_schedule")
+    for date in (value.get("expectedTargetDate"), last.get("target")):
+        if date is not None and not _iso_day(date):
+            raise ValueError("invalid_run_decision_target")
+    run, artifact, check = value.get("run"), value.get("artifact"), value.get("verification")
+    if (not isinstance(run, dict) or not {"runId", "status", "targetDate", "startedAt", "completedAt"} <= run.keys()
+            or not isinstance(artifact, dict) or not {"payloadSha256", "rowState", "quality"} <= artifact.keys()
+            or not isinstance(check, dict)):
+        raise ValueError("invalid_run_decision_fields")
+    if (run.get("status") not in RUN_STATUSES or run.get("status") != last.get("status")
+            or run.get("targetDate") != last.get("target") or run.get("runId") != last.get("runId")):
+        raise ValueError("invalid_run_decision_run_binding")
+    if run.get("runId") is not None and (not isinstance(run["runId"], str) or not re.fullmatch(r"[0-9a-f]{32}", run["runId"])):
+        raise ValueError("invalid_run_decision_run_id")
+    for output, source in (("startedAt", "startedAt"), ("completedAt", "timestamp")):
+        claimed, actual = run.get(output), last.get(source)
+        if ((claimed is None) != (actual is None)
+                or (claimed is not None and (_instant(claimed) is None or _instant(claimed) != _instant(actual)))):
+            raise ValueError("invalid_run_decision_time_binding")
+    payload = artifact.get("payloadSha256")
+    if (payload != last.get("payloadSha256")
+            or (payload is not None and (not isinstance(payload, str) or not re.fullmatch(r"[0-9a-f]{64}", payload)))):
+        raise ValueError("invalid_run_decision_payload_binding")
+    if artifact.get("rowState") not in ("valid", "invalid", "missing"):
+        raise ValueError("invalid_run_decision_row_state")
+    quality = artifact.get("quality")
+    if quality is not None:
+        if (not isinstance(quality, dict) or contract != "research.core-market.v1"
+                or quality.get("scope") != "sealed_core_qlib_summary"
+                or quality.get("targetDate") != run.get("targetDate") or not _iso_day(quality.get("targetDate"))
+                or quality.get("payloadSha256") != payload or payload is None
+                or quality.get("priceStatus") not in ("partial", "complete")
+                or any(type(quality.get(k)) is not int or quality[k] < 0 for k in ("valid", "invalid", "eligible"))
+                or type(quality.get("ratio")) not in (int, float) or not math.isfinite(quality["ratio"])
+                or not isinstance(quality.get("generationTag"), str)
+                or not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", quality["generationTag"])):
+            raise ValueError("invalid_run_decision_quality_identity")
+    calendar = value["calendar"]
+    if calendar is not None:
+        if (not isinstance(calendar, dict) or calendar.get("status") not in ("open", "closed")
+                or calendar.get("targetDate") != day
+                or any(not _iso_day(calendar.get(k)) for k in ("targetDate", "previousTradingDate", "nextTradingDate", "sourceDate"))
+                or any(not isinstance(calendar.get(k), str) or not re.fullmatch(r"[0-9a-f]{64}", calendar[k])
+                       for k in ("evidenceSha256", "sourceEvidenceSha256"))
+                or _instant(calendar.get("observedAt")) is None
+                or calendar.get("proofKind") not in ("sealed_archive", "validated_terminal_context",
+                                                    "validated_non_trading_skip", "validated_closed_interval")):
+            raise ValueError("invalid_run_decision_calendar_identity")
+    if (check.get("status") not in RUN_VERDICTS
+            or check.get("scope") != "local_run_artifact_calendar_identity"):
+        raise ValueError("invalid_run_decision_verdict")
+    # Successful verdicts have a complete evidence identity in this schema.
+    # Fail/insufficient/pending may intentionally retain missing identity fields.
+    if check["status"] in ("pass", "not_required"):
+        if (any(run[field] is None for field in ("runId", "targetDate", "startedAt", "completedAt"))
+                or not isinstance(value["calendar"], dict)
+                or (check["status"] == "pass" and payload is None)):
+            raise ValueError("incomplete_run_decision_success_identity")
+    for field in ("reasons", "currentIssueCodes", "historicalIssueCodes", "materialWarningCodes"):
+        codes = check.get(field)
+        if (not isinstance(codes, list) or len(codes) > 256
+                or not all(isinstance(code, str) and CODE_RE.fullmatch(code) for code in codes)):
+            raise ValueError("invalid_run_decision_codes")
+    # Only the whitelist is exposed to messages; raw errors/paths never travel.
+    return {"status": check["status"], "scheduledDate": day, "targetDate": run.get("targetDate"),
+            "contract": contract, "materialWarningCodes": list(check["materialWarningCodes"])}
 
 
 def load_retained(path=None):
@@ -229,11 +343,25 @@ def describe(path, now=None, max_age_hours=6.0, retained_path=None):
         result.update(stale=True, reason=result["reason"] or "health_generated_at_invalid")
         return result
     result["generatedAt"] = data["generatedAt"]
+    if "activeRunDecision" in data:
+        # New producers own the current-run judgement. Do not independently
+        # reinterpret their legacy run issues alongside the unique verdict.
+        result["dueRunAtoms"] = []
+        try:
+            result["activeRunDecision"] = _run_decision(data, generated)
+        except (ValueError, TypeError, KeyError):
+            result["activeRunDecisionInvalid"] = True
     age = (now.astimezone(CST) - generated.astimezone(CST)).total_seconds() / 3600
     result["ageHours"] = round(age, 3)
     # A stale artifact means this alert is not describing the run that just
     # finished; say so instead of presenting old numbers as current.
     result["stale"] = age > float(max_age_hours) or age < -0.5
+    # At/after the independent 23:00 check, a recent manual/pre-window audit
+    # does not prove that today's scheduled 22:45 audit ran.
+    if now.astimezone(CST).time() >= dt.time(23, 0):
+        due = dt.datetime.combine(now.astimezone(CST).date(), dt.time(22, 45), CST)
+        if generated.astimezone(CST) < due:
+            result.update(stale=True, reason="scheduled_audit_missing")
     if result["stale"] and result["reason"] is None:
         result["reason"] = "health_json_stale"
     return result
@@ -261,6 +389,11 @@ def alert_atoms(info, unit_state, now=None):
         # A fresh audit that ran but found a scheduled run missing is a real
         # "should run but did not" event even though it is only a warning.
         atoms.update(info.get("dueRunAtoms") or [])
+        run = info.get("activeRunDecision")
+        if isinstance(run, dict) and run.get("status") in ("fail", "insufficient"):
+            atoms.add(f"active_run_{run['status']}|{run['scheduledDate']}")
+    if info.get("activeRunDecisionInvalid"):
+        atoms.add(f"audit_run_decision_invalid|{day}")
     if status in ("missing", "unknown"):
         atoms.add(f"audit_result_{status}|{day}")
     elif info.get("stale"):
@@ -433,6 +566,16 @@ def _change_lines(decision):
     return lines
 
 
+def _run_line(info):
+    if info.get("activeRunDecisionInvalid"):
+        return ["当前运行核验：证据身份无效，保持待核；不据此确认业务恢复。"]
+    run = info.get("activeRunDecision")
+    if not isinstance(run, dict):
+        return []
+    warning = "；保留警告 " + ",".join(run["materialWarningCodes"][:8]) if run["materialWarningCodes"] else ""
+    return [f"当前运行核验：{run['status']}；计划日期 {run['scheduledDate']}；目标 {run['targetDate'] or '未记录'}{warning}"]
+
+
 def message(info, hostname="unknown", unit_state="unknown", now=None, entry_reason="scheduled_audit",
             decision=None):
     now = now or dt.datetime.now(CST)
@@ -446,6 +589,7 @@ def message(info, hostname="unknown", unit_state="unknown", now=None, entry_reas
     text = "\n".join([
         f"research-data 健康告警｜{now.astimezone(CST).strftime('%Y-%m-%d %H:%M:%S %Z')}",
         f"状态：{status}",
+        *_run_line(info),
         *_change_lines(decision),
         f"审计单元：{state}",
         f"触发：{entry}",

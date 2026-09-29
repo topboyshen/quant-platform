@@ -23,7 +23,12 @@ with tempfile.TemporaryDirectory(prefix="source-repair-tests-") as directory:
     original_os_open = os.open
     def fd_aware_open(path, flags, mode=0o777, *, dir_fd=None):
         if dir_fd is not None and not os.path.isabs(path):
-            path = str(Path(f"/proc/self/fd/{dir_fd}") / os.fsdecode(path))
+            if sys.platform == "darwin":
+                import fcntl
+                directory = os.fsdecode(fcntl.fcntl(dir_fd, 50, bytes(1024)).split(b"\0", 1)[0])
+            else:
+                directory = f"/proc/self/fd/{dir_fd}"
+            path = str(Path(directory) / os.fsdecode(path))
             dir_fd = None
         return original_os_open(path, flags, mode, dir_fd=dir_fd)
     os.open = fd_aware_open
@@ -53,8 +58,15 @@ with tempfile.TemporaryDirectory(prefix="source-repair-tests-") as directory:
                        or (isinstance(flags, int) and bool(flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC))))
             if writing and not target.is_relative_to(scratch):
                 raise RuntimeError("offline tests only write disposable fixtures")
+        if event == "os.mkdir":
+            target = Path(os.fsdecode(args[0])).resolve()
+            if not target.is_relative_to(scratch):
+                raise RuntimeError("offline tests only create disposable fixture directories")
     sys.addaudithook(guard)
-    with mock.patch("syslog.syslog"):
+    # Optional vendor imports may create their user configuration directory.
+    # Route that test-only initialization to the same guarded disposable root;
+    # never let import side effects write the actual operator home directory.
+    with mock.patch("syslog.syslog"), mock.patch.object(Path, "home", return_value=scratch):
         suite = unittest.defaultTestLoader.discover(str(root / "tests"))
         result = unittest.TextTestRunner(verbosity=2).run(suite)
     print(f"OFFLINE_TESTS={result.testsRun} success={result.wasSuccessful()}")

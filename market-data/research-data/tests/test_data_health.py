@@ -494,6 +494,39 @@ class AuditTests(unittest.TestCase):
         with self.assertRaises(health.EvidenceError):
             self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
 
+    def test_absence_threshold_uses_full_market_row_not_csi_union(self):
+        # Fixed validated-result stub isolates audit aggregation; this does not
+        # claim that arbitrary counts pass the upstream manifest validator.
+        import copy
+        self.incremental_fixture()
+        calendar, complete, generation = health.qlib_evidence(self.qlib)
+        for invalid, csi_count, severity in ((11, 8, "information"), (26, 26, "warning"), (28, 10, "warning")):
+            changed = list(copy.deepcopy(generation))
+            incremental = list(changed[3])
+            quality = incremental[9]
+            quality["priceStatus"] = "partial"
+            symbols = ["SH" + str(600000+i) for i in range(invalid)]
+            quality["dailyCoverage"][-1].update(invalid=invalid, eligible=5567, invalid_symbols=symbols)
+            quality["sourceAbsenceDates"] = {symbol: [complete] for symbol in symbols}
+            quality["lastQuotedDate"] = {symbol: calendar[calendar.index(complete)-1] for symbol in symbols}
+            index = quality["index"]["validation"]
+            index.update(missingQuoteMembers=["SH" + str(600000+i) for i in range(csi_count)],
+                         missingPreviousCloseMembers=[], absenceMeaning="source_absent_not_confirmed_suspension",
+                         uniqueMembers=5085, sourceAbsenceSlotsVerified=invalid)
+            changed[3] = tuple(incremental)
+            with mock.patch.object(health, "qlib_evidence", return_value=(calendar, complete, tuple(changed))), \
+                 mock.patch.object(health, "generation", return_value=tuple(changed)):
+                result = self.run_audit(now=dt.datetime(2026, 9, 9, 12, tzinfo=health.CST))
+            entry = next(x for x in result["issues"] if x["code"] == "qlib_source_absence")
+            self.assertEqual(entry["invalidCount"], invalid)
+            self.assertEqual(entry["eligibleCount"], 5567)
+            self.assertEqual(entry["csiMissingMemberCount"], csi_count)
+            self.assertEqual(entry["severity"], severity)
+            self.assertEqual(entry["absenceScopes"]["csi_members"]["eligibleCount"], 5085)
+            if invalid == 26:
+                self.assertEqual(entry["absenceScopes"]["full_market"]["severity"], "information")
+                self.assertEqual(entry["absenceScopes"]["csi_members"]["severity"], "warning")
+
     def test_absence_severity_escalates_when_bounds_are_exceeded(self):
         """已证明缺失的分级：数量/持续期超上界时重新升级，不做永久豁免。
 

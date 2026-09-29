@@ -226,6 +226,44 @@ class DueRunAndBlindAuditTests(Base):
         info = self.info(payload, now)
         return alert.decide(info, "inactive", None, now)["state"], info
 
+    def test_core_missing_and_failure_atoms_are_bounded_by_due_date(self):
+        for code in ("scheduled_core_market_missing", "last_core_market_not_successful"):
+            state, _ = self._state(audit("2026-09-25T22:45:00+08:00"), DAY1)
+            issue = {"code": code, "severity": "warning", "dueDate": "2026-09-26", "status": "deferred"}
+            current = self.info(audit("2026-09-26T22:45:00+08:00", extra=[issue]), DAY2)
+            first = alert.decide(current, "inactive", state, DAY2)
+            self.assertTrue(first["notify"], first)
+            self.assertEqual(first["kind"], "should_run_but_did_not" if code.startswith("scheduled") else "new_failure")
+            again = alert.decide(current, "inactive", first["state"], DAY2)
+            self.assertFalse(again["notify"], again)
+            next_info = self.info(audit("2026-09-27T22:45:00+08:00", extra=[{**issue, "dueDate": "2026-09-27"}]), DAY3)
+            next_day = alert.decide(next_info, "inactive", again["state"], DAY3)
+            self.assertTrue(next_day["notify"], next_day)
+            self.assertIn(code + "|2026-09-27", next_day["new"] + next_day["worsened"])
+
+    def test_core_failed_old_target_is_not_a_second_alert_identity(self):
+        payload = audit("2026-09-26T22:45:00+08:00", extra=[{"code": "last_core_market_not_successful",
+            "severity": "warning", "dueDate": "2026-09-26", "target": "2026-09-24", "runId": "old-target"}])
+        info = self.info(payload, DAY2)
+        result = alert.decide(info, "inactive", None, DAY2)
+        self.assertIn("last_core_market_not_successful|2026-09-26", result["current"])
+        self.assertNotIn("last_core_market_not_successful|2026-09-24", result["current"])
+
+    def test_core_fault_is_preserved_while_blind_then_only_real_recovery_notifies(self):
+        for code in ("scheduled_core_market_missing", "last_core_market_not_successful"):
+            issue = {"code": code, "severity": "warning", "dueDate": "2026-09-25"}
+            state, _ = self._state(audit("2026-09-25T22:45:00+08:00", extra=[issue]), DAY1)
+            blind = alert.describe(self.dir / "absent.json", now=DAY2, retained_path=REPO / "config/health-alert-retained.json")
+            result = alert.decide(blind, "inactive", state, DAY2)
+            self.assertNotIn(code + "|2026-09-25", result["recovered"])
+            self.assertIn(code + "|2026-09-25", result["state"]["businessAtoms"])
+            same = self.info(audit("2026-09-27T22:45:00+08:00", extra=[issue]), DAY3)
+            result = alert.decide(same, "inactive", result["state"], DAY3)
+            self.assertNotIn(code + "|2026-09-25", result["new"] + result["recovered"])
+            clear = self.info(audit("2026-09-27T22:45:00+08:00"), DAY3)
+            result = alert.decide(clear, "inactive", result["state"], DAY3)
+            self.assertIn(code + "|2026-09-25", result["recovered"])
+
     def test_new_scheduled_snapshot_missing_notifies_while_critical_set_is_unchanged(self):
         state, _ = self._state(audit("2026-09-25T22:45:00.767231+08:00"), DAY1)
         current = self.info(audit("2026-09-26T22:45:00.767231+08:00", extra=[

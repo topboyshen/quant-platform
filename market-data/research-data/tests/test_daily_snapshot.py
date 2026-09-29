@@ -9,6 +9,7 @@ import stat
 import sys
 import tempfile
 import time
+import types
 import unittest
 from unittest import mock
 import warnings
@@ -609,7 +610,7 @@ class AkShareStageTests(unittest.TestCase):
             self.assertEqual(emitted[0]["status"], "skipped_existing")
             self.assertEqual(emitted[0]["akshareStage"]["tradeDate"], "2026-09-01")
 
-    def test_existing_snapshot_is_not_blocked_by_current_staging_failure(self):
+    def test_existing_snapshot_does_not_hide_current_staging_failure(self):
         emitted = []
         with mock.patch.object(
             daily_snapshot,
@@ -626,12 +627,10 @@ class AkShareStageTests(unittest.TestCase):
         ), mock.patch.object(
             daily_snapshot, "emit_status", side_effect=emitted.append
         ), mock.patch.object(sys, "argv", ["daily_snapshot.py"]):
-            result = daily_snapshot.run_snapshot("run", time.monotonic())
+            with self.assertRaisesRegex(daily_snapshot.SnapshotDeferredError, "current_market_stage_unavailable"):
+                daily_snapshot.run_snapshot("run", time.monotonic())
 
-        self.assertEqual(result, 0)
-        self.assertEqual(emitted[0]["status"], "skipped_existing")
-        self.assertEqual(emitted[0]["akshareStage"]["status"], "unavailable")
-        self.assertIn("network unavailable", emitted[0]["warnings"][0])
+        self.assertEqual(emitted, [])
 
     def test_two_day_sequence_defers_then_uses_exact_staged_day(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1048,7 +1047,7 @@ class SnapshotSafetyTests(unittest.TestCase):
                 blocker.rollback()
                 blocker.close()
 
-    def test_missing_historical_stage_in_main_defers_without_write(self):
+    def test_unproven_expected_day_in_main_defers_without_database_creation(self):
         with tempfile.TemporaryDirectory() as directory:
             db_path = str(Path(directory) / "snapshot.db")
             qlib_payload = {
@@ -1068,12 +1067,10 @@ class SnapshotSafetyTests(unittest.TestCase):
             ), mock.patch.object(sys, "argv", ["daily_snapshot.py"]):
                 with self.assertRaisesRegex(
                     daily_snapshot.SnapshotDeferredError,
-                    "qlib=2026-08-26, captured=2026-08-28",
+                    "independent_expected_day_unavailable",
                 ):
                     daily_snapshot.main()
-            with sqlite3.connect(db_path) as conn:
-                count = conn.execute("SELECT count(*) FROM snapshot").fetchone()[0]
-            self.assertEqual(count, 0)
+            self.assertFalse(Path(db_path).exists())
 
 
 class MootdxQuotesTests(unittest.TestCase):
@@ -1084,10 +1081,12 @@ class MootdxQuotesTests(unittest.TestCase):
             def quotes(self, symbol=None):
                 return pd.DataFrame()
 
-        with mock.patch.object(daily_snapshot, "Quotes", create=True), mock.patch(
-            "mootdx.quotes.Quotes"
-        ) as factory:
-            factory.factory.return_value = Client()
+        provider = types.ModuleType("mootdx")
+        quotes = types.ModuleType("mootdx.quotes")
+        quotes.Quotes = mock.Mock()
+        quotes.Quotes.factory.return_value = Client()
+        provider.quotes = quotes
+        with mock.patch.dict(sys.modules, {"mootdx": provider, "mootdx.quotes": quotes}):
             with self.assertRaisesRegex(RuntimeError, "mootdx quotes API returned empty"):
                 daily_snapshot.mootdx_quotes(["002617", "300033", "600875"])
 

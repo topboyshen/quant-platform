@@ -166,7 +166,7 @@ class MarketSourceAttributionTests(unittest.TestCase):
             "stock_board_industry_summary_ths",
         )
 
-    def test_existing_snapshot_keeps_success_status_with_current_stage_diagnostic(self):
+    def test_existing_snapshot_does_not_hide_failed_current_stage(self):
         emitted = []
         source_failure = {
             "provider": "akshare", "attemptCount": 2,
@@ -187,12 +187,11 @@ class MarketSourceAttributionTests(unittest.TestCase):
         ), mock.patch.object(daily_snapshot, "emit_status", side_effect=emitted.append), mock.patch.object(
             sys, "argv", ["daily_snapshot.py"]
         ):
-            result = daily_snapshot.run_snapshot("same-run", time.monotonic())
-        self.assertEqual(result, 0)
-        self.assertEqual(emitted[0]["status"], "skipped_existing")
-        self.assertEqual(emitted[0]["target"], "2026-09-24")
-        self.assertEqual(emitted[0]["akshareStage"]["sourceFailure"], source_failure)
-        self.assertNotIn("sourceFailure", emitted[0])
+            with self.assertRaises(daily_snapshot.SnapshotDeferredError) as caught:
+                daily_snapshot.run_snapshot("same-run", time.monotonic())
+        self.assertEqual(caught.exception.target, "2026-09-24")
+        self.assertEqual(caught.exception.source_failure, source_failure)
+        self.assertEqual(emitted, [])
 
     def test_target_stays_unknown_until_qlib_establishes_it(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(
