@@ -47,14 +47,16 @@ class UnitFileTests(unittest.TestCase):
         self.assertNotIn("Environment=RESEARCH_CHAIN_TELEGRAM_CHAT=", pre)
         self.assertIn("TimeoutStartSec=120s", digest)  # POST + journal + Hermes alert budget
 
-    def test_seal_and_draft_onfailure_reset_the_old_alert(self):
-        for rel in ("astock-research-seal.service.d/failure-alert.conf",
-                    "astock-xhs-draft.service.d/failure-alert.conf"):
-            text = read(SYSTEMD / rel)
-            with self.subTest(drop_in=rel):
-                self.assertRegex(text, r"(?m)^OnFailure=$")
-                self.assertRegex(text, r"(?m)^OnFailure=research-chain-alert-post\.service$")
-                self.assertNotIn("astock-seal-failure-alert.service", text)
+    def test_seal_onfailure_resets_the_old_alert_and_attaches_core_alert(self):
+        text = read(SYSTEMD / "astock-research-seal.service.d/failure-alert.conf")
+        self.assertRegex(text, r"(?m)^OnFailure=$")
+        self.assertRegex(text, r"(?m)^OnFailure=research-chain-alert-post\.service$")
+        self.assertNotIn("astock-seal-failure-alert.service", text)
+
+    def test_on_demand_draft_onfailure_only_resets_automatic_alert_targets(self):
+        text = read(SYSTEMD / "astock-xhs-draft.service.d/failure-alert.conf")
+        directives = [line.strip() for line in text.splitlines() if line.startswith("OnFailure=")]
+        self.assertEqual(directives, ["OnFailure="])
 
     def test_wrapper_keeps_the_relay_exit_status(self):
         text = read(WRAPPER)
@@ -78,6 +80,7 @@ class WrapperIntegrationTests(unittest.TestCase):
         (self.scripts / "research_relay.py").write_text(
             "#!/usr/bin/env python3\n"
             "import json, os, sys\n"
+            "if os.environ.get('FAKE_OBSERVATION_FAILURE'): print('relay_attempt_observation_unavailable', file=sys.stderr)\n"
             "payload = {\n"
             "  'status': os.environ.get('FAKE_RELAY_STATUS', 'held'),\n"
             "  'sent': int(os.environ.get('FAKE_RELAY_SENT', '0')),\n"
@@ -126,6 +129,11 @@ class WrapperIntegrationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.marker.exists())
         self.assertIn("research_relay confirmed_or_not_scheduled", result.stdout)
+
+    def test_observation_failure_never_masks_business_hold(self):
+        result = self.run_wrapper(FAKE_OBSERVATION_FAILURE="1")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertTrue(self.marker.exists())
 
     def test_benign_hold_does_not_alert_and_keeps_zero(self):
         result = self.run_wrapper(FAKE_RELAY_STATUS="held", FAKE_RELAY_SENT="0",

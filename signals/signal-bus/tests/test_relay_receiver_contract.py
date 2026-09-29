@@ -158,7 +158,7 @@ class ReceiverContractTests(unittest.TestCase):
                                         DAY,
                                         __import__("datetime").datetime(2026, 9, 9, 0, 5,
                                                                          tzinfo=__import__("datetime").timezone.utc),
-                                        sent)
+                                        sent, data_date=AS_OF)
         self.assertEqual(probed["status"], "confirmed")
         self.assertEqual(probed["receiver_content_sha256"], sent)
         self.assertEqual(opener.open.call_args.args[0].get_method(), "GET")

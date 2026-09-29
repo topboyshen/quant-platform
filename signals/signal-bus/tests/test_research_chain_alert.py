@@ -7,6 +7,7 @@ and a dry-run that leaves the whole tree untouched.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import multiprocessing
@@ -17,6 +18,7 @@ import time
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location(
     "research_chain_alert_v2",
@@ -30,12 +32,15 @@ DATE = "2026-09-22"
 PRE = datetime(2026, 9, 22, 8, 12, tzinfo=rca.TZ)
 POST = datetime(2026, 9, 22, 8, 20, tzinfo=rca.TZ)
 REPORT_SHA = "a" * 64
+SUCCESS_EVIDENCE = {"seal_bound": True, "delivery_state": "confirmed", "telegram_state": "confirmed",
+                    "stages": {"generation": True, "seal": True, "relay": True, "telegram": True}}
 
 
 def facts(**over):
     base = {"date": DATE, "now": PRE, "occurrence": None, "last_run": None, "report_exists": False,
-            "report_sha256": None, "seal": None, "seal_mtime": None, "draft": None,
-            "delivery": None, "relay_runs": []}
+            "report_sha256": None, "seal": None, "seal_mtime": None,
+            "delivery": None, "relay_runs": [], "telegram_state": None, "telegram_wording": "",
+            "telegram_evidence": {}}
     base.update(over)
     return base
 
@@ -49,7 +54,8 @@ def seal(report_sha=REPORT_SHA, **over):
 
 
 def receipt(status="confirmed", **over):
-    value = {"status": status, "reason": "accepted", "target_date": DATE, "report_sha256": REPORT_SHA,
+    value = {"status": status, "reason": "accepted", "target_date": DATE, "as_of": "2026-09-19",
+             "report_sha256": REPORT_SHA,
              "receiver_storage": "receiver_reported_stored", "receiver_content_sha256": "c" * 64,
              "payload_sha256": "c" * 64, "content_match": True,
              "receiver_record_id": "rr_test"}
@@ -120,7 +126,13 @@ class ConfirmationTests(unittest.TestCase):
 
     def test_delivery_evidence_binds_date_and_report_hash(self):
         self.assertEqual(rca.delivery_evidence(facts())[0], "unconfirmed")
-        self.assertEqual(rca.delivery_evidence(facts(delivery=receipt(), report_sha256=REPORT_SHA))[0], "confirmed")
+        self.assertEqual(rca.delivery_evidence(facts(delivery=receipt(), report_sha256=REPORT_SHA,
+                                                    data_date="2026-09-19"))[0], "confirmed")
+        self.assertNotEqual(rca.delivery_evidence(facts(delivery=receipt(), report_sha256=REPORT_SHA))[0],
+                            "confirmed")
+        self.assertNotEqual(rca.delivery_evidence(facts(
+            delivery=receipt(as_of="2026-01-01"), report_sha256=REPORT_SHA,
+            data_date="2026-09-19"))[0], "confirmed")
         self.assertEqual(rca.delivery_evidence(facts(delivery=receipt(), report_sha256="b" * 64))[0], "uncertain")
         self.assertEqual(rca.delivery_evidence(facts(delivery=receipt(target_date="2026-09-18"),
                                                     report_sha256=REPORT_SHA))[0], "uncertain")
@@ -128,6 +140,144 @@ class ConfirmationTests(unittest.TestCase):
         unknown_hash = rca.delivery_evidence(facts(delivery=receipt(), report_sha256=None))
         self.assertEqual(unknown_hash[0], "unverified")
         self.assertNotIn("已确认", unknown_hash[1])
+        # A05: stored=false / 缺 ID / 哈希冲突 不得确认。
+        self.assertNotEqual(rca.delivery_evidence(facts(
+            delivery=receipt(receiver_storage="not_in_acknowledgement"), report_sha256=REPORT_SHA))[0], "confirmed")
+        self.assertNotEqual(rca.delivery_evidence(facts(
+            delivery=receipt(receiver_record_id=""), report_sha256=REPORT_SHA))[0], "confirmed")
+        self.assertNotEqual(rca.delivery_evidence(facts(
+            delivery=receipt(receiver_content_sha256="d" * 64, content_match=True),
+            report_sha256=REPORT_SHA))[0], "confirmed")
+        self.assertNotEqual(rca.delivery_evidence(facts(
+            delivery=receipt(as_of=DATE), report_sha256=REPORT_SHA))[0], "confirmed")
+        self.assertNotEqual(rca.delivery_evidence(facts(
+            delivery=receipt(as_of="2026-09-18"), report_sha256=REPORT_SHA,
+            data_date="2026-09-19"))[0], "confirmed")
+
+    def test_invalid_relay_evidence_is_not_success(self):
+        """A05: stored=false、哈希冲突、缺 ID 不得输出 success。"""
+        seal_ok = seal()
+        for delivery in (
+                receipt(receiver_storage="not_in_acknowledgement"),
+                receipt(receiver_content_sha256="d" * 64),
+                receipt(receiver_record_id=""),
+                receipt(content_match=False),
+                receipt(status="confirmed", payload_sha256="not-hex"),
+        ):
+            with self.subTest(delivery=delivery):
+                ok, evidence = rca._success_evidence(facts(
+                    occurrence=occurrence(), last_run=last_run(), report_exists=True,
+                    report_sha256=REPORT_SHA, seal=seal_ok, delivery=delivery,
+                    telegram_state="confirmed"))
+                self.assertFalse(ok)
+                self.assertNotEqual(evidence["delivery_state"], "confirmed")
+
+    def test_telegram_receipt_is_required_for_research_success(self):
+        """A06: 仅密封+relay 不能判成功；缺 Telegram 回执保持不可确认。"""
+        base = dict(occurrence=occurrence(), last_run=last_run(), report_exists=True,
+                    report_sha256=REPORT_SHA, seal=seal(), delivery=receipt(), now=POST,
+                    data_date="2026-09-19")
+        missing = rca.classify(facts(**base, telegram_state="missing",
+                                     telegram_wording="尚未确认（无 Telegram 发送记录）"))
+        self.assertIn("telegram_missing", codes(missing))
+        ok, evidence = rca._success_evidence(facts(**base, telegram_state="missing"))
+        self.assertFalse(ok)
+        self.assertEqual(evidence["telegram_state"], "missing")
+        confirmed = rca.classify(facts(**base, telegram_state="confirmed"))
+        self.assertEqual(confirmed, [])
+        ok, _ = rca._success_evidence(facts(**base, telegram_state="confirmed"))
+        self.assertTrue(ok)
+        skipped = rca.classify(facts(occurrence={"status": "skipped"}, now=POST,
+                                     telegram_state="missing"))
+        self.assertIn("calendar_skip_invalid", codes(skipped))
+        self.assertNotIn("telegram_missing", codes(skipped))
+
+    def _write_telegram(self, root: Path, *, payload=b"payload-bytes", receipt_over=None, sent_over=None):
+        event_id = f"astock-{DATE}-success-telegram-v1"
+        payload_rel = f"payloads/{event_id}.md"
+        (root / "work/notifications/payloads").mkdir(parents=True)
+        (root / "work/notifications/sent").mkdir(parents=True)
+        (root / "work/notifications/receipts/send").mkdir(parents=True)
+        (root / "work/notifications" / payload_rel).write_bytes(payload)
+        digest = hashlib.sha256(payload).hexdigest()
+        sent = {"schemaVersion": "1.0", "eventId": event_id, "source": "AStock_AI_System",
+                "route": "telegram", "targetDate": DATE, "outcome": "success",
+                "report": {"payloadFile": payload_rel, "sha256": digest, "bytes": len(payload),
+                            "sourceSha256": REPORT_SHA, "sourceBytes": 10}}
+        if sent_over:
+            if "report" in sent_over:
+                sent["report"].update(sent_over.pop("report"))
+            sent.update(sent_over)
+        receipt = {"schemaVersion": "1.0", "eventId": event_id, "targetDate": DATE,
+                   "route": "telegram", "payloadSha256": digest, "payloadBytes": len(payload),
+                   "platformMessageId": "4274", "ackKind": "hermes_cli_json_message_id",
+                   "confirmedAt": "2026-09-22T00:00:32.728Z", "sourceSha256": REPORT_SHA}
+        if receipt_over:
+            receipt.update(receipt_over)
+        (root / "work/notifications/sent" / f"{event_id}.json").write_text(json.dumps(sent))
+        (root / "work/notifications/receipts/send" / f"{event_id}.json").write_text(json.dumps(receipt))
+        return digest
+
+    def test_telegram_attachment_hash_bytes_and_time_are_required(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_telegram(root)
+            self.assertEqual(rca.telegram_delivery_evidence(root, DATE, REPORT_SHA)[0], "confirmed")
+            (root / "work/notifications/payloads" / f"astock-{DATE}-success-telegram-v1.md").unlink()
+            self.assertEqual(rca.telegram_delivery_evidence(root, DATE, REPORT_SHA)[0], "unconfirmed")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_telegram(root, receipt_over={"payloadSha256": "d" * 64})
+            self.assertEqual(rca.telegram_delivery_evidence(root, DATE, REPORT_SHA)[0], "mismatch")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_telegram(root, receipt_over={"payloadBytes": 1})
+            self.assertEqual(rca.telegram_delivery_evidence(root, DATE, REPORT_SHA)[0], "mismatch")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_telegram(root, receipt_over={"confirmedAt": "not-a-timestamp"})
+            self.assertEqual(rca.telegram_delivery_evidence(root, DATE, REPORT_SHA)[0], "unconfirmed")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_telegram(root, receipt_over={"confirmedAt": "2026-09-22"})
+            self.assertEqual(rca.telegram_delivery_evidence(root, DATE, REPORT_SHA)[0], "unconfirmed")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_telegram(root, receipt_over={"confirmedAt": "2026-09-22T00:00:32"})
+            self.assertEqual(rca.telegram_delivery_evidence(root, DATE, REPORT_SHA)[0], "unconfirmed")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_telegram(root, payload=b"x", receipt_over={"payloadBytes": True},
+                                 sent_over={"report": {"bytes": True}})
+            self.assertNotEqual(rca.telegram_delivery_evidence(root, DATE, REPORT_SHA)[0], "confirmed")
+
+    def test_collect_passes_expected_data_date_from_the_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bus = Path(tmp) / "bus"
+            (root / "reports/daily").mkdir(parents=True)
+            (root / "work/orchestrator/states").mkdir(parents=True)
+            (root / f"reports/daily/{DATE}.md").write_text(
+                f"# x\n## 2. 上一交易日 A 股行情（2026-09-19）\n", encoding="utf-8")
+            facts = rca.collect(root=root, bus=bus, date=DATE, now=POST, relay_log="")
+            self.assertEqual(facts["data_date"], "2026-09-19")
+
+    def test_collect_does_not_read_on_demand_draft_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, bus = Path(tmp), Path(tmp) / "bus"
+            draft_file = root / "work/xhs/last-run.json"
+            draft_file.parent.mkdir(parents=True)
+            draft_file.write_text(json.dumps({"targetDate": DATE, "status": "failed"}))
+            read_json = rca._read_json
+
+            def read_core_only(path, *args, **kwargs):
+                self.assertNotEqual(path, draft_file, "automatic core collection read the on-demand result")
+                return read_json(path, *args, **kwargs)
+
+            with patch.object(rca, "_read_json", side_effect=read_core_only):
+                collected = rca.collect(root=root, bus=bus, date=DATE, now=POST, relay_log="")
+            self.assertNotIn("draft", collected)
+            self.assertEqual(json.loads(draft_file.read_text())["status"], "failed")
 
     def test_uncertain_alert_is_never_retried(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -176,7 +326,8 @@ class ProductionInputTests(unittest.TestCase):
 
     def test_seal_must_be_bound_to_the_current_report_hash(self):
         ok_items = rca.classify(facts(occurrence=occurrence(), last_run=last_run(), report_exists=True,
-                                      report_sha256=REPORT_SHA, seal=seal(), delivery=receipt()))
+                                      report_sha256=REPORT_SHA, seal=seal(), delivery=receipt(),
+                                      telegram_state="confirmed", data_date="2026-09-19"))
         self.assertEqual(ok_items, [])
         for bad in (seal(report_sha="b" * 64), seal(state="DRAFT"), seal(targetDate="2026-09-18"),
                     {"kind": "research_seal"},
@@ -212,9 +363,9 @@ class IncidentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             state, sender = Path(tmp), SenderFake()
             rca.process(first, state, PRE, date=DATE, sender=sender)
-            summary = rca.process(later, state, PRE, date=DATE, sender=SenderFake())
-            self.assertEqual(len(sender.sent), 1)
-            self.assertEqual(summary["notified"], 0)
+            summary = rca.process(later, state, PRE, date=DATE, sender=sender)
+            self.assertEqual(len(sender.sent), 2)
+            self.assertEqual(summary["notified"], 1)
 
     def test_recovery_requires_seal_and_matching_receipt(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -227,7 +378,7 @@ class IncidentTests(unittest.TestCase):
             self.assertIsNone(saved["incident"].get("resolved_at"))
             # Real evidence: hash-bound seal + matching confirmed receipt.
             rca.process([], state, POST, date=DATE, sender=SenderFake(), success=True,
-                        success_evidence={"seal_bound": True, "delivery_state": "confirmed"})
+                        success_evidence=SUCCESS_EVIDENCE)
             saved = json.loads((state / f"research-chain-alert-{DATE}.json").read_text())
             self.assertIsNone(saved["incident"])
             self.assertTrue(saved["history"][0]["resolved_at"])
@@ -254,7 +405,7 @@ class StateSafetyTests(unittest.TestCase):
 
         items = module.classify({"date": DATE, "now": PRE, "occurrence": {"status": "failed", "childExitCode": 1},
                                  "last_run": None, "report_exists": False, "report_sha256": None,
-                                 "seal": None, "seal_mtime": None, "draft": None, "delivery": None,
+                                 "seal": None, "seal_mtime": None, "delivery": None,
                                  "relay_runs": []})
         try:
             module.process(items, Path(state_dir), PRE, date=DATE, sender=WorkerSender(), dry_run=False)
@@ -264,7 +415,8 @@ class StateSafetyTests(unittest.TestCase):
 
     def test_two_real_processes_send_exactly_once(self):
         results = Path(self.tmp.name) / "sends.txt"
-        workers = [multiprocessing.Process(target=self.worker, args=(str(self.state), str(results)))
+        context = multiprocessing.get_context("fork")
+        workers = [context.Process(target=self.worker, args=(str(self.state), str(results)))
                    for _ in range(2)]
         for worker in workers:
             worker.start()
@@ -313,20 +465,59 @@ class StateSafetyTests(unittest.TestCase):
         self.assertEqual(summary["problems"], [])
         self.assertFalse((root / "state").exists())
 
-    def test_draft_failure_survives_research_success_and_keeps_one_notification_a_day(self):
+    def test_on_demand_draft_failure_does_not_pollute_core_success_or_notify(self):
         state = Path(self.tmp.name) / "state2"
-        mixed = rca.classify(facts(occurrence=occurrence(), last_run=last_run(), report_exists=True,
-                                   report_sha256=REPORT_SHA, seal=seal(), delivery=receipt(),
-                                   draft={"targetDate": DATE, "status": "held",
-                                          "reasonCodes": ["REPORT_CONTRACT_MISMATCH"]}))
-        self.assertIn("draft_failed", codes(mixed))
+        core = facts(occurrence=occurrence(), last_run=last_run(), report_exists=True,
+                     report_sha256=REPORT_SHA, seal=seal(), delivery=receipt(), now=POST,
+                     data_date="2026-09-19", telegram_state="confirmed",
+                     draft={"targetDate": DATE, "status": "held",
+                            "reasonCodes": ["REPORT_CONTRACT_MISMATCH"]})
+        mixed = rca.classify(core)
+        self.assertEqual(mixed, [])
+        success, evidence = rca._success_evidence(core)
+        self.assertTrue(success)
+        self.assertNotIn("draft", evidence["stages"])
         sender = SenderFake()
-        rca.process(mixed, state, POST, date=DATE, sender=sender, success=True,
-                    success_evidence={"seal_bound": True, "delivery_state": "confirmed"})
+        result = rca.process(mixed, state, POST, date=DATE, sender=sender,
+                             success=success, success_evidence=evidence)
         saved = json.loads((state / f"research-chain-alert-{DATE}.json").read_text())
-        self.assertIsNotNone(saved["incident"], "research success must not clear a draft failure")
-        self.assertIsNone(saved["incident"].get("resolved_at"))
-        self.assertEqual(len(sender.sent), 1)
+        self.assertIsNone(saved["incident"])
+        self.assertEqual(saved["businessAtoms"], [])
+        self.assertEqual(result["notified"], 0)
+        self.assertEqual(sender.sent, [])
+
+    def test_on_demand_draft_failure_does_not_mask_core_failures(self):
+        base = dict(occurrence=occurrence(), last_run=last_run(), report_exists=True,
+                    report_sha256=REPORT_SHA, seal=seal(), delivery=receipt(), now=POST,
+                    data_date="2026-09-19", telegram_state="confirmed",
+                    draft={"targetDate": DATE, "status": "failed"})
+        cases = (("generation_failed", {"occurrence": occurrence("failed", 1)}),
+                 ("seal_failed", {"seal": seal(state="REJECTED")}),
+                 ("telegram_missing", {"telegram_state": "missing"}),
+                 ("relay_blocked", {"delivery": receipt(status="held", reason="digest_hash_mismatch")}))
+        for expected, change in cases:
+            with self.subTest(cause=expected):
+                result = rca.classify(facts(**(base | change)))
+                self.assertIn(expected, codes(result))
+                self.assertNotIn("draft_failed", codes(result))
+
+    def test_legacy_draft_atom_is_preserved_without_claiming_recovery(self):
+        state = Path(self.tmp.name) / "legacy_draft"
+        state.mkdir()
+        atom = f"{DATE}|draft_failed|report_contract_mismatch"
+        target = state / f"research-chain-alert-{DATE}.json"
+        target.write_text(json.dumps({
+            "version": 2, "businessAtoms": [atom],
+            "incident": {"key": f"{DATE}:research_chain", "date": DATE,
+                         "causes": [{"code": "draft_failed", "reason": "report_contract_mismatch",
+                                     "detail": "existing on-demand draft failure"}],
+                         "attempts": [{"outcome": "confirmed", "at": PRE.isoformat()}]}}))
+        sender = SenderFake()
+        result = rca.process([], state, POST, date=DATE, sender=sender, success=True,
+                             success_evidence=SUCCESS_EVIDENCE)
+        self.assertEqual(json.loads(target.read_text())["businessAtoms"], [atom])
+        self.assertEqual(result["recovered"], 0)
+        self.assertEqual(sender.sent, [])
 
     def test_state_with_null_attempt_is_corrupt_and_pauses(self):
         state = Path(self.tmp.name) / "state3"
@@ -339,42 +530,47 @@ class StateSafetyTests(unittest.TestCase):
         self.assertEqual(summary["paused"], 1)
         self.assertEqual(sender.sent, [])
 
-    def test_recovery_then_same_day_new_cause_notifies_only_once(self):
+    def test_recovery_then_same_day_new_cause_notifies_distinct_changes(self):
         state = Path(self.tmp.name) / "state_daily"
         sender = SenderFake()
         generation = rca.classify(facts(occurrence=occurrence("failed", 1)))
         rca.process(generation, state, PRE, date=DATE, sender=sender)
         rca.process([], state, PRE, date=DATE, sender=sender, success=True,
-                    success_evidence={"seal_bound": True, "delivery_state": "confirmed"})
-        draft = rca.classify(facts(occurrence=occurrence(), last_run=last_run(), report_exists=True,
-                                   report_sha256=REPORT_SHA, seal=seal(), delivery=receipt(),
-                                   draft={"targetDate": DATE, "status": "held", "reasonCodes": ["X"]}))
-        summary = rca.process(draft, state, PRE, date=DATE, sender=sender, success=False)
-        self.assertEqual(len(sender.sent), 1, "same-day second incident must not notify again")
-        self.assertEqual(summary["skipped"], 1)
+                    success_evidence=SUCCESS_EVIDENCE)
+        telegram = rca.classify(facts(occurrence=occurrence(), last_run=last_run(), report_exists=True,
+                                      report_sha256=REPORT_SHA, seal=seal(), delivery=receipt(),
+                                      now=POST, data_date="2026-09-19", telegram_state="missing"))
+        self.assertEqual(codes(telegram), ["telegram_missing"])
+        summary = rca.process(telegram, state, POST, date=DATE, sender=sender, success=False)
+        self.assertEqual(len(sender.sent), 3, "fault, proven recovery, new fault are distinct transitions")
+        self.assertEqual(summary["notified"], 1)
+        self.assertIn("恢复", sender.sent[1])
 
-    def test_suppressed_new_cause_is_recorded_and_recovery_clears_it(self):
+    def test_new_cause_is_recorded_notified_and_proven_recovery_clears_it(self):
         state = Path(self.tmp.name) / "state_trace"
         sender = SenderFake()
         generation = rca.classify(facts(occurrence=occurrence("failed", 1)))
         rca.process(generation, state, PRE, date=DATE, sender=sender)
-        draft = rca.classify(facts(occurrence=occurrence(), last_run=last_run(), report_exists=True,
-                                   report_sha256=REPORT_SHA, seal=seal(), delivery=receipt(),
-                                   draft={"targetDate": DATE, "status": "held", "reasonCodes": ["X"]}))
-        rca.process(draft, state, PRE, date=DATE, sender=sender)
+        relay = rca.classify(facts(occurrence=occurrence(), last_run=last_run(), report_exists=True,
+                                   report_sha256=REPORT_SHA, seal=seal(),
+                                   delivery=receipt(status="held", reason="digest_hash_mismatch"),
+                                   now=POST, data_date="2026-09-19", telegram_state="confirmed"))
+        self.assertEqual(codes(relay), ["relay_blocked"])
+        rca.process(relay, state, POST, date=DATE, sender=sender)
         path = state / f"research-chain-alert-{DATE}.json"
         saved = json.loads(path.read_text())
         codes_now = [cause["code"] for cause in saved["incident"]["causes"]]
-        self.assertIn("draft_failed", codes_now, "new cause must be recorded even when suppressed")
-        self.assertTrue(saved["incident"]["suppressed_updates"])
+        self.assertIn("relay_blocked", codes_now, "new cause must be recorded even when suppressed")
+        self.assertEqual(len(sender.sent), 2)
+        self.assertIn("relay_blocked", " ".join(saved["businessAtoms"]))
         rca.process([], state, POST, date=DATE, sender=sender, success=True,
-                    success_evidence={"seal_bound": True, "delivery_state": "confirmed"})
+                    success_evidence=SUCCESS_EVIDENCE)
         saved = json.loads(path.read_text())
         self.assertIsNone(saved["incident"], "recovery must not leave a stale incident")
         self.assertEqual(saved["history"][-1]["resolved_at"][:10], DATE)
         log_lines = (state / "research-chain-alert.log").read_text().splitlines()
         events = [json.loads(line)["event"] for line in log_lines]
-        self.assertIn("same_day_suppressed", events)
+        self.assertEqual(events.count("send"), 3)
         self.assertIn("recovered", events)
 
     def test_missing_attempts_or_null_causes_pause_instead_of_raising(self):
@@ -447,7 +643,7 @@ class DrillTests(unittest.TestCase):
         self.fake.outcome = "uncertain"
         self.assertEqual(rca.main(["--phase", "drill", "--date", DATE]), 1)
         self.assertEqual(len(self.sent), 1)
-        self.assertEqual(rca.main(["--phase", "drill", "--date", DATE]), 1)
+        self.assertEqual(rca.main(["--phase", "drill", "--date", DATE]), 3)
         self.assertEqual(len(self.sent), 1, "uncertain drill must not be resent")
 
     def test_drill_dry_run_writes_nothing_and_sends_nothing(self):

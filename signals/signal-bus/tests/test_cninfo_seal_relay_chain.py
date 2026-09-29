@@ -38,6 +38,8 @@ relay = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(relay)
 
 
+@unittest.skipUnless(ASTOCK.is_dir() and Path(NODE).is_file(),
+                     "legacy CNINFO fixture requires its fixed Linux AStock installation")
 class CninfoSealRelayChainTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

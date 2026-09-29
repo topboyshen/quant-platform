@@ -92,7 +92,8 @@ class ResearchProtocolTests(unittest.TestCase):
             case.doCleanups()
 
     def test_v2_summary_is_accepted_by_the_actual_sibling_renderer(self):
-        source = Path(__file__).resolve().parents[2] / "signal-gate/app/digest_content.py"
+        gate = Path(os.environ.get("SIGNAL_GATE_TEST_ROOT", str(Path(__file__).resolve().parents[2] / "signal-gate")))
+        source = gate / "app/digest_content.py"
         if not source.exists():
             self.skipTest("sibling Signal Gate integration source is absent")
         case = relay_cases.RelayTests()

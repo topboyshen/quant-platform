@@ -43,3 +43,16 @@ systemd/astock-research-seal.service.d/*
 !docs/
 !docs/RESEARCH_CHAIN_ALERT_WIRING.md
 !docs/RESEARCH_PROTOCOL_V2.md
+!tests/test_research_relay_digest.py
+!tests/test_alert_repair_boundaries.py
+!tests/test_structured_producer_chain.py
+!tests/test_on_demand_unit_graph.py
+!scripts/build_research_digest.py
+!scripts/run_research_digest.sh
+!scripts/post_digest.py
+!tests/test_legacy_digest_guard.py
+!tests/test_receiver_compatibility.py
+!tests/fixtures/
+tests/fixtures/*
+!tests/fixtures/research_contract_3fafc74e.py
+!tests/fixtures/RECEIVER_IDENTITY.json

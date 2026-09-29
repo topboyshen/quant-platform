@@ -2,6 +2,7 @@
 import datetime as dt
 import importlib.util
 import json
+import os
 from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
@@ -85,7 +86,8 @@ class CalendarSkipTests(unittest.TestCase):
         response = Mock(status=200)
         response.read.return_value = relay.encode_payload({
             "status": "accepted", "source": "nng8", "day": DAY, "target_date": DAY,
-            "stored": True, "content_sha256": relay.sha256(relay.encode_payload(payload))})
+            "record_id": "fixture-calendar", "stored": True,
+            "content_sha256": relay.sha256(relay.encode_payload(payload))})
         response.__enter__ = Mock(return_value=response)
         response.__exit__ = Mock(return_value=False)
         opener = Mock()
@@ -154,7 +156,8 @@ class CalendarSkipTests(unittest.TestCase):
         self.assertEqual(state_path.read_bytes(), before)
 
     def test_calendar_proof_passes_the_actual_sibling_renderer(self):
-        source = Path(__file__).resolve().parents[2] / "signal-gate/app/digest_content.py"
+        gate = Path(os.environ.get("SIGNAL_GATE_TEST_ROOT", str(Path(__file__).resolve().parents[2] / "signal-gate")))
+        source = gate / "app/digest_content.py"
         if not source.exists():
             self.skipTest("sibling integration source absent")
         spec = importlib.util.spec_from_file_location("calendar_consumer", source)

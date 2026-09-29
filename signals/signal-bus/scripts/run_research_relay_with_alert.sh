@@ -26,13 +26,21 @@ set -e
 printf '%s\n' "$out"
 
 fields=()
-while IFS= read -r field; do
-  fields+=("$field")
-done < <("$PYTHON" -c 'import json,sys
+while IFS= read -r field; do fields+=("$field"); done < <("$PYTHON" -c 'import json,sys
+d={}
 try:
-  d=json.loads(sys.argv[1])
-except Exception:
-  d={}
+  parsed=json.loads(sys.argv[1])
+except (ValueError,TypeError):
+  parsed=None
+if isinstance(parsed,dict):
+  d=parsed
+for line in (() if d else sys.argv[1].splitlines()):
+  try:
+    candidate=json.loads(line)
+  except (ValueError,TypeError):
+    continue
+  if isinstance(candidate,dict):
+    d=candidate
 print(d.get("status",""))
 print(d.get("sent",""))
 print(d.get("reason",""))

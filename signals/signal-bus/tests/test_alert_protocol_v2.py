@@ -17,7 +17,8 @@ rca = fixtures.rca
 def healthy(**over):
     values = dict(occurrence=fixtures.occurrence(), last_run=fixtures.last_run(),
                   report_exists=True, report_sha256=fixtures.REPORT_SHA,
-                  seal=fixtures.seal(), delivery=fixtures.receipt())
+                  seal=fixtures.seal(), delivery=fixtures.receipt(), data_date="2026-09-19",
+                  telegram_state="confirmed")
     values.update(over)
     return fixtures.facts(**values)
 
@@ -75,12 +76,12 @@ class ReceiverEvidenceTests(unittest.TestCase):
                         {"receiver_content_sha256": "garbage"}, {"content_match": False}):
             with self.subTest(changes=changes):
                 f = healthy(delivery=fixtures.receipt(**changes))
-                self.assertEqual(rca.delivery_evidence(f)[0], "unverified")
+                self.assertNotEqual(rca.delivery_evidence(f)[0], "confirmed")
                 self.assertFalse(rca._success_evidence(f)[0])
                 self.assertIn("predeadline_not_ready", fixtures.codes(rca.classify(f)))
 
     def test_read_only_query_with_matching_stored_hash_is_success(self):
-        f = healthy(delivery=fixtures.receipt(receiver_storage="not_in_acknowledgement",
+        f = healthy(delivery=fixtures.receipt(receiver_storage="receiver_reported_stored",
                                               confirmed_via="read_only_query"))
         self.assertTrue(rca._success_evidence(f)[0])
         self.assertEqual(rca.classify(f), [])
@@ -97,31 +98,56 @@ class ReceiverEvidenceTests(unittest.TestCase):
             process(healthy(delivery=None, relay_runs=old_runs))
             self.assertEqual(process(healthy(relay_runs=old_runs))["recovered"], 1)
             self.assertEqual(process(healthy(relay_runs=old_runs, draft={"status": "failed"}))["skipped"], 1)
-            self.assertEqual(process(healthy(relay_runs=old_runs))["recovered"], 1)
+            self.assertEqual(process(healthy(relay_runs=old_runs))["recovered"], 0)
             saved = json.loads(rca._state_path(state, fixtures.DATE).read_text())
             self.assertIsNone(saved["incident"])
             self.assertTrue(saved["notified_once"])
-            self.assertEqual(len(saved["history"]), 2)
-            self.assertNotIn("notified_at", saved["history"][-1])
+            self.assertEqual(len(saved["history"]), 1)
             self.assertTrue(saved["history"][-1]["resolution"]["seal_bound"])
-            self.assertEqual(len(sender.sent), 1)
+            self.assertEqual(len(sender.sent), 2)
 
     def test_success_recovery_branch_clears_unnotified_incident(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = rca._state_path(Path(tmp), fixtures.DATE)
             rca._save_state(path, {"version": 2, "notified_once": True,
                                   "incident": {"key": fixtures.DATE + ":research_chain",
-                                               "causes": [], "attempts": []}})
+                                               "causes": [{"code": "relay_blocked", "reason": "old_failure"}],
+                                               "attempts": [{"outcome": "confirmed"}]}})
             historical = rca.classify(healthy(delivery=None, relay_runs=[
                 {"status": "held", "reason": "old_failure", "started": None}]))
             result = rca.process(historical, Path(tmp), fixtures.PRE, date=fixtures.DATE,
                                  sender=fixtures.SenderFake(), success=True,
                                  success_evidence={"seal_bound": True})
+            self.assertEqual(result["recovered"], 0)
+            self.assertIsNotNone(json.loads(path.read_text())["incident"])
+            result = rca.process([], Path(tmp), fixtures.PRE, date=fixtures.DATE,
+                                 sender=fixtures.SenderFake(), success=True,
+                                 success_evidence=fixtures.SUCCESS_EVIDENCE)
             self.assertEqual(result["recovered"], 1)
             self.assertIsNone(json.loads(path.read_text())["incident"])
 
 
 class CalendarAlertTests(unittest.TestCase):
+    def test_skip_confirmation_needs_date_id_storage_and_matching_content(self):
+        case = calendar_cases.CalendarSkipTests()
+        case.setUp()
+        try:
+            case.case.config()
+            case.case.execute(sender=case.confirmed_sender)
+            now = calendar_cases.NOW.astimezone(rca.TZ).replace(minute=12)
+            original = rca.collect(case.case.root, case.case.bus, date=calendar_cases.DAY, now=now, relay_log="")
+            self.assertTrue(rca._success_evidence(original)[0])
+            for changes in ({"receiver_record_id": None}, {"as_of": "2026-09-08"},
+                            {"receiver_storage": "receiver_reported_not_stored"},
+                            {"receiver_content_sha256": "d" * 64}, {"content_match": False},
+                            {"payload_kind": "research"}):
+                with self.subTest(changes=changes):
+                    f = {**original, "delivery": {**original["delivery"], **changes}}
+                    self.assertFalse(rca._success_evidence(f)[0])
+                    self.assertNotEqual(rca.delivery_evidence(f)[0], "confirmed")
+        finally:
+            case.doCleanups()
+
     def test_skipped_status_alone_does_not_silence_invalid_calendar(self):
         f = fixtures.facts(occurrence=fixtures.occurrence("skipped"))
         self.assertIn("calendar_skip_invalid", fixtures.codes(rca.classify(f)))

@@ -105,11 +105,42 @@ class RelayTests(unittest.TestCase):
         self.seal_relative = f"work/xhs/drafts/{DAY}/{relay.sha256(report_body)}.json"
         self.write(self.seal_relative, self.seal)
 
+    def write_digest(self, source):
+        """Write the structured digest the sealing step would produce for this report."""
+        input_sha = "b" * 64
+        self.write(f"work/report-archives/{DAY}/input.sha256", f"{input_sha}\n".encode())
+        digest = {
+            "schemaVersion": "astock.research-digest.v1", "kind": "research_digest",
+            "reportDate": DAY, "dataDate": "2026-09-08",
+            "reportSha256": source["reportSha256"], "inputSha256": input_sha,
+            "selectionSha256": "a" * 64, "reportView": "research_brief_v3",
+            "conclusionLines": ["- [事实] 数据包结论行。"],
+            "facts": ["- [事实] 上一交易日行情：[来源 1]"],
+            "items": [{
+                "kind": "theme", "label": "观察主题", "code": None,
+                "inference": "下跌家数占优且成交额可核验，仍需继续核验",
+                "evidence": [{"sourceId": "src-a", "reference": "[来源 1]", "role": "成交额"}],
+                "counterEvidence": [], "periodNote": None,
+                "limitation": "未提供结构化反证来源；此限制只约束本条推断，不否定已核验事实。",
+            }],
+            "sourceIndex": [{"number": 1, "sourceId": "src-a",
+                             "title": "交易所每日概况", "url": "https://example.invalid/a"}],
+            "limitations": ["未提供结构化反证来源；此限制只约束本条推断，不否定已核验事实。"],
+            "generatedAt": self.run["completedAt"],
+        }
+        self.write(f"work/report-archives/{DAY}/result/result.json",
+                   {"selectionSha256": digest["selectionSha256"]})
+        destination = self.write(f"work/research-seal/{DAY}/{source['reportSha256']}.digest.json", digest)
+        return destination, relay.sha256(destination.read_bytes())
+
     def write_research_seal(self, source_patch=None, seal_patch=None, keep_legacy=False):
         """Research-pipeline seal; the legacy XHS draft can be absent or present."""
         report_body = self.report.encode()
         source = dict(self.source)
         source.update(source_patch or {})
+        _, digest_sha = self.write_digest(source)
+        source["digestFile"] = f"work/research-seal/{DAY}/{source['reportSha256']}.digest.json"
+        source["digestSha256"] = digest_sha
         seal = {"schemaVersion": "astock.research-seal.v1", "kind": "research_seal",
                 "targetDate": DAY, "state": "SEALED", "source": source}
         seal.update(seal_patch or {})
@@ -583,13 +614,17 @@ class RelayTests(unittest.TestCase):
         self.assertEqual(self.execute(sender=sender)["reason"], "delivery_requires_manual_review")
         self.assertEqual(sender.call_count, 1)
 
-    def test_explicit_rejection_can_retry(self):
+    def test_explicit_rejection_is_terminal_and_never_reposted(self):
         self.config()
-        sender = Mock(side_effect=[{"status": "rejected", "reason": "http_rejected"},
+        sender = Mock(side_effect=[{"status": "rejected", "reason": "http_rejected", "http_status": 409},
                                    {"status": "confirmed", "reason": "accepted"}])
-        self.assertEqual(self.execute(sender=sender)["status"], "rejected")
-        self.assertEqual(self.execute(sender=sender)["status"], "confirmed")
-        self.assertEqual(sender.call_count, 2)
+        first = self.execute(sender=sender)
+        self.assertEqual(first["status"], "rejected")
+        self.assertEqual(first.get("http_status"), 409)
+        second = self.execute(sender=sender)
+        self.assertEqual(second["status"], "already_rejected")
+        self.assertEqual(second["sent"], 0)
+        self.assertEqual(sender.call_count, 1)
 
     def test_changed_same_day_report_does_not_send(self):
         self.config()
@@ -774,7 +809,7 @@ class RelayTests(unittest.TestCase):
         payload = relay.build_payload(self.root, NOW)
         response = Mock()
         response.status = 200
-        response.read.return_value = b'{"status":"accepted","source":"nng8","day":"2026-09-08","path":"PRIVATE_RESPONSE_PATH"}'
+        response.read.return_value = b'{"status":"accepted","source":"nng8","day":"2026-09-08","target_date":"2026-09-09","path":"PRIVATE_RESPONSE_PATH"}'
         response.__enter__ = Mock(return_value=response)
         response.__exit__ = Mock(return_value=False)
         opener = Mock()
@@ -857,7 +892,8 @@ class RelayTests(unittest.TestCase):
         No inputs are written to the consumer, and only its pure renderer method
         is called. All payloads still come from temporary sealed fixtures.
         """
-        consumer_path = MODULE.parents[2] / "signal-gate/app/digest_content.py"
+        gate = Path(os.environ.get("SIGNAL_GATE_TEST_ROOT", str(MODULE.parents[2] / "signal-gate")))
+        consumer_path = gate / "app/digest_content.py"
         if not consumer_path.is_file():
             self.skipTest("standalone relay install: sibling consumer source not present")
         consumer_spec = importlib.util.spec_from_file_location("relay_consumer_contract", consumer_path)
@@ -896,7 +932,7 @@ class RelayTests(unittest.TestCase):
 
     def ack_payload(self, **fields):
         """构造一份合法 ack（status/source/day 固定），再叠加存储与内容字段。"""
-        base = {"status": "accepted", "source": "nng8", "day": "2026-09-08"}
+        base = {"status": "accepted", "source": "nng8", "day": "2026-09-08", "target_date": DAY}
         base.update(fields)
         return json.dumps(base).encode()
 
@@ -912,7 +948,7 @@ class RelayTests(unittest.TestCase):
 
     def test_stored_true_without_content_hash_is_not_confirmed(self):
         payload = relay.build_payload(self.root, NOW)
-        result = self.post_with_ack(payload, self.ack_payload(stored=True))
+        result = self.post_with_ack(payload, self.ack_payload(stored=True, record_id="rec-1"))
         self.assertEqual(result["status"], "accepted")
         self.assertEqual(result["reason"], "http_accepted_storage_unconfirmed")
         self.assertEqual(result["receiver_storage"], "receiver_reported_stored")
@@ -935,14 +971,14 @@ class RelayTests(unittest.TestCase):
         self.assertEqual(matching["receiver_record_id"], "rec-1")
         self.assertTrue(matching["content_match"])
         wrong = self.post_with_ack(payload, self.ack_payload(
-            stored=True, content_sha256="b" * 64))
+            stored=True, content_sha256="b" * 64, record_id="rec-1"))
         self.assertEqual(wrong["status"], "failed")
         self.assertEqual(wrong["reason"], "content_mismatch")
         # 摘要哈希（完整报告哈希）不能顶替“已保存内容”的哈希
         report_hash = relay.sha256(payload["research_contract"]["report_sha256"].encode())
         self.assertNotEqual(report_hash, sent)
         mismatch = self.post_with_ack(payload, self.ack_payload(
-            stored=True, content_sha256=payload["research_contract"]["report_sha256"]))
+            stored=True, content_sha256=payload["research_contract"]["report_sha256"], record_id="rec-1"))
         self.assertEqual(mismatch["status"], "failed")
         self.assertEqual(mismatch["reason"], "content_mismatch")
 
@@ -958,10 +994,11 @@ class RelayTests(unittest.TestCase):
         sender.reset_mock()
         queried = []
 
-        def fake_query(config, target, now, expected):
+        def fake_query(config, target, now, expected, data_date=None):
             queried.append(expected)
             return {"status": "confirmed", "receiver_content_sha256": expected,
-                    "receiver_record_id": "rec-9", "stored_at": "2026-09-09T00:05:00+08:00"}
+                    "receiver_record_id": "rec-9", "stored_at": "2026-09-09T00:05:00+08:00",
+                    "receiver_storage": "receiver_reported_stored", "content_match": True}
 
         result = self.execute(sender=sender, query=fake_query)
         self.assertEqual(result["status"], "confirmed_from_query")
@@ -973,6 +1010,9 @@ class RelayTests(unittest.TestCase):
         self.assertEqual(state["status"], "confirmed")
         self.assertEqual(state["confirmed_via"], "read_only_query")
         self.assertEqual(state["receiver_record_id"], "rec-9")
+        self.assertEqual(state["receiver_storage"], "receiver_reported_stored")
+        self.assertTrue(state["content_match"])
+        self.assertEqual(state.get("ack_scope"), "http_accepted")
         # 升级后就是已确认：不再查询、不再发送。
         again = self.execute(sender=sender, query=fake_query)
         self.assertEqual(again["status"], "already_confirmed")
@@ -1013,6 +1053,144 @@ class RelayTests(unittest.TestCase):
             written = json.loads(state_path.read_text())
             self.assertEqual(written["status"], status)
             self.assertEqual(written["payload_sha256"], "c" * 64)
+
+    def test_http_409_and_410_are_permanent_and_post_once(self):
+        """A02: 明确拒绝后不得再次 POST；两次触发累计 sender=1。"""
+        self.config()
+        for code in (409, 410):
+            with self.subTest(code=code):
+                state_path = self.bus / f"out/relay-delivery/{DAY}.json"
+                if state_path.exists():
+                    state_path.unlink()
+                opener = Mock()
+                opener.open.side_effect = urllib.error.HTTPError(
+                    "https://example.org/a", code, "gone", {}, None)
+                with patch.object(relay.urllib.request, "build_opener", return_value=opener):
+                    first = self.execute()
+                    second = self.execute()
+                self.assertEqual(first["status"], "rejected", first)
+                self.assertEqual(first.get("http_status"), code)
+                self.assertEqual(second["status"], "already_rejected", second)
+                self.assertEqual(second["sent"], 0)
+                self.assertEqual(opener.open.call_count, 1)
+                saved = json.loads(state_path.read_text())
+                self.assertEqual(saved["status"], "rejected")
+                self.assertEqual(saved["http_status"], code)
+
+    def test_post_ack_requires_dates_record_id_and_legal_hash(self):
+        """A03: 缺/空/错日期、缺 ID、非法哈希、stored=false 分别拒绝确认。"""
+        payload = relay.build_payload(self.root, NOW)
+        sent = relay.sha256(relay.encode_payload(payload))
+        missing_target = self.post_with_ack(payload, self.ack_payload(
+            stored=True, content_sha256=sent, record_id="rec-1", target_date=""))
+        self.assertEqual(missing_target["status"], "accepted")
+        self.assertEqual(missing_target["reason"], "acknowledgement_target_date_missing")
+        wrong_target = self.post_with_ack(payload, self.ack_payload(
+            stored=True, content_sha256=sent, record_id="rec-1", target_date="2026-09-08"))
+        self.assertEqual(wrong_target["status"], "failed")
+        self.assertEqual(wrong_target["reason"], "acknowledgement_target_date_mismatch")
+        missing_day = self.post_with_ack(payload, self.ack_payload(
+            stored=True, content_sha256=sent, record_id="rec-1", day=""))
+        self.assertEqual(missing_day["status"], "accepted")
+        self.assertEqual(missing_day["reason"], "acknowledgement_day_missing")
+        wrong_day = self.post_with_ack(payload, self.ack_payload(
+            stored=True, content_sha256=sent, record_id="rec-1", day="2026-09-09"))
+        self.assertEqual(wrong_day["status"], "failed")
+        self.assertEqual(wrong_day["reason"], "acknowledgement_day_mismatch")
+        missing_id = self.post_with_ack(payload, self.ack_payload(
+            stored=True, content_sha256=sent))
+        self.assertEqual(missing_id["status"], "accepted")
+        self.assertEqual(missing_id["reason"], "acknowledgement_record_id_missing")
+        empty_id = self.post_with_ack(payload, self.ack_payload(
+            stored=True, content_sha256=sent, record_id=""))
+        self.assertEqual(empty_id["status"], "accepted")
+        illegal_hash = self.post_with_ack(payload, self.ack_payload(
+            stored=True, content_sha256="not-a-hash", record_id="rec-1"))
+        self.assertEqual(illegal_hash["status"], "failed")
+        self.assertEqual(illegal_hash["reason"], "acknowledgement_content_hash_invalid")
+        stored_false = self.post_with_ack(payload, self.ack_payload(
+            stored=False, content_sha256=sent, record_id="rec-1"))
+        self.assertEqual(stored_false["status"], "failed")
+        valid = self.post_with_ack(payload, self.ack_payload(
+            stored=True, content_sha256=sent, record_id="rec-1"))
+        self.assertEqual(valid["status"], "confirmed")
+
+    def test_query_ack_uses_the_same_strict_interpreter(self):
+        payload = relay.build_payload(self.root, NOW)
+        sent = relay.sha256(relay.encode_payload(payload))
+        config = {"url": "https://example.org/ingest", "secret": "test"}
+
+        def get_with(body):
+            response = Mock(status=200)
+            response.read.return_value = body
+            response.__enter__ = Mock(return_value=response)
+            response.__exit__ = Mock(return_value=False)
+            opener = Mock()
+            opener.open.return_value = response
+            with patch.object(relay.urllib.request, "build_opener", return_value=opener):
+                return relay.query_record(config, DAY, NOW, sent, data_date="2026-09-08")
+
+        missing_id = get_with(self.ack_payload(stored=True, content_sha256=sent))
+        self.assertEqual(missing_id["status"], "unconfirmed")
+        wrong_day = get_with(self.ack_payload(stored=True, content_sha256=sent, record_id="rec-1",
+                                              day="2026-09-10"))
+        self.assertEqual(wrong_day["status"], "query_failed")
+        ok = get_with(self.ack_payload(stored=True, content_sha256=sent, record_id="rec-1"))
+        self.assertEqual(ok["status"], "confirmed")
+        self.assertEqual(ok["receiver_record_id"], "rec-1")
+
+    def test_read_only_upgrade_replaces_contradictory_storage_flag(self):
+        """A04: accepted 经 GET 升级后必须写入完整新证据，不能留下 not_in_acknowledgement。"""
+        self.config()
+        sender = Mock(return_value={"status": "accepted",
+                                    "reason": "http_accepted_storage_unconfirmed",
+                                    "ack_scope": "http_accepted",
+                                    "receiver_storage": "not_in_acknowledgement",
+                                    "payload_sha256": "c" * 64, "content_match": None})
+        self.assertEqual(self.execute(sender=sender)["status"], "accepted")
+
+        def fake_query(config, target, now, expected, data_date=None):
+            return {"status": "confirmed", "receiver_content_sha256": expected,
+                    "receiver_record_id": "rec-upgrade", "stored_at": "2026-09-09T00:06:00+08:00",
+                    "receiver_storage": "receiver_reported_stored", "content_match": True}
+
+        result = self.execute(sender=sender, query=fake_query)
+        self.assertEqual(result["status"], "confirmed_from_query")
+        self.assertEqual(result["sent"], 0)
+        self.assertEqual(sender.call_count, 1)
+        state = json.loads((self.bus / f"out/relay-delivery/{DAY}.json").read_text())
+        self.assertEqual(state["status"], "confirmed")
+        self.assertEqual(state["receiver_storage"], "receiver_reported_stored")
+        self.assertTrue(state["content_match"])
+        self.assertEqual(state["ack_scope"], "http_accepted")
+        self.assertEqual(state["receiver_record_id"], "rec-upgrade")
+        self.assertEqual(state["payload_sha256"], "c" * 64)
+
+    def test_missing_record_id_is_not_rewritten_to_ambiguous_and_can_upgrade(self):
+        """A03 贯通：缺 ID 必须保持 accepted，不能被编排层改成 ambiguous 锁死 GET 补证。"""
+        self.config()
+        sender = Mock(return_value={"status": "accepted",
+                                    "reason": "acknowledgement_record_id_missing",
+                                    "ack_scope": "http_accepted",
+                                    "receiver_storage": "receiver_reported_stored",
+                                    "payload_sha256": "c" * 64, "content_match": None})
+        first = self.execute(sender=sender)
+        self.assertEqual(first["status"], "accepted", first)
+        self.assertEqual(first["reason"], "acknowledgement_record_id_missing")
+        state = json.loads((self.bus / f"out/relay-delivery/{DAY}.json").read_text())
+        self.assertEqual(state["status"], "accepted")
+        self.assertEqual(state["reason"], "acknowledgement_record_id_missing")
+
+        def fake_query(config, target, now, expected, data_date=None):
+            return {"status": "confirmed", "receiver_content_sha256": expected,
+                    "receiver_record_id": "rec-late", "stored_at": "2026-09-09T00:07:00+08:00",
+                    "receiver_storage": "receiver_reported_stored", "content_match": True}
+
+        upgraded = self.execute(sender=sender, query=fake_query)
+        self.assertEqual(upgraded["status"], "confirmed_from_query", upgraded)
+        self.assertEqual(upgraded["sent"], 0)
+        self.assertEqual(sender.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -37,6 +37,10 @@ MAX_SUMMARY_CHARS = 20000
 MAX_SUMMARY_ITEM_CHARS = 1200
 MAX_SUMMARY_LIST_ITEMS = 24
 MAX_PAYLOAD_BYTES = 64000
+MAX_DIGEST_BYTES = 1024 * 1024
+DIGEST_SCHEMA = "astock.research-digest.v1"
+DIGEST_KIND = "research_digest"
+DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
 HASH_RE = re.compile(r"[a-f0-9]{64}\Z")
 REF_RE = re.compile(r"\[来源\s*([^\]\n]*)\]")
 ISO_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})\Z")
@@ -53,6 +57,142 @@ class Held(Exception):
 
 def hold(reason):
     raise Held(reason)
+
+
+REJECT_HTTP_STATUSES = (400, 401, 403, 404, 405, 409, 410, 413, 415, 422, 429)
+PERMANENT_REJECT_HTTP_STATUSES = (400, 401, 403, 404, 405, 409, 410, 413, 415, 422)
+
+
+def interpret_receiver_acknowledgement(record, *, source, report_date, data_date,
+                                      expected_payload_sha256):
+    """Shared strict receipt interpreter for POST, GET, alert and dashboard.
+
+    Missing evidence stays unconfirmed. Explicit conflict is failed.
+    Confirmation requires source, report date, data date, a non-empty record id,
+    stored=true, and a legal content hash of the same sent object.
+    """
+    if not isinstance(record, dict):
+        return {"verdict": "invalid", "reason": "acknowledgement_invalid"}
+    try:
+        if checked_date(data_date) > checked_date(report_date):
+            return {"verdict": "invalid", "reason": "acknowledgement_invalid"}
+    except Held:
+        return {"verdict": "invalid", "reason": "acknowledgement_invalid"}
+    if record.get("source") != source or record.get("status") != "accepted":
+        return {"verdict": "invalid", "reason": "acknowledgement_invalid"}
+    target = record.get("target_date") or record.get("report_date")
+    day = record.get("day") if "day" in record else record.get("data_date")
+    record_id = record.get("record_id") or record.get("recordId")
+    stored = record.get("stored")
+    ack_content = record.get("content_sha256") or record.get("contentSha256")
+    evidence = {}
+    if isinstance(record_id, str) and record_id.strip():
+        evidence["receiver_record_id"] = record_id.strip()
+    if stored is True:
+        evidence["receiver_storage"] = "receiver_reported_stored"
+    elif stored is False:
+        evidence["receiver_storage"] = "receiver_reported_not_stored"
+    else:
+        evidence["receiver_storage"] = "not_in_acknowledgement"
+    if isinstance(ack_content, str) and ack_content:
+        evidence["receiver_content_sha256"] = ack_content
+    if not isinstance(target, str) or not target:
+        return {"verdict": "unconfirmed", "reason": "acknowledgement_target_date_missing", **evidence}
+    if target != report_date:
+        return {"verdict": "failed", "reason": "acknowledgement_target_date_mismatch", **evidence}
+    if not isinstance(day, str) or not day:
+        return {"verdict": "unconfirmed", "reason": "acknowledgement_day_missing", **evidence}
+    if day != data_date:
+        return {"verdict": "failed", "reason": "acknowledgement_day_mismatch", **evidence}
+    if stored is False:
+        return {"verdict": "failed", "reason": "receiver_reported_not_stored",
+                "content_match": False if ack_content else None, **evidence}
+    if stored is not True:
+        return {"verdict": "unconfirmed", "reason": "http_accepted_storage_unconfirmed",
+                "content_match": None, **evidence}
+    if "receiver_record_id" not in evidence:
+        return {"verdict": "unconfirmed", "reason": "acknowledgement_record_id_missing", **evidence}
+    if not isinstance(ack_content, str) or not ack_content:
+        return {"verdict": "unconfirmed", "reason": "http_accepted_storage_unconfirmed",
+                "content_match": None, **evidence}
+    if not HASH_RE.fullmatch(ack_content):
+        return {"verdict": "failed", "reason": "acknowledgement_content_hash_invalid",
+                "content_match": False, **evidence}
+    if not isinstance(expected_payload_sha256, str) or not HASH_RE.fullmatch(expected_payload_sha256):
+        return {"verdict": "unconfirmed", "reason": "http_accepted_storage_unconfirmed",
+                "content_match": None, **evidence}
+    if ack_content != expected_payload_sha256:
+        return {"verdict": "failed", "reason": "content_mismatch",
+                "content_match": False, **evidence}
+    result = {"verdict": "confirmed", "reason": "accepted", "content_match": True, **evidence}
+    if isinstance(record.get("stored_at"), str) and record["stored_at"]:
+        result["stored_at"] = record["stored_at"]
+    return result
+
+
+def local_delivery_is_confirmed(record, *, report_date, report_sha256=None, data_date=None,
+                                payload_kind="research", skip_sha256=None):
+    """Whether a local relay state file is a complete, hash-bound confirmation."""
+    evidence = {}
+    if not isinstance(record, dict):
+        return False, "unconfirmed", evidence
+    evidence = {
+        "status": record.get("status"), "reason": record.get("reason"),
+        "target_date": record.get("target_date"), "as_of": record.get("as_of"),
+        "payload_kind": record.get("payload_kind", "research"),
+        "report_sha256": record.get("report_sha256"), "skip_sha256": record.get("skip_sha256"),
+        "receiver_storage": record.get("receiver_storage"),
+        "receiver_content_sha256": record.get("receiver_content_sha256"),
+        "payload_sha256": record.get("payload_sha256"),
+        "record_id": record.get("receiver_record_id"),
+        "content_match": record.get("content_match"),
+        "http_status": record.get("http_status"),
+    }
+    identity_key = "skip_sha256" if payload_kind == "skip" else "report_sha256"
+    identity = skip_sha256 if payload_kind == "skip" else report_sha256
+    if payload_kind not in ("research", "skip") or not isinstance(identity, str) or not HASH_RE.fullmatch(identity):
+        return False, "unverified", evidence
+    try:
+        checked_date(report_date)
+    except Held:
+        return False, "unverified", evidence
+    if (record.get("target_date") != report_date or record.get("payload_kind", "research") != payload_kind
+            or record.get(identity_key) != identity):
+        return False, "uncertain", evidence
+    as_of = record.get("as_of")
+    try:
+        checked_date(as_of)
+    except Held:
+        return False, "unconfirmed", evidence
+    # Protocol v2 permits same-day data; the independent expected data date,
+    # not a guessed previous-session rule, binds this receipt to its producer.
+    if as_of > report_date:
+        return False, "uncertain", evidence
+    try:
+        checked_date(data_date)
+    except Held:
+        return False, "unverified", evidence
+    if as_of != data_date:
+        return False, "uncertain", evidence
+    payload = record.get("payload_sha256")
+    received = record.get("receiver_content_sha256")
+    record_id = record.get("receiver_record_id")
+    hash_ok = (isinstance(payload, str) and HASH_RE.fullmatch(payload)
+               and isinstance(received, str) and HASH_RE.fullmatch(received)
+               and payload == received)
+    if record.get("status") == "confirmed":
+        if record.get("receiver_storage") != "receiver_reported_stored":
+            return False, "unconfirmed", evidence
+        if not isinstance(record_id, str) or not record_id.strip():
+            return False, "unconfirmed", evidence
+        if record.get("content_match") is not True or not hash_ok:
+            return False, "uncertain", evidence
+        return True, "confirmed", evidence
+    if record.get("status") in ("rejected", "not_sent", "failed") and record.get("target_date") == report_date:
+        return False, "failed", evidence
+    if record.get("status") in ("sending", "ambiguous"):
+        return False, "uncertain", evidence
+    return False, "unconfirmed", evidence
 
 
 def sha256(body):
@@ -411,6 +551,171 @@ def extract_summary(report, target_date, data_status, semantic_review):
     return as_of, summary
 
 
+def extract_summary_from_digest(digest, target_date, data_status, semantic_review):
+    """Build the relay summary from the sealed structured digest alone.
+
+    Dates, evidence references and limitations come from the digest that the
+    sealing step bound to this same report and compilation input. The report body
+    is never parsed here, and missing real counter-evidence stays a limitation
+    instead of being invented.
+    """
+    data_date = digest.get("dataDate")
+    if (not isinstance(data_date, str) or not DATE_RE.fullmatch(data_date)
+            or checked_date(data_date) > checked_date(target_date)):
+        hold("digest_data_date_invalid")
+    items = digest.get("items")
+    if not isinstance(items, list):
+        hold("digest_items_invalid")
+    index = {}
+    for entry in digest.get("sourceIndex") or []:
+        if not isinstance(entry, dict):
+            hold("digest_source_index_invalid")
+        number, source_id = entry.get("number"), entry.get("sourceId")
+        if (isinstance(number, bool) or not isinstance(number, int)
+                or not isinstance(source_id, str) or not source_id or number in index):
+            hold("digest_source_index_invalid")
+        index[number] = entry
+    declared = [value for value in (digest.get("limitations") or []) if isinstance(value, str) and value.strip()]
+    # R08: the producer emits a limitation only when an item really lacks counter
+    # evidence (or when there are no items at all). A digest whose every item
+    # carries counter-evidence is legitimate with an empty list.
+    needs_declared = (not items) or any(
+        not (item.get("counterEvidence") or []) for item in items if isinstance(item, dict))
+    if not declared and needs_declared:
+        hold("digest_limitations_missing")
+
+    def reference_number(value):
+        match = re.match(r"^\[来源 (\d+)\]", str(value))
+        if not match:
+            hold("digest_reference_invalid")
+        return int(match.group(1))
+
+    def support_line(entry):
+        if not isinstance(entry, dict):
+            hold("digest_reference_invalid")
+        reference, role = entry.get("reference"), entry.get("role")
+        if not isinstance(reference, str):
+            hold("digest_reference_invalid")
+        reference_number(reference)
+        label = f"支持证据（{role}）：" if isinstance(role, str) and role.strip() else "支持证据："
+        return label + reference
+
+    limitations = []
+    analysis_contract = None
+    chosen = next((item for item in items if isinstance(item, dict) and item.get("kind") == "summary"), None)
+    if chosen is None:
+        chosen = next((item for item in items if isinstance(item, dict)), None)
+    if chosen is None:
+        lines = [str(line).strip() for line in (digest.get("conclusionLines") or []) if str(line).strip()]
+        if not lines:
+            hold("digest_conclusion_missing")
+        conclusion = "\n".join(lines)
+        facts = [str(line).strip() for line in (digest.get("facts") or []) if str(line).strip()]
+        evidence = [line for line in [*lines, *facts] if re.search(r"\[来源 \d+\]", line)]
+        counter = []
+        limitations.append("基础版：封存摘要没有结构化推断条目；仅保留事实结论与限制，不生成因果判断。")
+    else:
+        inference = chosen.get("inference")
+        if not isinstance(inference, str) or not inference.strip():
+            hold("digest_inference_invalid")
+        # R09: keep the subject (stock code / label) and the explicit period with the
+        # conclusion, so the final payload cannot lose who and when it is about.
+        subject = None
+        if isinstance(chosen.get("code"), str) and chosen["code"].strip():
+            subject = chosen["code"].strip()
+        elif isinstance(chosen.get("label"), str) and chosen["label"].strip():
+            subject = chosen["label"].strip()
+        conclusion = f"[推断] {subject}：{inference.strip()}" if subject else f"[推断] {inference.strip()}"
+        period = chosen.get("periodNote")
+        if isinstance(period, str) and period.strip():
+            period = period.strip()
+            period_match = re.fullmatch(r"行情 (\d{4}-\d{2}-\d{2})；利润同比报告期 (\d{4}-\d{2}-\d{2})", period)
+            if not period_match or any(checked_date(value) >= checked_date(target_date) for value in period_match.groups()):
+                hold("analysis_period_invalid")
+            conclusion += f"（期间：{period}）"
+            limitations.append("期间：" + period + "。")
+        else:
+            period = None
+        evidence = [support_line(entry) for entry in chosen.get("evidence") or []]
+        if not evidence:
+            hold("analysis_support_missing")
+        evidence_roles = []
+        for entry in chosen.get("evidence") or []:
+            role = entry.get("role")
+            if role is not None:
+                if role not in EVIDENCE_ROLES:
+                    hold("analysis_evidence_role_invalid")
+                evidence_roles.append({"source_id": str(reference_number(entry["reference"])), "role": role})
+        counter = []
+        for entry in chosen.get("counterEvidence") or []:
+            reference = entry.get("reference") if isinstance(entry, dict) else None
+            if not isinstance(reference, str):
+                hold("digest_reference_invalid")
+            reference_number(reference)
+            counter.append(f"反证：{reference}")
+        limitation = chosen.get("limitation")
+        if not counter:
+            if limitation not in (INFERENCE_LIMIT, LEGACY_RISK_LIMIT):
+                hold("analysis_limit_invalid")
+            if limitation == INFERENCE_LIMIT and not evidence_roles:
+                hold("analysis_evidence_role_invalid")
+            limitations.append("推断限制：" + limitation)
+        elif limitation is not None:
+            hold("analysis_limit_conflict")
+        analysis_contract = {"version": 2, "claim_type": "inference", "inference_status": "unverified",
+                             "counter_evidence_status": "provided" if counter else "explicitly_missing",
+                             "evidence_roles": evidence_roles, "period_note": period,
+                             "inference_limit": limitation}
+    limitations.extend(value for value in declared if value not in limitations)
+    if not re.search(r"\[来源 \d+\]", conclusion):
+        numbers = [int(number) for line in evidence for number in re.findall(r"\[来源 (\d+)\]", line)]
+        if not numbers:
+            hold("conclusion_reference_missing")
+        conclusion += "\n支持证据引用：" + "、".join(f"[来源 {number}]" for number in numbers)
+    risks = [f"[限制] {value}" for value in limitations]
+    if data_status == "partial":
+        limitations.append("数据状态 partial：部分来源或字段不可用，具体缺口见风险；不可解释为完整研究。")
+    if semantic_review != "human_passed":
+        limitations.append("研究语义未通过人工审核；结构、来源和时效门禁通过不代表投资结论已经验证。")
+    limitations.append("仅供研究整理，不是交易指令；封存草稿仍需人工批准，不发布 XHS 内容。")
+    retained = "\n".join([conclusion, *evidence, *counter, *risks])
+    referenced = sorted({int(value) for value in re.findall(r"\[来源 (\d+)\]", retained)})
+    if not referenced:
+        hold("conclusion_reference_missing")
+    if any(number not in index for number in referenced):
+        hold("source_reference_missing")
+    sources = [f"{number}. {index[number].get('title') or index[number]['sourceId']}"
+               + (f"（{index[number]['url']}）" if index[number].get("url") else "")
+               for number in referenced]
+    summary = {"conclusion": conclusion, "evidence": evidence, "counter_evidence": counter,
+               "risks": risks, "sources": sources, "limitations": limitations}
+    # R07: the send boundary sanitizes URLs for both paths (digest and legacy body).
+    # Query/fragment credentials, userinfo and non-public hosts never leave here.
+    changed = False
+    for key, value in list(summary.items()):
+        if key == "conclusion":
+            summary[key], altered = _safe_source_urls(value)
+            changed |= altered
+        else:
+            cleaned = []
+            for text in value:
+                safe, altered = _safe_source_urls(text)
+                cleaned.append(safe)
+                changed |= altered
+            summary[key] = cleaned
+    if changed:
+        summary["limitations"].append("来源链接已移除查询参数、片段或不安全地址；未转发链接中的凭据。")
+    if (len(summary["conclusion"]) > MAX_SUMMARY_ITEM_CHARS
+            or any(len(value) > MAX_SUMMARY_ITEM_CHARS for key, values in summary.items() if key != "conclusion" for value in values)
+            or len(json.dumps(summary, ensure_ascii=False)) > MAX_SUMMARY_CHARS):
+        hold("research_summary_too_large")
+    if analysis_contract is not None:
+        summary["analysis_contract"] = analysis_contract
+        if len(json.dumps(summary, ensure_ascii=False)) > MAX_SUMMARY_CHARS:
+            hold("research_summary_too_large")
+    return data_date, summary
+
+
 def prepare_research(project_root=PROJECT_ROOT, now=None):
     """Read-only API returning payload and sealed proof, never any credentials."""
     now = observation_time(now)
@@ -479,7 +784,51 @@ def prepare_research(project_root=PROJECT_ROOT, now=None):
         report_text = report["body"].decode("utf-8")
     except UnicodeError:
         hold("report_encoding_invalid")
-    as_of, summary = extract_summary(report_text, target, r["dataStatus"], semantic)
+    if seal_kind == "research":
+        # Batch 2: the structured digest is the only machine interface for a
+        # research seal. Missing, corrupt or mismatched digests hold with zero
+        # sender invocations; the body parser is never used as a fallback.
+        expected_digest = f"work/research-seal/{target}/{report['sha256']}.digest.json"
+        digest_relative = source.get("digestFile")
+        digest_sha = source.get("digestSha256")
+        if digest_relative != expected_digest:
+            hold("structured_digest_path_invalid")
+        if not isinstance(digest_sha, str) or not HASH_RE.fullmatch(digest_sha):
+            hold("structured_digest_hash_invalid")
+        digest = read_optional_json(project_root, digest_relative, MAX_DIGEST_BYTES)
+        if digest is None:
+            hold("structured_digest_missing")
+        if digest["sha256"] != digest_sha:
+            hold("structured_digest_hash_mismatch")
+        archive_input = read_artifact(project_root, f"work/report-archives/{target}/input.sha256", 128)
+        archive_input_sha = archive_input["body"].decode("ascii", "ignore").strip()
+        if not HASH_RE.fullmatch(archive_input_sha):
+            hold("structured_digest_archive_binding_invalid")
+        d = digest["value"]
+        if (d.get("schemaVersion") != DIGEST_SCHEMA or d.get("kind") != DIGEST_KIND
+                or d.get("reportDate") != target):
+            hold("structured_digest_binding_invalid")
+        if d.get("reportSha256") != report["sha256"] or d.get("inputSha256") != archive_input_sha:
+            hold("structured_digest_binding_invalid")
+        if d.get("generatedAt") != r.get("completedAt"):
+            hold("structured_digest_generated_at_mismatch")
+        archive_result = read_optional_json(
+            project_root, f"work/report-archives/{target}/result/result.json", 512 * 1024)
+        if archive_result is None:
+            hold("structured_digest_archive_binding_invalid")
+        selection = archive_result["value"].get("selectionSha256") if isinstance(archive_result["value"], dict) else None
+        if not isinstance(selection, str) or not HASH_RE.fullmatch(selection):
+            hold("structured_digest_archive_binding_invalid")
+        if d.get("selectionSha256") != selection:
+            hold("structured_digest_binding_invalid")
+        as_of, summary = extract_summary_from_digest(d, target, r["dataStatus"], semantic)
+    else:
+        as_of, summary = extract_summary(report_text, target, r["dataStatus"], semantic)
+    # The current receiver contract accepts research data strictly before its
+    # report day. A same-day research payload is incompatible; the separately
+    # signed calendar-skip contract accepts its own same-day date.
+    if checked_date(as_of) >= checked_date(target):
+        hold("receiver_data_date_incompatible")
     contract = {"version": 1, "status": "ready", "report_date": target, "as_of": as_of,
                 "completed_at": r["completedAt"], "report_sha256": report["sha256"],
                 "last_run_sha256": run["sha256"], "context_sha256": r["contextSha256"],
@@ -730,41 +1079,26 @@ def post_payload(payload, config, now):
                 acknowledgement = decode_json(response_body)
             except Held:
                 return {"status": "ambiguous", "reason": "acknowledgement_invalid"}
-            if acknowledgement.get("status") != "accepted" or acknowledgement.get("source") != "nng8" or acknowledgement.get("day") != payload["as_of"]:
-                return {"status": "ambiguous", "reason": "acknowledgement_invalid"}
-            # 三件事分开：HTTP 接受 / 接收端确认存储 / 内容一致。
-            # 内容哈希必须是对“已保存内容”算的，也就是我们实际发出的这份字节。
             sent_sha256 = sha256(body)
-            stored = acknowledgement.get("stored")
-            if stored is True:
-                storage = "receiver_reported_stored"
-            elif stored is False:
-                storage = "receiver_reported_not_stored"
-            else:
-                storage = "not_in_acknowledgement"
-            ack_content = acknowledgement.get("content_sha256") or acknowledgement.get("contentSha256")
-            record_id = acknowledgement.get("record_id") or acknowledgement.get("recordId")
-            common = {"ack_scope": "http_accepted", "receiver_storage": storage,
-                      "payload_sha256": sent_sha256}
-            if isinstance(record_id, str) and record_id:
-                common["receiver_record_id"] = record_id
-            if not isinstance(ack_content, str) or not ack_content:
-                content_match = None
-            else:
-                common["receiver_content_sha256"] = ack_content
-                content_match = ack_content == sent_sha256
-            common["content_match"] = content_match
-            if stored is False:
-                return {"status": "failed", "reason": "receiver_reported_not_stored", **common}
-            if content_match is False:
-                return {"status": "failed", "reason": "content_mismatch", **common}
-            if stored is True and content_match is True:
+            interpreted = interpret_receiver_acknowledgement(
+                acknowledgement, source="nng8", report_date=payload["target_date"],
+                data_date=payload["as_of"], expected_payload_sha256=sent_sha256)
+            common = {"ack_scope": "http_accepted", "payload_sha256": sent_sha256}
+            for key in ("receiver_storage", "receiver_content_sha256", "receiver_record_id",
+                        "content_match"):
+                if key in interpreted:
+                    common[key] = interpreted[key]
+            if interpreted["verdict"] == "invalid":
+                return {"status": "ambiguous", "reason": "acknowledgement_invalid"}
+            if interpreted["verdict"] == "confirmed":
                 return {"status": "confirmed", "reason": "accepted", **common}
-            # HTTP 接受了，但存储或内容一致性没有证据：只能记“未确认”，不重发。
-            return {"status": "accepted", "reason": "http_accepted_storage_unconfirmed", **common}
+            if interpreted["verdict"] == "failed":
+                return {"status": "failed", "reason": interpreted["reason"], **common}
+            # HTTP 接受了，但存储、日期、接收 ID 或内容一致性没有完整证据：只能记“未确认”，不重发。
+            return {"status": "accepted", "reason": interpreted["reason"], **common}
     except urllib.error.HTTPError as error:
-        if error.code in (400, 401, 403, 404, 405, 409, 410, 413, 415, 422, 429):
-            return {"status": "rejected", "reason": "http_rejected"}
+        if error.code in REJECT_HTTP_STATUSES:
+            return {"status": "rejected", "reason": "http_rejected", "http_status": error.code}
         return {"status": "ambiguous", "reason": "http_result_unknown"}
     except urllib.error.URLError as error:
         if isinstance(error.reason, (socket.gaierror, ConnectionRefusedError, ssl.SSLCertVerificationError)):
@@ -782,7 +1116,7 @@ def record_url(config, target_date):
     return f"{parts.scheme}://{parts.netloc}/records/nng8/{target_date}"
 
 
-def query_record(config, target_date, now, expected_payload_sha256):
+def query_record(config, target_date, now, expected_payload_sha256, data_date=None):
     """只读查询接收记录：绝不 POST、绝不写入、绝不改变记录。
 
     accepted（HTTP 已接受、存储未确认）只能靠这条路径补证；重发是不允许的。
@@ -813,15 +1147,21 @@ def query_record(config, target_date, now, expected_payload_sha256):
                 record = decode_json(body)
             except Held:
                 return {"status": "query_failed"}
-            if record.get("status") != "accepted" or record.get("source") != "nng8":
-                return {"status": "query_failed"}
-            stored = record.get("stored")
-            content = record.get("content_sha256") or record.get("contentSha256")
-            if stored is True and isinstance(content, str) and content == expected_payload_sha256:
-                return {"status": "confirmed", "receiver_content_sha256": content,
-                        "receiver_record_id": record.get("record_id") or record.get("recordId"),
-                        "stored_at": record.get("stored_at")}
-            return {"status": "unconfirmed"}
+            interpreted = interpret_receiver_acknowledgement(
+                record, source="nng8", report_date=target_date,
+                data_date=data_date, expected_payload_sha256=expected_payload_sha256)
+            if interpreted["verdict"] == "confirmed":
+                result = {"status": "confirmed",
+                          "receiver_content_sha256": interpreted.get("receiver_content_sha256"),
+                          "receiver_record_id": interpreted.get("receiver_record_id"),
+                          "receiver_storage": interpreted.get("receiver_storage"),
+                          "content_match": True}
+                if interpreted.get("stored_at"):
+                    result["stored_at"] = interpreted["stored_at"]
+                return result
+            if interpreted["verdict"] == "failed":
+                return {"status": "query_failed", "reason": interpreted["reason"]}
+            return {"status": "unconfirmed", "reason": interpreted.get("reason")}
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return {"status": "not_found"}
@@ -913,30 +1253,45 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
                     hold("same_day_report_changed")
                 if existing["status"] == "confirmed":
                     return {"status": "already_confirmed", **public, "sent": 0, "confirmed": True}
+                if existing["status"] == "rejected":
+                    echo = {"status": "already_rejected", **public, "sent": 0,
+                            "confirmed": False, "reason": existing.get("reason")}
+                    if "http_status" in existing:
+                        echo["http_status"] = existing["http_status"]
+                    return echo
                 # 旧记录（HTTP 已接受但存储未确认）与新终态都只回显，绝不重新放回待发送队列，
                 # 否则“状态升级”会变成重复投递。
                 if existing["status"] == "accepted":
                     # 优先只读补证：查询确认存储与内容一致后升级本地状态，不发任何东西。
                     try:
                         probed = query_reader(config, target, now,
+                                              existing.get("payload_sha256", ""),
+                                              data_date=existing.get("as_of") or prepared["as_of"])
+                    except TypeError:
+                        probed = query_reader(config, target, now,
                                               existing.get("payload_sha256", ""))
                     except Exception:
                         probed = {"status": "query_failed"}
                     if probed.get("status") == "confirmed":
-                        upgraded = dict(existing, status="confirmed", reason="confirmed_via_read_only_query",
+                        # 一次性保存经过校验的完整新证据；保留原 HTTP 接受事实，不只改 status。
+                        upgraded = dict(existing)
+                        upgraded.update(status="confirmed", reason="confirmed_via_read_only_query",
                                         confirmed_via="read_only_query",
-                                        receiver_storage="receiver_reported_stored",
+                                        receiver_storage=probed.get("receiver_storage") or "receiver_reported_stored",
                                         receiver_content_sha256=probed.get("receiver_content_sha256"),
                                         content_match=True)
                         if probed.get("receiver_record_id"):
                             upgraded["receiver_record_id"] = probed["receiver_record_id"]
                         if probed.get("stored_at"):
                             upgraded["stored_at"] = probed["stored_at"]
+                        if "ack_scope" not in upgraded:
+                            upgraded["ack_scope"] = "http_accepted"
                         _write_state(directory, target, upgraded)
                         echo = {"status": "confirmed_from_query", **public, "sent": 0,
                                 "confirmed": True, "confirmed_via": "read_only_query",
+                                "receiver_storage": upgraded["receiver_storage"],
                                 "receiver_content_sha256": probed.get("receiver_content_sha256"),
-                                "content_match": True}
+                                "content_match": True, "ack_scope": upgraded["ack_scope"]}
                         if probed.get("receiver_record_id"):
                             echo["receiver_record_id"] = probed["receiver_record_id"]
                         return echo
@@ -978,7 +1333,10 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
             allowed_reasons = {"accepted", "http_accepted_storage_unconfirmed", "receiver_reported_not_stored",
                                "content_mismatch", "http_rejected", "connection_not_established",
                                "unexpected_http_status", "acknowledgement_invalid", "http_result_unknown",
-                               "transport_result_unknown"}
+                               "transport_result_unknown",
+                               "acknowledgement_target_date_missing", "acknowledgement_target_date_mismatch",
+                               "acknowledgement_day_missing", "acknowledgement_day_mismatch",
+                               "acknowledgement_record_id_missing", "acknowledgement_content_hash_invalid"}
             if status not in ("confirmed", "accepted", "failed", "ambiguous", "not_sent", "rejected") \
                     or result.get("reason") not in allowed_reasons:
                 status, reason = "ambiguous", "transport_result_unknown"
@@ -991,6 +1349,8 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
             if storage in ("not_in_acknowledgement", "receiver_reported_stored",
                            "receiver_reported_not_stored"):
                 record["receiver_storage"] = storage
+            if isinstance(result.get("http_status"), int):
+                record["http_status"] = result["http_status"]
             for key in ("payload_sha256", "receiver_content_sha256", "receiver_record_id", "content_match"):
                 if key in result:
                     record[key] = result[key]
@@ -1001,6 +1361,8 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
                 outcome["ack_scope"] = record["ack_scope"]
             if "receiver_storage" in record:
                 outcome["receiver_storage"] = record["receiver_storage"]
+            if "http_status" in record:
+                outcome["http_status"] = record["http_status"]
             for key in ("payload_sha256", "receiver_content_sha256", "receiver_record_id", "content_match"):
                 if key in record:
                     outcome[key] = record[key]
@@ -1013,12 +1375,72 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
         return {"status": "held", "reason": "required_artifact_or_config_invalid", "sent": 0, "would_send": False}
 
 
+# Explicit safe metadata vocabulary: never persist arbitrary exception/remote text.
+ATTEMPT_REASONS = frozenset("""
+non_trading_day outside_send_window artifact_changed artifact_file_invalid
+artifact_json_invalid artifact_path_invalid date_invalid delivery_requires_manual_review
+delivery_state_invalid formal_report_path_invalid frozen_cutoff_invalid market_date_invalid
+research_not_ready research_seal_missing run_proof_invalid run_time_order_invalid
+same_day_report_changed sealed_report_proof_invalid source_occurrence_not_successful
+timestamp_invalid today_run_missing structured_digest_archive_binding_invalid
+structured_digest_binding_invalid structured_digest_generated_at_mismatch
+structured_digest_hash_invalid structured_digest_hash_mismatch structured_digest_missing
+structured_digest_path_invalid digest_conclusion_missing digest_data_date_invalid
+digest_inference_invalid digest_items_invalid digest_limitations_missing
+digest_reference_invalid digest_source_index_invalid post_config_invalid
+post_security_config_invalid post_tls_pin_missing_or_invalid record_endpoint_invalid
+required_artifact_or_config_invalid accepted http_accepted_storage_unconfirmed
+receiver_reported_not_stored content_mismatch http_rejected connection_not_established
+unexpected_http_status acknowledgement_invalid http_result_unknown transport_result_unknown
+acknowledgement_target_date_missing acknowledgement_target_date_mismatch
+acknowledgement_day_missing acknowledgement_day_mismatch acknowledgement_record_id_missing
+acknowledgement_content_hash_invalid delivery_busy already_confirmed already_accepted
+already_failed already_rejected already_not_sent read_only_query receiver_data_date_incompatible
+""".split())
+ATTEMPT_STATUSES = frozenset(("held", "skipped", "confirmed", "accepted", "failed", "ambiguous",
+                              "not_sent", "rejected", "already_confirmed", "already_accepted",
+                              "already_failed", "already_rejected", "already_not_sent"))
+
+
+def record_attempt(result, *, target_date, observed_at, bus_root=BUS_ROOT):
+    """Diagnostic observation only; never read by delivery/idempotency decisions."""
+    checked_date(target_date)
+    status = result.get("status") if result.get("status") in ATTEMPT_STATUSES else "unknown"
+    reason = result.get("reason")
+    if reason not in ATTEMPT_REASONS:
+        reason = "other_held" if status == "held" else "other_result"
+    sent = result.get("sent")
+    value = {"schemaVersion": "signal-bus.relay-attempt.v1", "target_date": target_date,
+             "observedAt": observation_time(observed_at).isoformat(), "status": status,
+             "reason": reason, "sent": sent if type(sent) is int and sent >= 0 else 0}
+    current = _safe_root(bus_root)
+    for component in ("out", "relay-attempts"):
+        current = current / component
+        try:
+            current.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
+        info = current.lstat()
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            hold("delivery_state_invalid")
+    _write_state(current, target_date, value)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Read-only sealed research preview or scheduled relay")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    started_at = observation_time(None)
+    # Do not pass a fixed test clock: the actual send boundary must re-read now.
     result = run_relay(dry_run=args.dry_run)
+    if not args.dry_run:
+        try:
+            record_attempt(result, target_date=started_at.astimezone(SHANGHAI).date().isoformat(),
+                           observed_at=observation_time(None))
+        except Exception:
+            # Diagnostic failure cannot change delivery state, outcome or retries.
+            print("relay_attempt_observation_unavailable", file=sys.stderr)
     # --json is explicit for operators; all output is always safe metadata JSON.
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 1 if result["status"] in ("ambiguous", "not_sent", "rejected", "failed") else 0

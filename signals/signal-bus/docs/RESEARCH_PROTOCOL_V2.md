@@ -47,6 +47,15 @@ For a structured inference only, `research_summary` retains `conclusion`,
   inference metadata. Other analysis blocks not selected are disclosed as
   omitted, as before.
 
+The structured digest path uses these same version-2 inference semantics. Its
+support roles, counter-evidence status, exact missing-counter limitation and
+two-date period note remain explicit; missing metadata is not repaired by
+inventing counter-evidence. The receiver observed on 2026-09-28 at
+`3fafc74ef8d5278de31452163820b6f3dd24c18e` requires a research data date strictly
+before the report date. A same-day research digest is therefore held before
+POST as `receiver_data_date_incompatible`. The separate signed calendar-skip
+contract legitimately uses its current day and is unchanged.
+
 ## Signed calendar skip, version 1
 
 A weekday holiday must be positively proven; no occurrence, stale research,
@@ -121,8 +130,13 @@ still a predeadline concern; an unproven skip does not silence alerts.
 
 Historical relay failures cannot suppress a later evidence-based recovery.
 Suppressed same-day incidents are also archived as resolved when recovery is
-proven. Draft failures remain independent. `notified_once` survives recovery;
-there is no automatic Telegram retry after an uncertain outcome.
+proven. The on-demand XHS command keeps its own result; its failure is excluded
+from automatic core-chain observations. Existing draft fault atoms remain
+historical state and are not declared recovered merely because this scope
+changed. Stable business-atom transitions preserve confirmed attempts and
+retry budgets; uncertain sends pause automatic sending, including later
+changes. A normal research recovery also requires Telegram confirmation;
+a confirmed signed skip records Telegram as not required, never as delivered.
 
 ## Offline verification
 
