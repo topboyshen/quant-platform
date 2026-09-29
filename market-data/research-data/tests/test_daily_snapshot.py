@@ -1049,6 +1049,14 @@ class SnapshotSafetyTests(unittest.TestCase):
 
     def test_unproven_expected_day_in_main_defers_without_database_creation(self):
         with tempfile.TemporaryDirectory() as directory:
+            # main() now passes through the mandatory independent calendar gate
+            # (run_current_day). Point the gate at an empty scratch project so
+            # calendar evidence is unavailable here — exactly the unproven-day
+            # path this test asserts — without touching production files.
+            calendar_root = str(Path(directory) / "astock")
+            Path(calendar_root).mkdir()
+            self.addCleanup(os.environ.pop, "RESEARCH_DATA_CORE_CALENDAR_PROJECT_ROOT", None)
+            os.environ["RESEARCH_DATA_CORE_CALENDAR_PROJECT_ROOT"] = calendar_root
             db_path = str(Path(directory) / "snapshot.db")
             qlib_payload = {
                 "date": "2026-08-26",
