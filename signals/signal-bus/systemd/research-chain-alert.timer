@@ -1,8 +1,9 @@
 [Unit]
-Description=Read-only research readiness check before the 08:15 digest merge
+Description=Research evidence checks at 08:12 and after the relay window at 08:15
 
 [Timer]
 OnCalendar=Mon..Fri *-*-* 08:12:00 Asia/Shanghai
+OnCalendar=Mon..Fri *-*-* 08:15:00 Asia/Shanghai
 Persistent=false
 AccuracySec=5s
 RandomizedDelaySec=0

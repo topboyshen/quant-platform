@@ -70,6 +70,24 @@ class CalendarSkipTests(unittest.TestCase):
         self.assertEqual(before, {str(p): p.read_bytes() for p in self.case.root.rglob("*") if p.is_file()})
         self.assertFalse((self.case.bus / "out").exists())
 
+    def test_independent_timer_delivers_skip_with_the_publish_branch_closed(self):
+        # The holiday marker suppresses report/seal/Telegram consumers. The
+        # existing 08:05/08:10 relay timer still sends only the signed skip.
+        (self.case.root / f"reports/daily/{DAY}.md").unlink()
+        self.case.write("work/orchestrator/publish-branch.closed", b"non_trading_day\n")
+        self.case.config()
+        sender = Mock(side_effect=self.confirmed_sender)
+        first = self.case.execute(sender=sender)
+        repeated = relay.run_relay(self.case.root, self.case.bus, now=NOW.replace(minute=10),
+                                   sender=sender)
+        self.assertEqual((first["status"], repeated["status"]), ("confirmed", "already_confirmed"))
+        self.assertEqual(sender.call_count, 1)
+        payload = sender.call_args.args[0]
+        self.assertEqual(payload["signal_type"], "research_skip")
+        self.assertNotIn("research_contract", payload)
+        self.assertFalse((self.case.root / f"reports/daily/{DAY}.md").exists())
+        self.assertFalse((self.case.root / "work/notifications/sent").exists())
+
     def test_skip_uses_hmac_transport_once_and_confirms_real_saved_content(self):
         self.case.config()
         sender = Mock(side_effect=self.confirmed_sender)

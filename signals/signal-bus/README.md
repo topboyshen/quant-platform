@@ -11,7 +11,8 @@ python3 -B /home/ubuntu/signal-bus/scripts/research_relay.py --dry-run --json
 python3 -B /home/ubuntu/signal-bus/scripts/research_relay.py --json
 ```
 
-Dry-run validates today's sealed formal report, even outside the send window.
+Dry-run validates today's sealed formal report or signed calendar-skip proof,
+even outside the send window.
 It does not read `config/pending.env`, notification configuration or prior
 delivery state, create directories/locks, write files, invoke models or connect
 to the network. Output is only fixed reason codes and non-sensitive metadata;
@@ -20,11 +21,12 @@ to the network. Output is only fixed reason codes and non-sensitive metadata;
 ## Dependency and date contract
 
 1. AStock completes the current Shanghai-day morning occurrence and run.
-2. Existing XHS draft generation produces the immutable manifest sealing the
-   formal report and last-run bytes. The relay reads only the manifest proof,
-   never `content.body`, and cannot publish the draft.
-3. A preserved/additive `OnSuccess` on the draft service starts the relay. Retry
-   timers at 08:05/08:10 cover a transient explicitly-unsent or rejected result.
+2. On a trading day, `astock-research-seal.service` produces the immutable
+   research seal for the formal report and last-run bytes. XHS drafts run on
+   demand and do not trigger automatic delivery or core-chain alerts.
+3. The research seal's `OnSuccess` starts Telegram delivery and the relay.
+   The independent relay timer also invokes `nng8-research-digest.service` at
+   08:05/08:10, using the same wrapper, gates and per-day delivery state.
 4. Signal Gate's merged digest runs at 08:15; its consumer independently requires
    today's structured research contract, not the old 72-hour acceptance rule.
 
@@ -33,9 +35,22 @@ completed run no older than two hours. Weekend/late/manual invocations cannot
 POST. The upstream sealed report already passed trading-calendar validation;
 the relay does not guess holidays or silently carry forward an old report.
 The 08:14:00 cutoff leaves more than the 20-second HTTP timeout before the 08:15
-merged digest. A weekday classified by the upstream calendar as non-trading is
-not relayed; this version does not extend the downstream contract to communicate
-calendar skips, so that downstream alert distinction remains an explicit limit.
+merged digest. A proven weekday holiday closes the report/seal/Telegram daily
+publication branch: no daily report or Telegram daily message is produced.
+The independent 08:05/08:10 relay timer remains active and sends the existing
+HMAC-signed `research_skip` contract through the same relay. It requires the
+current day's completed occurrence and hash-bound calendar proof; a bare skip
+status cannot authorize it. The relay unit must not inherit the publication
+branch's `publish-branch.closed` condition. This retains one sender and one
+deduplicated delivery record per day, without extending the send window.
+See [the signed skip contract](docs/RESEARCH_PROTOCOL_V2.md#signed-calendar-skip-version-1).
+
+The existing `research-chain-alert.timer` checks at 08:12 and 08:15 using the
+same classifier and alert state. The second check runs after the 08:14 relay
+cutoff, so late success can resolve an earlier alert and a newly visible fault
+can be reported once. It neither invokes the relay nor resends a daily report;
+unchanged faults and repeated recovery observations stay deduplicated. A
+confirmed signed skip records Telegram as not required, never as delivered.
 
 All occurrence/run time ordering, successful child exit, fixed report paths,
 publication/evidence gates, empty blockers, live/partial data, frozen cutoff,
@@ -149,7 +164,8 @@ relay validation without HTTP send:
 PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest tests.test_cninfo_seal_relay_chain -v
 ```
 
-See `CNINFO_SEAL_RELAY_CHAIN.md`. Seal-failure Telegram alerts:
-`scripts/morning_seal_alert.sh` (wired via `astock-xhs-draft` OnFailure and
-`run_research_relay_with_alert.sh`). Verify with
-`ALERT_DRY_RUN=1 scripts/morning_seal_alert.sh --dry-run-notify`.
+See `CNINFO_SEAL_RELAY_CHAIN.md`. Current seal-failure alerts use
+`research-chain-alert-post.service`; relay failures reach the same state machine
+through `run_research_relay_with_alert.sh`. XHS draft failures stay local to the
+on-demand command. The historical `morning_seal_alert.sh` is not an automatic
+sender. See [current alert wiring](docs/RESEARCH_CHAIN_ALERT_WIRING.md).

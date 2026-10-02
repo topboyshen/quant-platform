@@ -23,6 +23,7 @@ tests/*
 !tests/test_alert_wiring.py
 !tests/test_research_protocol_v2.py
 !tests/test_calendar_skip_relay.py
+!tests/test_occurrence_cutoff_compatibility.py
 !tests/test_alert_protocol_v2.py
 !systemd/
 systemd/*

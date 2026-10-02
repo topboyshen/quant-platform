@@ -58,6 +58,13 @@ contract legitimately uses its current day and is unchanged.
 
 ## Signed calendar skip, version 1
 
+A proven weekday holiday closes the daily report, seal and Telegram daily
+publication branch. Retain the independent `nng8-research-digest.timer` at
+08:05/08:10: it invokes the existing relay service and sender to deliver only
+the signed skip within the unchanged window. The relay service must not gain
+the publication branch's `publish-branch.closed` condition. No new sender,
+daily report, Telegram daily message or historical backfill is introduced.
+
 A weekday holiday must be positively proven; no occurrence, stale research,
 or a bare `status=skipped` is insufficient. The relay checks the current-day
 completed occurrence (UUID claim, successful child exit), its associated
@@ -65,6 +72,19 @@ completed occurrence (UUID claim, successful child exit), its associated
 cutoff), and the exact bytes of its referenced frozen context. Calendar dates,
 recognized source, timezone-aware observation time and stable file fingerprints
 are checked before sending.
+
+Occurrence schema `2.0` separates the configured `frozenCutoffInstant` from
+actual `startedAt`. For both research and skip, that explicit cutoff must be a
+valid timezone-aware instant on the target Shanghai day, no later than the
+occurrence start, and exactly equal to `last-run.frozenCutoffInstant`. A missing
+or invalid v2 cutoff never falls back to `startedAt`. Version 2 fixes that claim
+to Shanghai 08:00 encoded as `<target_date>T00:00:00.000Z`; consumers do not read
+current configuration to reinterpret historical records. A self-consistent
+08:30 claim or a different textual encoding does not satisfy version 2.
+Legacy schema `1.0`
+records without the new field retain their existing validation: research uses
+the sealed run's cutoff and skip binds its cutoff to the occurrence start.
+A v1 record containing the new field is rejected as a mixed version.
 
 The separate envelope is:
 
@@ -137,6 +157,13 @@ changed. Stable business-atom transitions preserve confirmed attempts and
 retry budgets; uncertain sends pause automatic sending, including later
 changes. A normal research recovery also requires Telegram confirmation;
 a confirmed signed skip records Telegram as not required, never as delivered.
+
+The existing alert timer invokes the same classifier at both 08:12 and 08:15.
+The classifier uses the actual clock, so the second check observes the closed
+08:14 relay window even with the existing `--phase predeadline` entry point.
+A success completed after 08:12 can prove recovery; a later fault can create a
+new transition. Both use the existing deduplication state, and repeated checks
+send no duplicate alerts. This check does not invoke a research or skip send.
 
 ## Offline verification
 

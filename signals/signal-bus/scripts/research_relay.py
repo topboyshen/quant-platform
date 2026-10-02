@@ -716,6 +716,30 @@ def extract_summary_from_digest(digest, target_date, data_status, semantic_revie
     return data_date, summary
 
 
+def occurrence_cutoff(occurrence, target):
+    """Validate the versioned cutoff claim without repairing mixed records."""
+    version = occurrence.get("schemaVersion")
+    if version == "1.0" and "frozenCutoffInstant" not in occurrence:
+        # v1's skip proof used startedAt; its research path keeps its existing
+        # sealed-run checks. Never reinterpret a v1 record containing a v2 field.
+        return occurrence.get("startedAt")
+    if version != "2.0":
+        hold("occurrence_version_invalid")
+    value = occurrence.get("frozenCutoffInstant")
+    try:
+        cutoff = parse_instant(value)
+        started = parse_instant(occurrence.get("startedAt"))
+    except Held:
+        hold("occurrence_cutoff_invalid")
+    if cutoff.astimezone(SHANGHAI).date().isoformat() != target or cutoff > started:
+        hold("occurrence_cutoff_invalid")
+    # Schema v2 defines the fixed Shanghai 08:00 schedule in canonical UTC.
+    # Do not reinterpret an archived occurrence through today's configuration.
+    if value != f"{target}T00:00:00.000Z":
+        hold("occurrence_cutoff_invalid")
+    return value
+
+
 def prepare_research(project_root=PROJECT_ROOT, now=None):
     """Read-only API returning payload and sealed proof, never any credentials."""
     now = observation_time(now)
@@ -724,12 +748,15 @@ def prepare_research(project_root=PROJECT_ROOT, now=None):
     occurrence = read_json(project_root, occurrence_file)
     run = read_json(project_root, "work/last-run.json")
     o, r = occurrence["value"], run["value"]
-    if o.get("schemaVersion") != "1.0" or r.get("schemaVersion") != "1.0" or o.get("task") != "morning-report" or o.get("targetDate") != target or r.get("targetDate") != target:
+    if o.get("schemaVersion") not in ("1.0", "2.0") or r.get("schemaVersion") != "1.0" or o.get("task") != "morning-report" or o.get("targetDate") != target or r.get("targetDate") != target:
         hold("today_run_missing")
     os_, oe = parse_instant(o.get("startedAt")), parse_instant(o.get("completedAt"))
     rs, re_ = parse_instant(r.get("startedAt")), parse_instant(r.get("completedAt"))
     if not (os_ <= rs <= re_ <= oe <= now) or os_.astimezone(SHANGHAI).date().isoformat() != target:
         hold("run_time_order_invalid")
+    claimed_cutoff = occurrence_cutoff(o, target)
+    if o.get("schemaVersion") == "2.0" and r.get("frozenCutoffInstant") != claimed_cutoff:
+        hold("occurrence_cutoff_mismatch")
     if o.get("childExitCode") != 0 or isinstance(o.get("childExitCode"), bool) or o.get("childSignal", "missing") is not None or o.get("timedOut") is not False or o.get("interrupted") is not False:
         hold("source_occurrence_not_successful")
     if o.get("status") == "skipped" and r.get("status") == "skipped":
@@ -868,7 +895,7 @@ def prepare_calendar_skip(project_root, now, occurrence, run):
             or r.get("phase") != "collect" or r.get("tradingStatus") != "non_trading_day"
             or r.get("publicationGate") != "not_applicable"
             or not re.fullmatch(r"[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}", str(o.get("invocationId", "")))
-            or r.get("frozenCutoffInstant") != o.get("startedAt")):
+            or r.get("frozenCutoffInstant") != occurrence_cutoff(o, target)):
         hold("calendar_skip_run_invalid")
     context_file = r.get("contextFile")
     if (not isinstance(context_file, str) or not re.fullmatch(r"work/[A-Za-z0-9._/-]+\.json", context_file)
@@ -1383,6 +1410,7 @@ delivery_state_invalid formal_report_path_invalid frozen_cutoff_invalid market_d
 research_not_ready research_seal_missing run_proof_invalid run_time_order_invalid
 same_day_report_changed sealed_report_proof_invalid source_occurrence_not_successful
 timestamp_invalid today_run_missing structured_digest_archive_binding_invalid
+occurrence_version_invalid occurrence_cutoff_invalid occurrence_cutoff_mismatch
 structured_digest_binding_invalid structured_digest_generated_at_mismatch
 structured_digest_hash_invalid structured_digest_hash_mismatch structured_digest_missing
 structured_digest_path_invalid digest_conclusion_missing digest_data_date_invalid

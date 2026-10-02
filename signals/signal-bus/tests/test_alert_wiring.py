@@ -33,6 +33,28 @@ def read(path: Path) -> str:
 
 
 class UnitFileTests(unittest.TestCase):
+    def test_existing_classifier_runs_before_and_after_the_relay_window(self):
+        timer = read(SYSTEMD / "research-chain-alert.timer")
+        calendars = [line for line in timer.splitlines() if line.startswith("OnCalendar=")]
+        self.assertEqual(calendars, ["OnCalendar=Mon..Fri *-*-* 08:12:00 Asia/Shanghai",
+                                    "OnCalendar=Mon..Fri *-*-* 08:15:00 Asia/Shanghai"])
+        self.assertIn("Unit=research-chain-alert.service", timer)
+        self.assertIn("Persistent=false", timer)
+        service = read(SYSTEMD / "research-chain-alert.service")
+        self.assertIn("research_chain_alert.py --phase predeadline --json", service)
+        self.assertNotIn("research_relay.py", service)
+
+    def test_signed_skip_keeps_the_independent_relay_timer_path(self):
+        timer = read(SYSTEMD / "nng8-research-digest.timer")
+        self.assertEqual([line for line in timer.splitlines() if line.startswith("OnCalendar=")],
+                         ["OnCalendar=Mon..Fri *-*-* 08:05:00 Asia/Shanghai",
+                          "OnCalendar=Mon..Fri *-*-* 08:10:00 Asia/Shanghai"])
+        self.assertIn("Unit=nng8-research-digest.service", timer)
+        service = read(SYSTEMD / "nng8-research-digest.service")
+        self.assertIn("ExecStart=/home/ubuntu/signal-bus/scripts/run_research_relay_with_alert.sh", service)
+        self.assertNotIn("ConditionPathExists", service)
+        self.assertNotIn("publish-branch.closed", service)
+
     def test_predeadline_and_digest_load_the_same_target_env(self):
         pre = read(SYSTEMD / "research-chain-alert.service")
         digest = read(SYSTEMD / "nng8-research-digest.service")

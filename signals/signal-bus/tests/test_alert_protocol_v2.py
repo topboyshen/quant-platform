@@ -127,6 +127,57 @@ class ReceiverEvidenceTests(unittest.TestCase):
             self.assertIsNone(json.loads(path.read_text())["incident"])
 
 
+class PostWindowRecheckTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.sender = fixtures.SenderFake()
+
+    def check(self, facts):
+        """Run the installed timer's CLI path with fixture reads and a fake sender."""
+        output = io.StringIO()
+        with patch.object(rca, "collect", return_value=facts), \
+                patch.object(rca, "HermesSender", return_value=self.sender), \
+                contextlib.redirect_stdout(output):
+            result = rca.main(["--phase", "predeadline", "--date", fixtures.DATE,
+                               "--now", facts["now"].isoformat(),
+                               "--state-dir", self.temp.name, "--json"])
+        self.assertEqual(result, 0)
+        return json.loads(output.getvalue())
+
+    def test_0812_not_ready_0813_success_0815_recovers_once(self):
+        first = self.check(healthy(delivery=None))
+        self.assertEqual(first["incidents"][0]["causes"], ["predeadline_not_ready"])
+        self.assertEqual(first["notified"], 1)
+        completed = healthy(now=fixtures.PRE.replace(minute=13))
+        self.assertTrue(rca._success_evidence(completed)[0])
+        self.assertEqual(rca.classify(completed), [])
+        # Success does not invoke the failure wrapper; the 08:15 timer observes it.
+        recheck = {**completed, "now": fixtures.PRE.replace(minute=15)}
+        recovered = self.check(recheck)
+        repeated = self.check(recheck)
+        self.assertEqual((recovered["recovered"], recovered["notified"]), (1, 1))
+        self.assertEqual((repeated["recovered"], repeated["notified"]), (0, 0))
+        self.assertEqual(len(self.sender.sent), 2)
+        self.assertIn("研究链路恢复", self.sender.sent[1])
+        state = json.loads(rca._state_path(Path(self.temp.name), fixtures.DATE).read_text())
+        self.assertIsNone(state["incident"])
+
+    def test_0812_healthy_then_late_fault_0815_notifies_once(self):
+        first = self.check(healthy())
+        self.assertEqual((first["incidents"], first["notified"]), ([], 0))
+        late = healthy(now=fixtures.PRE.replace(minute=14, second=30),
+                       telegram_state="mismatch", telegram_wording="附件哈希与密封报告不一致")
+        self.assertEqual(fixtures.codes(rca.classify(late)), ["telegram_mismatch"])
+        recheck = {**late, "now": fixtures.PRE.replace(minute=15)}
+        new_fault = self.check(recheck)
+        repeated = self.check(recheck)
+        self.assertEqual(new_fault["incidents"][0]["causes"], ["telegram_mismatch"])
+        self.assertEqual(new_fault["notified"], 1)
+        self.assertEqual(repeated["notified"], 0)
+        self.assertEqual(len(self.sender.sent), 1)
+
+
 class CalendarAlertTests(unittest.TestCase):
     def test_skip_confirmation_needs_date_id_storage_and_matching_content(self):
         case = calendar_cases.CalendarSkipTests()
