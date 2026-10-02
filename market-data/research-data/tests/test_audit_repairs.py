@@ -51,14 +51,19 @@ class CurrentDayTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     core_market.main(["--state-dir", full], _cli=True)
 
-    def test_stale_qlib_stops_before_source_collection_or_existing_row(self):
+    def test_stale_qlib_preserves_stage_before_stopping_full_assembly(self):
+        stage = {"status": "reused", "tradeDate": "2026-09-28",
+                 "payloadSha256": "a" * 64, "recordSha256": "b" * 64}
         with mock.patch.object(sys, "argv", ["daily_snapshot.py"]), \
              mock.patch.object(daily, "qlib_market", return_value=sample_qlib_market("2026-09-24")), \
              mock.patch.object(daily, "existing_snapshot") as prior, \
+             mock.patch.object(daily, "_current_day_stage", return_value=stage) as acquire, \
              mock.patch.object(daily, "capture_current_akshare_market") as collector:
             with self.assertRaisesRegex(daily.SnapshotDeferredError, "qlib_not_current") as caught:
                 daily.run_snapshot("fixed", time.monotonic(), expected_day="2026-09-28")
             self.assertEqual(caught.exception.target, "2026-09-28")
+            self.assertEqual(caught.exception.akshare_stage, stage)
+            acquire.assert_called_once_with("fixed", "2026-09-28")
             prior.assert_not_called(); collector.assert_not_called()
 
     def test_missing_independent_day_cannot_run(self):

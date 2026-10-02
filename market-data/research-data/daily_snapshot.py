@@ -162,11 +162,13 @@ class SnapshotTemporaryError(RuntimeError):
 class SnapshotDeferredError(RuntimeError):
     """Required same-trade-date source material has not arrived yet."""
 
-    def __init__(self, message, *, target=None, qlib_tag=None, source_failure=None):
+    def __init__(self, message, *, target=None, qlib_tag=None, source_failure=None,
+                 akshare_stage=None):
         super().__init__(message)
         self.target = target
         self.qlib_tag = qlib_tag
         self.source_failure = source_failure
+        self.akshare_stage = akshare_stage
 
 
 class AkshareMarketSourceError(RuntimeError):
@@ -322,14 +324,15 @@ def existing_snapshot(date, db_path=None):
     }
 
 
-def store_snapshot(snapshot, db_path=None):
+def store_snapshot(snapshot, db_path=None, *, expected_day=None):
     """Persist one immutable snapshot, allowing only an exact-payload retry."""
     _supervised_soft_deadline("SQLite snapshot transaction")
-    if _supervised_run_id() is not None:
+    live_write = expected_day is not None or _supervised_run_id() is not None
+    if live_write:
         # Only the live invocation can write. Existing historical records are
         # readable but cannot be recreated or relabelled by today's collector.
         today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date().isoformat()
-        if snapshot.get("date") != today:
+        if snapshot.get("date") != today or (expected_day is not None and expected_day != today):
             raise SnapshotValidationError("historical_snapshot_write_forbidden")
         write_run_checkpoint(_supervised_run_id(), activePhase="sqlite_transaction")
     db_path = db_path or DB
@@ -339,6 +342,11 @@ def store_snapshot(snapshot, db_path=None):
     try:
         with sqlite3.connect(db_path, timeout=SQLITE_TIMEOUT) as conn:
             conn.execute("BEGIN IMMEDIATE")
+            if live_write:
+                _supervised_soft_deadline("SQLite snapshot write")
+                today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date().isoformat()
+                if snapshot.get("date") != today:
+                    raise SnapshotValidationError("historical_snapshot_write_forbidden")
             _ensure_snapshot_table(conn)
             integrity = conn.execute("PRAGMA quick_check").fetchone()[0]
             if integrity != "ok":
@@ -359,6 +367,11 @@ def store_snapshot(snapshot, db_path=None):
             integrity = conn.execute("PRAGMA quick_check").fetchone()[0]
             if integrity != "ok":
                 raise SnapshotValidationError(f"SQLite quick_check failed: {integrity}")
+            if live_write:
+                _supervised_soft_deadline("SQLite snapshot commit")
+                today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date().isoformat()
+                if snapshot.get("date") != today:
+                    raise SnapshotValidationError("historical_snapshot_write_forbidden")
     except sqlite3.OperationalError as exc:
         if "locked" in str(exc).lower() or "busy" in str(exc).lower():
             raise SnapshotTemporaryError(f"SQLite transaction is busy: {exc}") from exc
@@ -679,7 +692,7 @@ def _validate_akshare_stage_document(document, expected_date):
 
 def _load_akshare_market_stage_from_fd(trade_date, directory_fd):
     filename = _akshare_stage_filename(trade_date)
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         fd = os.open(filename, flags, dir_fd=directory_fd)
     except FileNotFoundError:
@@ -727,13 +740,15 @@ def load_akshare_market_stage(trade_date, stage_dir=None):
 
 
 def seal_akshare_market_stage(
-    akshare_payload, collection_started_at, collection_completed_at, stage_dir=None
+    akshare_payload, collection_started_at, collection_completed_at, stage_dir=None,
+    *, expected_day=None
 ):
     _supervised_soft_deadline("AkShare stage seal")
     trade_date = validate_akshare_market_payload(akshare_payload)
-    if _supervised_run_id() is not None:
+    live_write = expected_day is not None or _supervised_run_id() is not None
+    if live_write:
         today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date().isoformat()
-        if trade_date != today:
+        if trade_date != today or (expected_day is not None and expected_day != today):
             raise SnapshotDeferredError("historical_stage_write_forbidden", target=today)
     started_at = _validate_iso_timestamp(collection_started_at, "startedAt")
     completed_at = _validate_iso_timestamp(collection_completed_at, "completedAt")
@@ -796,6 +811,11 @@ def seal_akshare_market_stage(
             stage_file.flush()
             os.fsync(stage_file.fileno())
         try:
+            if live_write:
+                _supervised_soft_deadline("AkShare stage publication")
+                today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date().isoformat()
+                if trade_date != today:
+                    raise SnapshotDeferredError("historical_stage_write_forbidden", target=today)
             os.link(
                 temporary_name,
                 filename,
@@ -837,7 +857,7 @@ def seal_akshare_market_stage(
     return {**document, "status": status, "path": path}
 
 
-def capture_current_akshare_market(stage_dir=None):
+def capture_current_akshare_market(stage_dir=None, *, expected_day=None):
     collection_started_at = datetime.datetime.now().astimezone().isoformat()
     attempt_count = 0
     attempt_failures = []
@@ -873,6 +893,7 @@ def capture_current_akshare_market(stage_dir=None):
         collection_started_at,
         collection_completed_at,
         stage_dir,
+        expected_day=expected_day,
     )
 
 
@@ -1482,27 +1503,74 @@ def global_markets():
     return result
 
 
+def _current_day_stage(run_id, expected_day):
+    """Seal today's observations independently of Qlib, or reuse that seal."""
+    today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date().isoformat()
+    if expected_day != today:
+        raise SnapshotDeferredError("expected_trading_day_rolled_over", target=expected_day)
+    _supervised_soft_deadline("current market stage")
+    write_run_checkpoint(run_id, target=expected_day, activePhase="market_stage")
+    stage = load_akshare_market_stage(expected_day)
+    retry_identity = {
+        field: os.environ.get("RESEARCH_DATA_RETRY_STAGE_" + suffix)
+        for field, suffix in (("tradeDate", "TRADE_DATE"),
+                              ("payloadSha256", "PAYLOAD_SHA256"),
+                              ("recordSha256", "RECORD_SHA256"))
+    }
+    if any(value is not None for value in retry_identity.values()):
+        if stage is None or any(stage.get(key) != value for key, value in retry_identity.items()):
+            raise SnapshotDeferredError("same_day_retry_stage_missing_or_changed", target=expected_day)
+    if stage is None:
+        try:
+            stage = capture_current_akshare_market(expected_day=expected_day)
+        except SnapshotDeferredError as exc:
+            exc.target = expected_day
+            raise
+    else:
+        stage = {**stage, "status": "reused"}
+    # Historical seals remain readable, but only an observation actually made
+    # on this trading day can feed a live full assembly or same-day retry.
+    for value in stage["collectionWindow"].values():
+        observed = datetime.datetime.fromisoformat(value).astimezone(
+            datetime.timezone(datetime.timedelta(hours=8))).date().isoformat()
+        if observed != expected_day:
+            raise SnapshotValidationError("current_stage_observation_day_mismatch")
+    validate_daily_source_dates(expected_day, stage["akshare"])
+    write_run_checkpoint(run_id, activePhase="qlib_readiness",
+                         stageCandidateTradeDate=expected_day,
+                         stageCandidatePayloadSha256=stage["payloadSha256"],
+                         stageCandidateRecordSha256=stage["recordSha256"])
+    return stage
+
+
 def run_snapshot(run_id, started_monotonic, expected_day=None):
     date = requested_trade_date(sys.argv[1:])
+    # Live entry supplies an independently proven current trading day. Keep
+    # the immutable market evidence before any Qlib read/coverage/date gate.
+    current_stage = (_current_day_stage(run_id, expected_day)
+                     if expected_day is not None else None)
     q = qlib_market(date)
     qlib_tag = (q.get("generation") or {}).get("tag")
     if expected_day is not None and q["date"] != expected_day:
-        raise SnapshotDeferredError("qlib_not_current_for_expected_trading_day", target=expected_day, qlib_tag=qlib_tag)
+        raise SnapshotDeferredError("qlib_not_current_for_expected_trading_day", target=expected_day,
+                                    qlib_tag=qlib_tag, akshare_stage={
+                                        key: current_stage[key] for key in
+                                        ("status", "tradeDate", "payloadSha256", "recordSha256")})
     prior = existing_snapshot(q["date"])
     write_run_checkpoint(run_id, target=q["date"], qlibTag=qlib_tag,
                          preexistingRowSha256=prior["payloadSha256"] if prior else None)
-    target_stage = None
-    if prior is None:
+    target_stage = current_stage
+    if prior is None and target_stage is None:
         target_stage = load_akshare_market_stage(q["date"])
 
-    current_stage = None
     staging_warning = None
     staging_error = None
-    try:
-        current_stage = capture_current_akshare_market()
-    except (SnapshotDeferredError, SnapshotValidationError) as exc:
-        staging_error = exc
-        staging_warning = f"{type(exc).__name__}: {exc}"
+    if current_stage is None:
+        try:
+            current_stage = capture_current_akshare_market()
+        except (SnapshotDeferredError, SnapshotValidationError) as exc:
+            staging_error = exc
+            staging_warning = f"{type(exc).__name__}: {exc}"
     if current_stage is None:
         current_stage_summary = {
             "status": "unavailable",
@@ -1745,7 +1813,8 @@ def run_snapshot(run_id, started_monotonic, expected_day=None):
     }
     write_run_checkpoint(run_id, snapshotCandidateSha256=_payload_sha256(_snapshot_payload(snapshot)),
                          snapshotCandidateTradeDate=q["date"])
-    stored = store_snapshot(snapshot)
+    stored = (store_snapshot(snapshot, expected_day=expected_day)
+              if expected_day is not None else store_snapshot(snapshot))
     status_record = {
         "runId": run_id,
         "status": stored["status"],
@@ -1816,6 +1885,8 @@ def emit_deferred_status(run_id, started_monotonic, error, stream=None):
         record["qlibTag"] = error.qlib_tag
     if error.source_failure is not None:
         record["sourceFailure"] = error.source_failure
+    if error.akshare_stage is not None:
+        record["akshareStage"] = error.akshare_stage
     emit_status(record, stream=stream or sys.stderr)
 
 

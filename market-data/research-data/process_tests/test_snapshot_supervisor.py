@@ -147,6 +147,54 @@ class SnapshotSupervisorTests(unittest.TestCase):
         self.assertEqual(result["status"], "deferred")
         self.assertEqual(current["runId"], result["runId"])
 
+    def test_same_run_retry_uses_fresh_guarded_process_and_cannot_reset_deadline(self):
+        for mode, status, exit_code in (("qlib_stale_then_success", "inserted", 0),
+                                         ("qlib_stale_then_hang", "failed", 1)):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                today = dt.datetime.now(supervisor.ZONE).date().isoformat()
+                snapshot.seal_akshare_market_stage(sample_market(today),
+                    today + "T22:30:00+08:00", today + "T22:30:01+08:00", str(root / "stage"))
+                stage_before = (root / "stage" / (today + ".json")).read_bytes()
+                started = time.monotonic()
+                with mock.patch.object(supervisor, "QLIB_RETRY_SECONDS", 0.01):
+                    result, code = self.execute(directory, mode, deadline=2)
+                self.assertEqual((result["status"], code, result["attemptCount"]), (status, exit_code, 2))
+                attempts = json.loads((root / "state" / "fixture-attempts.json").read_text())
+                self.assertEqual(len(attempts), 2)
+                self.assertNotEqual(attempts[0]["pid"], attempts[1]["pid"])
+                self.assertEqual(attempts[0]["runId"], attempts[1]["runId"])
+                self.assertEqual(attempts[0]["softDeadline"], attempts[1]["softDeadline"])
+                self.assertEqual((root / "stage" / (today + ".json")).read_bytes(), stage_before)
+                if mode.endswith("hang"):
+                    self.assertEqual(result["reasonCode"], "deadline_exceeded")
+                    self.assertLess(time.monotonic() - started, 8)
+                # Final cleanup releases the lock even after the retry times out.
+                with snapshot.snapshot_run_lock(str(root / "state")):
+                    pass
+
+    def test_retry_stage_fifo_or_wedged_reader_is_bounded(self):
+        for wedged in (False, True):
+            with self.subTest(wedged=wedged), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                stage_dir = root / "stage"
+                stage_dir.mkdir(mode=0o700)
+                os.mkfifo(stage_dir / "2026-09-24.json", mode=0o600)
+                final = {"target": "2026-09-24", "akshareStage": {
+                    "tradeDate": "2026-09-24", "payloadSha256": "a" * 64,
+                    "recordSha256": "b" * 64}}
+                original_load = snapshot.load_akshare_market_stage
+                def load(*args):
+                    if wedged:
+                        time.sleep(5)
+                    return original_load(*args)
+                with open(root / "lock", "a+") as locked, \
+                        mock.patch.object(snapshot, "load_akshare_market_stage", side_effect=load):
+                    started = time.monotonic()
+                    self.assertFalse(supervisor._retry_stage_matches(final, str(stage_dir),
+                                                                    locked.fileno(), 0.2))
+                    self.assertLess(time.monotonic() - started, 2)
+
     def test_reaped_watchdog_identity_never_signals_old_numeric_group(self):
         worker = mock.Mock()
         watchdog = mock.Mock(pid=12345)

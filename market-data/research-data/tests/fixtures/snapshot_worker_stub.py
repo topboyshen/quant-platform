@@ -1,4 +1,5 @@
 """No-network supervisor fixture; writes only paths supplied under test scratch."""
+import datetime as dt
 import hashlib
 import json
 import os
@@ -35,6 +36,24 @@ def record(status, **values):
 
 
 if mode == "success":
+    record("inserted", payloadSha256="a" * 64)
+elif mode in {"qlib_stale_then_success", "qlib_stale_then_hang"}:
+    target = dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date().isoformat()
+    stage = json.loads((Path(os.environ["RESEARCH_DATA_AKSHARE_STAGE_DIR"]) / (target + ".json")).read_text())
+    attempt_path = state / "fixture-attempts.json"
+    attempts = json.loads(attempt_path.read_text()) if attempt_path.exists() else []
+    attempts.append({"pid": os.getpid(), "runId": run_id,
+                     "softDeadline": os.environ["RESEARCH_DATA_SOFT_DEADLINE_EPOCH"]})
+    attempt_path.write_text(json.dumps(attempts))
+    if len(attempts) == 1:
+        record("deferred", reason="qlib_not_current_for_expected_trading_day",
+               akshareStage={key: stage[key] for key in
+                             ("tradeDate", "payloadSha256", "recordSha256")})
+        raise SystemExit(69)
+    if mode == "qlib_stale_then_hang":
+        record("running", activePhase="fixed-retry-hang")
+        while True:
+            time.sleep(1)
     record("inserted", payloadSha256="a" * 64)
 elif mode == "hang_with_helper":
     helper = subprocess.Popen(

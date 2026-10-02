@@ -31,6 +31,42 @@ START_LATEST = dt.time(22, 40)
 SOFT_LATEST = dt.time(22, 40, 30)
 HARD_LATEST = dt.time(22, 42)
 RECONCILE_MAX_SECONDS = 20
+QLIB_RETRY_SECONDS = 30
+QLIB_MAX_ATTEMPTS = 20
+
+
+def _qlib_retry_allowed(final, code, *, started, hard, monotonic_stop, attempt):
+    """Retry only the known readiness deferral, within this run's deadlines."""
+    current = dt.datetime.now(ZONE)
+    stage = final.get("akshareStage") or {}
+    return (
+        code == snapshot.SNAPSHOT_DEFERRED_EXIT
+        and final.get("status") == "deferred"
+        and final.get("reason") == "qlib_not_current_for_expected_trading_day"
+        and isinstance(stage, dict)
+        and stage.get("tradeDate") == final.get("target") == current.date().isoformat()
+        and current.date() == started.astimezone(ZONE).date()
+        and current.time() < START_LATEST
+        and current.timestamp() < hard.timestamp()
+        and time.monotonic() < monotonic_stop
+        and attempt < QLIB_MAX_ATTEMPTS
+    )
+
+
+def _retry_stage_matches(final, stage_dir, lock_fd, timeout):
+    """A terminal deferral alone cannot authorize a retry without its seal."""
+    if timeout <= 0:
+        return False
+    claimed = final.get("akshareStage") or {}
+    progress = {"target": final["target"],
+                "stageCandidateTradeDate": claimed.get("tradeDate"),
+                "stageCandidatePayloadSha256": claimed.get("payloadSha256"),
+                "stageCandidateRecordSha256": claimed.get("recordSha256")}
+    # Stage files can be replaced or filesystem reads can wedge. The parent
+    # must keep its clock/lock control even between guarded worker attempts.
+    evidence = _reconcile_bounded(progress, None, stage_dir, lock_fd,
+                                  timeout=timeout, stage_only=True)
+    return evidence.get("stage") == "matching_immutable_stage"
 
 
 def _run_record_path(state_dir, run_id):
@@ -54,7 +90,7 @@ def _publish_record(state_dir, record):
     )
 
 
-def _reconcile_read_only(progress, db_path, stage_dir):
+def _reconcile_read_only(progress, db_path, stage_dir, stage_only=False):
     """Describe persisted evidence after interruption; never promote to pass."""
     evidence = {"stage": "unknown", "snapshot": "unknown"}
     target = progress.get("target")
@@ -73,6 +109,8 @@ def _reconcile_read_only(progress, db_path, stage_dir):
                 evidence["stage"] = "matching_immutable_stage"
             else:
                 evidence["stage"] = "candidate_mismatch"
+    if stage_only:
+        return evidence
     try:
         uri = Path(db_path).resolve().as_uri() + "?mode=ro"
         connection = sqlite3.connect(uri, uri=True, timeout=1)
@@ -121,11 +159,11 @@ def _reconcile_read_only(progress, db_path, stage_dir):
     return evidence
 
 
-def _reconcile_child(sender, progress, db_path, stage_dir, inherited_lock_fd):
+def _reconcile_child(sender, progress, db_path, stage_dir, inherited_lock_fd, stage_only=False):
     # A read-only reconciliation must not keep the supervisor's lock alive.
     os.close(inherited_lock_fd)
     try:
-        sender.send(_reconcile_read_only(progress, db_path, stage_dir))
+        sender.send(_reconcile_read_only(progress, db_path, stage_dir, stage_only))
     except BaseException:
         sender.send({"stage": "unknown", "snapshot": "reconciliation_unavailable"})
     finally:
@@ -133,12 +171,12 @@ def _reconcile_child(sender, progress, db_path, stage_dir, inherited_lock_fd):
 
 
 def _reconcile_bounded(progress, db_path, stage_dir, inherited_lock_fd,
-                       timeout=RECONCILE_MAX_SECONDS):
+                       timeout=RECONCILE_MAX_SECONDS, stage_only=False):
     """Kill a wedged SQLite/stage read; never infer success from timeout."""
     receiver, sender = multiprocessing.get_context("fork").Pipe(duplex=False)
     process = multiprocessing.get_context("fork").Process(
         target=_reconcile_child,
-        args=(sender, progress, db_path, stage_dir, inherited_lock_fd),
+        args=(sender, progress, db_path, stage_dir, inherited_lock_fd, stage_only),
     )
     process.start()
     sender.close()
@@ -351,6 +389,93 @@ def _disarm_watchdog(watchdog, control_write, ack_read):
         return False
 
 
+def _run_attempt(*, worker_path, watchdog_path, environment, log_path, lock_fd,
+                 worker_args, hard, monotonic_stop, record, state_dir,
+                 db_path, stage_dir):
+    """Complete and reap one guarded worker before considering any retry."""
+    run_id = record["runId"]
+    try:
+        with open(log_path, "ab") as log:
+            process, watchdog, control_write, ack_read = _launch_guarded_worker(
+                worker_path, watchdog_path, environment, log, lock_fd, worker_args
+            )
+            try:
+                timed_out = watchdog_lost = descendants_remained = False
+                while True:
+                    if _watchdog_exited(watchdog):
+                        watchdog_lost = True
+                        terminated = _terminate_group(process, watchdog)
+                        break
+                    remaining = min(hard.timestamp() - time.time(),
+                                    monotonic_stop - time.monotonic())
+                    if remaining <= 0:
+                        timed_out = True
+                        terminated = _terminate_group(process, watchdog)
+                        break
+                    try:
+                        process.wait(timeout=min(1.0, remaining))
+                    except subprocess.TimeoutExpired:
+                        continue
+                    terminated = True
+                    break
+                # Intentional deadline cleanup must retain its timeout reason.
+                if not timed_out and _watchdog_exited(watchdog):
+                    watchdog_lost = True
+                if not timed_out and not watchdog_lost:
+                    members = _live_nonwatchdog_members(watchdog, process)
+                    descendants_remained = members is None or bool(members)
+                    if descendants_remained:
+                        terminated = _terminate_group(process, watchdog)
+                    elif not _disarm_watchdog(watchdog, control_write, ack_read):
+                        watchdog_lost = True
+                        terminated = _terminate_group(process, watchdog)
+            finally:
+                _close_fd(control_write)
+                _close_fd(ack_read)
+                try:
+                    watchdog.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    # Never signal a numeric group after reaping its leader.
+                    watchdog.kill()
+                    watchdog.wait(timeout=2)
+    except (OSError, RuntimeError) as exc:
+        return ({**record, "status": "failed",
+                 "reasonCode": f"worker_launch_failed:{type(exc).__name__}",
+                 "timestamp": dt.datetime.now(ZONE).isoformat()}, 1)
+    child = _read_record(_run_record_path(state_dir, run_id), run_id)
+    if (not timed_out and not watchdog_lost and not descendants_remained
+            and terminated and child is not None
+            and child.get("status") in TERMINAL):
+        status = child["status"]
+        expected_exit = (status in SUCCESS and process.returncode == 0)
+        expected_deferred = (status == "deferred"
+                             and process.returncode == snapshot.SNAPSHOT_DEFERRED_EXIT)
+        expected_failure = (status not in SUCCESS | {"deferred"}
+                            and process.returncode != 0)
+        if expected_exit or expected_deferred or expected_failure:
+            return {**record, **child}, process.returncode
+        return ({**record, **child, "status": "failed",
+                 "reasonCode": "exit_record_conflict"}, 1)
+    progress = {**record, **(child or {})}
+    evidence = _reconcile_bounded(
+        progress, db_path, stage_dir, lock_fd
+    ) if terminated else {
+        "stage": "unknown", "snapshot": "worker_termination_unconfirmed"
+    }
+    return ({
+        **progress, "runId": run_id, "status": "failed",
+        "reasonCode": ("termination_unconfirmed" if not terminated else
+                       "watchdog_lost" if watchdog_lost else
+                       "worker_descendants_remained" if descendants_remained else
+                       "reconciliation_required" if evidence["snapshot"] in {
+                           "matching_candidate_committed", "historical_row_changed",
+                           "candidate_missing_or_mismatched", "row_invalid",
+                       } else "deadline_exceeded" if timed_out
+                       else "worker_terminal_record_missing"),
+        "reconciliation": evidence,
+    }, 1)
+
+
 def run_supervised(*, worker_path=None, state_dir=None, db_path=None,
                    stage_dir=None, log_path=None, watchdog_path=None, now=None,
                    deadline_seconds_override=None, worker_args=()):
@@ -404,6 +529,8 @@ def run_supervised(*, worker_path=None, state_dir=None, db_path=None,
             _publish_record(state_dir, final)
             return final, 1
         environment = os.environ.copy()
+        for suffix in ("TRADE_DATE", "PAYLOAD_SHA256", "RECORD_SHA256"):
+            environment.pop("RESEARCH_DATA_RETRY_STAGE_" + suffix, None)
         environment.update({
             "RESEARCH_DATA_SUPERVISED_RUN_ID": run_id,
             "RESEARCH_DATA_SUPERVISOR_LOCK_FD": str(lock_file.fileno()),
@@ -415,100 +542,55 @@ def run_supervised(*, worker_path=None, state_dir=None, db_path=None,
             "RESEARCH_DATA_SNAPSHOT_DB": str(db_path),
             "RESEARCH_DATA_AKSHARE_STAGE_DIR": str(stage_dir),
         })
-        try:
-            with open(log_path, "ab") as log:
-                process, watchdog, control_write, ack_read = _launch_guarded_worker(
-                    worker_path, watchdog_path, environment, log, lock_file.fileno(), worker_args
-                )
-                try:
-                    timed_out = watchdog_lost = descendants_remained = False
-                    monotonic_stop = time.monotonic() + max(
-                        0, hard.timestamp() - time.time()
-                    )
-                    while True:
-                        if _watchdog_exited(watchdog):
-                            watchdog_lost = True
-                            terminated = _terminate_group(process, watchdog)
-                            break
-                        remaining = min(hard.timestamp() - time.time(),
-                                        monotonic_stop - time.monotonic())
-                        if remaining <= 0:
-                            timed_out = True
-                            terminated = _terminate_group(process, watchdog)
-                            break
-                        try:
-                            process.wait(timeout=min(1.0, remaining))
-                        except subprocess.TimeoutExpired:
-                            continue
-                        terminated = True
-                        break
-                    # Deadline cleanup intentionally kills the group leader;
-                    # it must not overwrite the observed timeout with an
-                    # unrelated watchdog-loss reason.
-                    if not timed_out and _watchdog_exited(watchdog):
-                        watchdog_lost = True
-                    if not timed_out and not watchdog_lost:
-                        members = _live_nonwatchdog_members(watchdog, process)
-                        descendants_remained = members is None or bool(members)
-                        if descendants_remained:
-                            terminated = _terminate_group(process, watchdog)
-                        elif not _disarm_watchdog(watchdog, control_write, ack_read):
-                            watchdog_lost = True
-                            terminated = _terminate_group(process, watchdog)
-                finally:
-                    _close_fd(control_write)
-                    _close_fd(ack_read)
-                    try:
-                        watchdog.wait(timeout=2)
-                    except subprocess.TimeoutExpired:
-                        # Do not issue a numeric group signal after reaping its
-                        # leader; the group was already aborted above or the
-                        # clean DISARM was acknowledged.
-                        watchdog.kill()
-                        watchdog.wait(timeout=2)
-        except (OSError, RuntimeError) as exc:
-            final = {**record, "status": "failed",
-                     "reasonCode": f"worker_launch_failed:{type(exc).__name__}",
-                     "timestamp": dt.datetime.now(ZONE).isoformat()}
-            _publish_record(state_dir, final)
-            return final, 1
-        child = _read_record(_run_record_path(state_dir, run_id), run_id)
-        if (not timed_out and not watchdog_lost and not descendants_remained
-                and terminated and child is not None
-                and child.get("status") in TERMINAL):
-            status = child["status"]
-            expected_exit = (status in SUCCESS and process.returncode == 0)
-            expected_deferred = (status == "deferred"
-                                 and process.returncode == snapshot.SNAPSHOT_DEFERRED_EXIT)
-            expected_failure = (status not in SUCCESS | {"deferred"}
-                                and process.returncode != 0)
-            if expected_exit or expected_deferred or expected_failure:
-                final = {**record, **child}
-                code = process.returncode
-            else:
-                final = {**record, **child, "status": "failed",
-                         "reasonCode": "exit_record_conflict"}
-                code = 1
-        else:
-            progress = {**record, **(child or {})}
-            evidence = _reconcile_bounded(
-                progress, db_path, stage_dir, lock_file.fileno()
-            ) if terminated else {
-                "stage": "unknown", "snapshot": "worker_termination_unconfirmed"
-            }
-            code = 1
-            final = {
-                **progress, "runId": run_id, "status": "failed",
-                "reasonCode": ("termination_unconfirmed" if not terminated else
-                               "watchdog_lost" if watchdog_lost else
-                               "worker_descendants_remained" if descendants_remained else
-                               "reconciliation_required" if evidence["snapshot"] in {
-                                   "matching_candidate_committed", "historical_row_changed",
-                                   "candidate_missing_or_mismatched", "row_invalid",
-                               } else "deadline_exceeded" if timed_out
-                               else "worker_terminal_record_missing"),
-                "reconciliation": evidence,
-            }
+        # One lock, run ID, and deadline budget span all readiness attempts.
+        # A fresh guarded process prevents source helpers leaking into retries.
+        monotonic_stop = time.monotonic() + max(0, hard.timestamp() - time.time())
+        attempts = []
+        while True:
+            attempt = len(attempts) + 1
+            attempt_record = {**record, "attemptCount": attempt}
+            # Clear the previous attempt's terminal record before launch: a
+            # crashed retry must never inherit an earlier terminal claim.
+            snapshot._atomic_run_json(str(_run_record_path(state_dir, run_id)), attempt_record)
+            final, code = _run_attempt(
+                worker_path=worker_path, watchdog_path=watchdog_path,
+                environment=environment, log_path=log_path, lock_fd=lock_file.fileno(),
+                worker_args=worker_args, hard=hard, monotonic_stop=monotonic_stop,
+                record=attempt_record, state_dir=state_dir, db_path=db_path, stage_dir=stage_dir,
+            )
+            attempts.append({"attempt": attempt, "status": final["status"],
+                             "reason": final.get("reason", final.get("reasonCode")),
+                             "completedAt": dt.datetime.now(ZONE).isoformat()})
+            if not _qlib_retry_allowed(final, code, started=started, hard=hard,
+                                       monotonic_stop=monotonic_stop, attempt=attempt):
+                break
+            retry_stop = min(
+                dt.datetime.combine(local.date(), START_LATEST, ZONE).timestamp(),
+                hard.timestamp(),
+            )
+            verify_budget = min(RECONCILE_MAX_SECONDS, retry_stop - time.time(),
+                                monotonic_stop - time.monotonic())
+            if not _retry_stage_matches(final, stage_dir, lock_file.fileno(), verify_budget):
+                break
+            delay = min(QLIB_RETRY_SECONDS, retry_stop - time.time(),
+                        monotonic_stop - time.monotonic())
+            if delay <= 0:
+                break
+            snapshot._atomic_run_json(str(_run_record_path(state_dir, run_id)), {
+                **final, "status": "running", "activePhase": "waiting_for_qlib",
+                "attemptCount": attempt, "attempts": attempts,
+            })
+            time.sleep(delay)
+            if not _qlib_retry_allowed(final, code, started=started, hard=hard,
+                                       monotonic_stop=monotonic_stop, attempt=attempt):
+                break
+            for field, suffix in (("tradeDate", "TRADE_DATE"),
+                                  ("payloadSha256", "PAYLOAD_SHA256"),
+                                  ("recordSha256", "RECORD_SHA256")):
+                environment["RESEARCH_DATA_RETRY_STAGE_" + suffix] = final["akshareStage"][field]
+        final["attemptCount"] = len(attempts)
+        if len(attempts) > 1:
+            final["attempts"] = attempts
         final["timestamp"] = dt.datetime.now(ZONE).isoformat()
         _publish_record(state_dir, final)
         return final, code
