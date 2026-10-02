@@ -1,0 +1,35 @@
+{
+  "provenance": {
+    "baseline": "2026-09-19 22:45 audit, user-confirmed on 2026-09-20; SHA-256 from original deployment record",
+    "firstDetection": "2026-09-22 22:45 research-data-health.service journal JSON line; full line parsed read-only",
+    "firstDetectionHashMethod": "SHA-256 of complete journal JSON line plus newline; reconstruction checked by reproducing 2026-09-23 still-present last.json SHA-256",
+    "currentAudit": "2026-09-23 22:45 /var/lib/research-data-health/last.json"
+  },
+  "baseline": {
+    "baselineDate": "2026-09-20",
+    "baselineSha256": "79fc2927e988b227a5c1f2a18700c319a7c433889ce3b61cd268d54c3ee140bc",
+    "criticalDates": ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-11", "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17"],
+    "legacyDates": ["2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"]
+  },
+  "addendum": {
+    "code": "unresolved_trading_day_gaps",
+    "aggregateIssueSeverity": "critical",
+    "date": "2026-09-22",
+    "firstObservedAt": "2026-09-22T22:45:00.813661+08:00",
+    "firstObservedSource": "research-data-health.service journal_reconstruction",
+    "reconstructedJournalPayloadSha256": "226b85d0c84c683faeee39757ecdda6f9723441bf1379070a8f0613f6ed935f2"
+  },
+  "currentAudit": {
+    "generatedAt": "2026-09-23T22:45:00.842769+08:00",
+    "status": "critical",
+    "issues": [
+      {"code": "legacy_gaps_or_invalid_rows", "severity": "warning", "dates": ["2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"]},
+      {"code": "unresolved_trading_day_gaps", "severity": "critical", "dates": ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-11", "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-22"]}
+    ],
+    "ledger": [
+      {"tradeDate": "2026-09-22", "classification": "monitored", "snapshotState": "missing", "stageState": "missing", "recoveryReadiness": "missing_or_invalid_market_evidence"}
+    ],
+    "snapshot": {"rowCount": 9, "latestValidDate": "2026-09-23", "rowHashes": {}},
+    "stages": {}
+  }
+}

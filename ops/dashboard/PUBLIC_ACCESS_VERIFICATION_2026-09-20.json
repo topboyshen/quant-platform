@@ -1,0 +1,256 @@
+{
+  "passed": 47,
+  "total": 47,
+  "checks": [
+    {
+      "name": "unauthenticated GET /",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "unauthenticated GET /progress.html",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /progress.html",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /progress.html",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "unauthenticated GET /delivery.html",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /delivery.html",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /delivery.html",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "unauthenticated GET /projects.html",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /projects.html",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /projects.html",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "unauthenticated GET /assets/app.js",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /assets/app.js",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /assets/app.js",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "unauthenticated GET /assets/tabler.min.css",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /assets/tabler.min.css",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /assets/tabler.min.css",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "unauthenticated GET /data/today.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /data/today.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /data/today.json",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "unauthenticated GET /data/progress.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /data/progress.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /data/progress.json",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "unauthenticated GET /data/delivery.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /data/delivery.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /data/delivery.json",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "unauthenticated GET /data/projects.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /data/projects.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /data/projects.json",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "unauthenticated GET /data/manifest.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /data/manifest.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /data/manifest.json",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "unauthenticated GET /data/reports/2026-09-18.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "unauthenticated HEAD /data/reports/2026-09-18.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "authenticated GET /data/reports/2026-09-18.json",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "encoded unauthenticated /%64ata/today.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "encoded unauthenticated //data/today.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "encoded unauthenticated /assets/../data/today.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "wrong password /",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "wrong password /data/today.json",
+      "pass": true,
+      "http": 401
+    },
+    {
+      "name": "HTTP redirects /",
+      "pass": true,
+      "http": 308
+    },
+    {
+      "name": "HTTP redirects /data/today.json",
+      "pass": true,
+      "http": 308
+    },
+    {
+      "name": "public ACME path",
+      "pass": true,
+      "http": 200
+    },
+    {
+      "name": "authenticated forbidden path /.hidden",
+      "pass": true,
+      "http": 403
+    },
+    {
+      "name": "authenticated forbidden path /data/../.env",
+      "pass": true,
+      "http": 403
+    },
+    {
+      "name": "login never changes anonymous access",
+      "pass": true,
+      "http": 401
+    }
+  ],
+  "authenticatedContentHashes": {
+    "/": "fa5915ae45303a9ac6f93486305a38df2461911760f8c01d3403cda6c07b99bb",
+    "/progress.html": "cc8904006cdab37a86f5e155852a7a9b61212e7fc1e160ba8101f8ac1d74d229",
+    "/delivery.html": "a4da0798fdbc3f8572c57782ad89b8672034ce5ea4b24e50feddc980b2a4505b",
+    "/projects.html": "7548826310b2b1e215c8f32c632bf2a93dc320c112739fdf10f6609cfabde0fc",
+    "/assets/app.js": "8209739a7ddfcd1cbfc5e837750dc4376524b9eec1ce4dee85678661a7b3fcd1",
+    "/assets/tabler.min.css": "6aa5677e9cfc2620405bf97a98074ba43ff06a411cb35c5337acfb56d124c273",
+    "/data/today.json": "ed2091da60f7bb7b7f4b30d67c433db16dcd9a671376ae3394c170189e670c69",
+    "/data/progress.json": "4989e98f55a0245e98a2873238af1919d3bb5d0467d4c65a68c61c316be43499",
+    "/data/delivery.json": "2974f62aa465b741b734b1fcd7950b3a83529e9b234e3ccdb4923b4337bcf611",
+    "/data/projects.json": "63533fbbba09fd6c921b89d906b968c138105d8fef0dfba3dbb321cd9f8e8a67",
+    "/data/manifest.json": "a83acd4208c147e7888eb0395447cd87b8896e92a71396cb70b49adc85d300ab",
+    "/data/reports/2026-09-18.json": "189e43f4dab3f0a315d5ff8fb468cdcd27056cf8005f332040e8ba2c9019be1a"
+  },
+  "tlsVerification": "curl default certificate-chain and IP verification; no insecure flags"
+}
