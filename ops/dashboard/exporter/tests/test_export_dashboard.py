@@ -772,20 +772,45 @@ class ExporterTests(unittest.TestCase):
                 self.assertTrue(any(marker in item for item in layer["limitations"]),
                                 f"{label}: {layer['limitations']}")
 
-    def test_relay_ordering_is_not_invented_as_a_pass_fail_rule(self):
-        """Real records: as_of = previous session, target_date = report date.
-        The receiver only echoes `day == as_of`, so ordering is not enforced."""
-        sent = "c" * 64
-        real = self.relay_status(status="confirmed", reason="accepted",
-                                 receiver_storage="receiver_reported_stored",
-                                 receiver_content_sha256=sent,
-                                 as_of=PREVIOUS, target_date=DATE)
-        self.assertEqual(real["status"], "pass")
-        same_day = self.relay_status(status="confirmed", reason="accepted",
-                                     receiver_storage="receiver_reported_stored",
-                                     receiver_content_sha256=sent,
-                                     as_of=DATE, target_date=DATE)
-        self.assertEqual(same_day["status"], "pass")
+    def test_relay_data_date_must_equal_the_independently_bound_expectation(self):
+        """Prior/current data dates only pass against their own archived proof."""
+        archive = self.root / f"AStock_AI_System/work/report-archives/{DATE}"
+        frozen = archive / "input.json"
+        published_path = archive / "published.json"
+        for expected in (PREVIOUS, DATE):
+            value = json.loads(frozen.read_bytes())
+            value["compilerContext"]["data"]["previousAShareSession"]["sessionDate"] = expected
+            frozen.write_text(json.dumps(value), encoding="utf-8")
+            published = json.loads(published_path.read_bytes())
+            published["inputSha256"] = sha(frozen.read_bytes())
+            published_path.write_text(json.dumps(published), encoding="utf-8")
+            for actual in ("2026-09-17", PREVIOUS, DATE, None):
+                with self.subTest(expected=expected, actual=actual):
+                    layer = self.relay_status(receiver_storage="receiver_reported_stored",
+                                              receiver_content_sha256="c" * 64,
+                                              as_of=actual, target_date=DATE)
+                    self.assertEqual(layer["evidence"]["expectedDataDate"], expected)
+                    status = "insufficient" if actual is None else "pass" if actual == expected else "fail"
+                    self.assertEqual(layer["status"], status)
+                    if status == "fail":
+                        self.assertTrue(any("与独立封存的期望数据日" in item
+                                            for item in layer["limitations"]))
+
+    def test_relay_receipt_cannot_supply_a_missing_or_unbound_expected_data_date(self):
+        frozen = self.root / f"AStock_AI_System/work/report-archives/{DATE}/input.json"
+        original = frozen.read_bytes()
+        for missing in (True, False):
+            with self.subTest(missing=missing):
+                if missing:
+                    frozen.unlink()
+                else:
+                    # A plausible date from changed bytes is not independent proof.
+                    frozen.write_bytes(original.replace(PREVIOUS.encode(), DATE.encode()))
+                layer = self.relay_status(receiver_storage="receiver_reported_stored",
+                                          receiver_content_sha256="c" * 64, as_of=DATE)
+                self.assertIsNone(layer["evidence"]["expectedDataDate"])
+                self.assertEqual(layer["status"], "insufficient")
+                self.assertIn("缺少独立且已绑定的期望数据日", layer["limitations"])
 
     def test_production_field_shape_without_receiver_hash_stays_insufficient(self):
         """Synthetic regression in the production record's field shape.

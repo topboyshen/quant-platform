@@ -1850,9 +1850,9 @@ def build_delivery(root: Path, exported: dt.datetime, today_panel: dict):
             "limitations": []}
         entry = panel["layers"]["relay"]
         # Split by evidence kind: a contradiction is a failure, missing or
-        # unusable evidence is insufficient. The real protocol sends as_of as the
-        # data as-of date (previous session) and the receiver echoes it as `day`;
-        # ordering against the report date is therefore not a pass/fail rule here.
+        # unusable evidence is insufficient. The receipt's as_of must match the
+        # data day independently bound to the sealed report's archived inputs;
+        # merely preceding (or equalling) the report date cannot prove identity.
         # 同一对象原则：接收端返回的内容哈希只与**本次发送的字节**比较，
         # 绝不拿它去比密封报告哈希。
         payload_sha = relay.get("payload_sha256")
@@ -1895,6 +1895,9 @@ def build_delivery(root: Path, exported: dt.datetime, today_panel: dict):
             entry["status"], entry["limitations"] = "insufficient", ["缺少独立且已绑定的期望数据日"]
         elif is_iso_date(relay_target) and relay_as_of > relay_target:
             entry["status"], entry["limitations"] = "fail", ["relay 数据日晚于报告日期，违反协议顺序"]
+        elif relay_as_of != expected_data_date:
+            entry["status"], entry["limitations"] = "fail", [
+                f"relay 数据日 {relay_as_of} 与独立封存的期望数据日 {expected_data_date} 不一致"]
         else:
             entry["status"], entry["limitations"] = "pass", [
                 "接收记录 ID、报告日/数据日和存储证据完整，内容哈希与实际发送字节一致；"
