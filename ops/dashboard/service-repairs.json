@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "unit": "astock-xhs-source.service",
+  "scope": "user",
+  "failedInvocationId": "3e491aa9b3c94072818b02fa4e399989",
+  "failedAt": "2026-09-21T08:00:09+08:00",
+  "recordedAt": "2026-09-21T15:36:29+08:00",
+  "expiresAt": "2026-09-22T09:20:00+08:00",
+  "deployedCommit": "4ff8554e9df9b7c8ee29111c7800194084c62f72",
+  "files": {
+    "src/report.mjs": "db01b1ecf17e3104a5f948c38fbdde7a315e62bb84bf7ae4e789ca6392a768de",
+    "src/xhs-draft.mjs": "8c6c364c46d8680ddb89d3528f44d3ab8d3397e63da120179f3b0f2e967557cc"
+  }
+}
