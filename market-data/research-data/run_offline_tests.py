@@ -3,6 +3,14 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+
+try:
+    import numpy  # noqa: F401
+except ModuleNotFoundError:
+    raise SystemExit(
+        "run_offline_tests.py 需要 research-data 自带的依赖。"
+        "请使用: ./.venv/bin/python run_offline_tests.py"
+    )
 import unittest
 from unittest import mock
 from urllib.parse import urlsplit, unquote
