@@ -5,3 +5,8 @@ __pycache__/
 
 # Local third-party skills
 /a-stock-data/
+
+# Local core-market database and SQLite runtime companions
+/core-market.db
+/core-market.db-wal
+/core-market.db-shm
