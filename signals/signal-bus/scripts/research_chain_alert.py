@@ -270,8 +270,6 @@ def collect(root: Path = ROOT, bus: Path = BUS, date: str = "", now: datetime | 
 
 
 MARKET_DATE_RE = re.compile(r"上一交易日 A 股行情[（(](\d{4}-\d{2}-\d{2})[）)]")
-ISO_INSTANT_RE = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$")
 
 
 def expected_data_date(root: Path, date: str, report_sha: str | None) -> str | None:
@@ -316,105 +314,36 @@ def expected_data_date(root: Path, date: str, report_sha: str | None) -> str | N
     return None
 
 
-def _valid_iso_instant(value) -> bool:
-    if not isinstance(value, str) or not ISO_INSTANT_RE.fullmatch(value):
-        return False
-    text = value[:-1] + "+00:00" if value.endswith("Z") else value
-    try:
-        datetime.fromisoformat(text)
-    except ValueError:
-        return False
-    return True
-
-
-def _exact_nonneg_int(value) -> bool:
-    return type(value) is int and value >= 0
-
-
 def telegram_delivery_evidence(root: Path, date: str, report_sha: str | None) -> tuple[str, str, dict]:
-    """Expected Telegram send + receipt, bound to date, route, payload file, bytes and hashes."""
+    """Read fixed evidence files, then use the canonical pure proof contract."""
     event_id = f"astock-{date}-success-telegram-v1"
+    if _RELAY._DELIVERY is None:
+        return "unconfirmed", "送达核验代码不可用，证据不足", {
+            "contract_status": "insufficient", "contract_reason": "delivery_contract_unavailable",
+            "event_id": event_id}
     notify_root = root / "work/notifications"
     sent_path = notify_root / "sent" / f"{event_id}.json"
     receipt_path = notify_root / "receipts/send" / f"{event_id}.json"
-    evidence = {"event_id": event_id}
-    try:
-        _RELAY.checked_date(date)
-    except _RELAY.Held:
-        return "unconfirmed", "尚未确认（报告日期非法）", evidence
-    if not isinstance(report_sha, str) or not _RELAY.HASH_RE.fullmatch(report_sha):
-        return "unconfirmed", "尚未确认（密封报告哈希缺失或非法）", evidence
-    for relative in ("", "sent", "receipts", "receipts/send", "payloads"):
-        if (notify_root / relative).is_symlink():
-            return "unconfirmed", "尚未确认（投递证据路径非法）", evidence
-    if not sent_path.is_file() or sent_path.is_symlink():
-        return "missing", "尚未确认（无 Telegram 发送记录）", evidence
-    try:
-        sent = json.loads(sent_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError):
-        return "unconfirmed", "尚未确认（发送记录无法核验）", evidence
-    if not isinstance(sent, dict):
-        return "unconfirmed", "尚未确认（发送记录无法核验）", evidence
-    embedded = sent.get("receipt") if isinstance(sent.get("receipt"), dict) else {}
-    if sent.get("outcome") != "success" or embedded.get("status") in ("failed", "rejected", "ambiguous") \
-            or embedded.get("success") is False or embedded.get("confirmed") is False:
-        return "mismatch", "结果不确定（发送记录含失败或未确认状态）", evidence
-    if sent.get("schemaVersion") != "1.0" or sent.get("source") != "AStock_AI_System":
-        return "unconfirmed", "尚未确认（发送记录类型非法）", evidence
-    report = sent.get("report") if isinstance(sent.get("report"), dict) else {}
-    source = report.get("sourceSha256")
-    payload = report.get("sha256") or sent.get("payloadSha256")
-    payload_rel = report.get("payloadFile")
-    evidence.update({"sent_source_sha256": source, "sent_payload_sha256": payload,
-                     "payload_file": payload_rel})
-    if sent.get("eventId") != event_id or sent.get("targetDate") != date or sent.get("route") != "telegram":
-        return "mismatch", "结果不确定（发送记录日期或路由与当日研究不一致）", evidence
-    raw_original = ("presentation" not in report and "presentation" not in sent
-                    and source is None and payload == report_sha)
-    if source != report_sha and not raw_original:
-        return "mismatch", "结果不确定（发送记录未绑定当日报告哈希）", evidence
-    if payload_rel != f"payloads/{event_id}.md":
-        return "unconfirmed", "尚未确认（发送记录未指向合法附件）", evidence
-    payload_path = notify_root / payload_rel
-    if not payload_path.is_file() or payload_path.is_symlink():
-        return "unconfirmed", "尚未确认（Telegram 附件缺失）", evidence
-    payload_bytes = payload_path.stat().st_size
-    payload_hash = hashlib.sha256(payload_path.read_bytes()).hexdigest()
-    evidence.update({"payload_bytes": payload_bytes, "payload_file_sha256": payload_hash})
-    declared_bytes = report.get("bytes")
-    if not _exact_nonneg_int(declared_bytes) or declared_bytes != payload_bytes or payload_hash != payload:
-        return "mismatch", "结果不确定（发送记录与附件哈希或字节数冲突）", evidence
-    if not receipt_path.is_file() or receipt_path.is_symlink():
-        return "unconfirmed", "尚未确认（已发送但无 Telegram 回执）", evidence
-    try:
-        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError):
-        return "unconfirmed", "尚未确认（回执无法核验）", evidence
-    if not isinstance(receipt, dict):
-        return "unconfirmed", "尚未确认（回执无法核验）", evidence
-    allowed = {"schemaVersion", "eventId", "targetDate", "route", "payloadSha256", "payloadBytes",
-               "sourceSha256", "platformMessageId", "ackKind", "confirmedAt"}
-    if (set(receipt) - allowed or receipt.get("schemaVersion") != "1.0"
-            or receipt.get("ackKind") != "hermes_cli_json_message_id"):
-        return "unconfirmed", "尚未确认（回执类型或字段非法）", evidence
-    message_id = receipt.get("platformMessageId")
-    evidence.update({"message_id": message_id, "receipt_target_date": receipt.get("targetDate"),
-                     "receipt_source_sha256": receipt.get("sourceSha256"),
-                     "receipt_payload_sha256": receipt.get("payloadSha256"),
-                     "receipt_payload_bytes": receipt.get("payloadBytes")})
-    if receipt.get("eventId") != event_id or receipt.get("targetDate") != date or receipt.get("route") != "telegram":
-        return "mismatch", "结果不确定（回执日期或路由与当日研究不一致）", evidence
-    if receipt.get("sourceSha256") != report_sha and not (raw_original and "sourceSha256" not in receipt):
-        return "mismatch", "结果不确定（回执未绑定当日报告哈希）", evidence
-    if receipt.get("payloadSha256") != payload or receipt.get("payloadSha256") != payload_hash:
-        return "mismatch", "结果不确定（回执载荷哈希与发送记录或附件冲突）", evidence
-    if not _exact_nonneg_int(receipt.get("payloadBytes")) or receipt.get("payloadBytes") != payload_bytes:
-        return "mismatch", "结果不确定（回执字节数与附件冲突）", evidence
-    if not isinstance(message_id, str) or not re.fullmatch(r"[1-9][0-9]*", message_id):
-        return "ambiguous", "结果不确定（回执缺少平台消息 ID）", evidence
-    if not _valid_iso_instant(receipt.get("confirmedAt")):
-        return "unconfirmed", "尚未确认（回执确认时间非法）", evidence
-    return "confirmed", f"已确认（Telegram message_id={message_id}，日期、附件哈希与字节数匹配）", evidence
+    payload_path = notify_root / "payloads" / f"{event_id}.md"
+    safe = not any((notify_root / relative).is_symlink()
+                   for relative in ("", "sent", "receipts", "receipts/send", "payloads"))
+    safe = safe and not any(p.is_symlink() for p in (sent_path, receipt_path, payload_path))
+    sent = _read_json(sent_path) if safe else None
+    receipt = _read_json(receipt_path) if safe else None
+    payload_sha, payload_bytes = None, None
+    if safe and payload_path.is_file():
+        try:
+            body = payload_path.read_bytes()
+            payload_sha, payload_bytes = hashlib.sha256(body).hexdigest(), len(body)
+        except OSError:
+            pass
+    result = _RELAY._DELIVERY.telegram_verdict(
+        sent, receipt, date=date, report_sha256=report_sha,
+        payload_sha256=payload_sha, payload_bytes=payload_bytes, paths_safe=safe)
+    # Preserve alert's public state vocabulary; the proof verdict is canonical.
+    evidence = {**result["evidence"], "contract_status": result["status"],
+                "contract_reason": result["reason"], "event_id": event_id}
+    return result["state"], result["limitations"][0], evidence
 
 
 def delivery_evidence(facts: dict) -> tuple[str, str, dict]:
@@ -433,6 +362,8 @@ def delivery_evidence(facts: dict) -> tuple[str, str, dict]:
             data_date=facts.get("data_date"))
     reason = str(record.get("reason", ""))
     status = str(record.get("status", ""))
+    if evidence.get("contract_reason") == "delivery_contract_unavailable":
+        return state, "送达核验代码不可用，证据不足", evidence
     if ok:
         return "confirmed", f"已确认（reason={reason or 'accepted'}，日期、接收 ID、存储与内容哈希匹配）", evidence
     wording = {

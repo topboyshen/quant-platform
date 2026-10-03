@@ -7,6 +7,7 @@ credentials or response bodies. No model, notification policy or XHS body is rea
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import contextlib
 import datetime as dt
 import fcntl
@@ -130,69 +131,29 @@ def interpret_receiver_acknowledgement(record, *, source, report_date, data_date
     return result
 
 
-def local_delivery_is_confirmed(record, *, report_date, report_sha256=None, data_date=None,
-                                payload_kind="research", skip_sha256=None):
-    """Whether a local relay state file is a complete, hash-bound confirmation."""
-    evidence = {}
-    if not isinstance(record, dict):
-        return False, "unconfirmed", evidence
-    evidence = {
-        "status": record.get("status"), "reason": record.get("reason"),
-        "target_date": record.get("target_date"), "as_of": record.get("as_of"),
-        "payload_kind": record.get("payload_kind", "research"),
-        "report_sha256": record.get("report_sha256"), "skip_sha256": record.get("skip_sha256"),
-        "receiver_storage": record.get("receiver_storage"),
-        "receiver_content_sha256": record.get("receiver_content_sha256"),
-        "payload_sha256": record.get("payload_sha256"),
-        "record_id": record.get("receiver_record_id"),
-        "content_match": record.get("content_match"),
-        "http_status": record.get("http_status"),
-    }
-    identity_key = "skip_sha256" if payload_kind == "skip" else "report_sha256"
-    identity = skip_sha256 if payload_kind == "skip" else report_sha256
-    if payload_kind not in ("research", "skip") or not isinstance(identity, str) or not HASH_RE.fullmatch(identity):
-        return False, "unverified", evidence
-    try:
-        checked_date(report_date)
-    except Held:
-        return False, "unverified", evidence
-    if (record.get("target_date") != report_date or record.get("payload_kind", "research") != payload_kind
-            or record.get(identity_key) != identity):
-        return False, "uncertain", evidence
-    as_of = record.get("as_of")
-    try:
-        checked_date(as_of)
-    except Held:
-        return False, "unconfirmed", evidence
-    # Protocol v2 permits same-day data; the independent expected data date,
-    # not a guessed previous-session rule, binds this receipt to its producer.
-    if as_of > report_date:
-        return False, "uncertain", evidence
-    try:
-        checked_date(data_date)
-    except Held:
-        return False, "unverified", evidence
-    if as_of != data_date:
-        return False, "uncertain", evidence
-    payload = record.get("payload_sha256")
-    received = record.get("receiver_content_sha256")
-    record_id = record.get("receiver_record_id")
-    hash_ok = (isinstance(payload, str) and HASH_RE.fullmatch(payload)
-               and isinstance(received, str) and HASH_RE.fullmatch(received)
-               and payload == received)
-    if record.get("status") == "confirmed":
-        if record.get("receiver_storage") != "receiver_reported_stored":
-            return False, "unconfirmed", evidence
-        if not isinstance(record_id, str) or not record_id.strip():
-            return False, "unconfirmed", evidence
-        if record.get("content_match") is not True or not hash_ok:
-            return False, "uncertain", evidence
-        return True, "confirmed", evidence
-    if record.get("status") in ("rejected", "not_sent", "failed") and record.get("target_date") == report_date:
-        return False, "failed", evidence
-    if record.get("status") in ("sending", "ambiguous"):
-        return False, "uncertain", evidence
-    return False, "unconfirmed", evidence
+# One pure proof contract, deliberately separate from run_relay's resend suppression.
+try:
+    _DELIVERY_SPEC = importlib.util.spec_from_file_location(
+        "signal_delivery_evidence", Path(__file__).resolve().with_name("delivery_evidence.py"))
+    if _DELIVERY_SPEC is None or _DELIVERY_SPEC.loader is None:
+        raise ValueError("delivery_contract_unavailable")
+    _DELIVERY = importlib.util.module_from_spec(_DELIVERY_SPEC)
+    _DELIVERY_SPEC.loader.exec_module(_DELIVERY)
+    if type(_DELIVERY.CONTRACT_VERSION) is not int or _DELIVERY.CONTRACT_VERSION != 1 \
+            or not all(callable(getattr(_DELIVERY, name, None)) for name in
+                       ("local_delivery_is_confirmed", "telegram_verdict")):
+        raise ValueError("delivery_contract_unavailable")
+except Exception:
+    # A partial installation cannot turn incomplete proof into success or crash
+    # the alert reader. This says nothing about permission to send/retry.
+    _DELIVERY = None
+
+
+def local_delivery_is_confirmed(record, **expected):
+    if _DELIVERY is None:
+        return False, "unverified", {"contract_status": "insufficient",
+                                      "contract_reason": "delivery_contract_unavailable"}
+    return _DELIVERY.local_delivery_is_confirmed(record, **expected)
 
 
 def sha256(body):

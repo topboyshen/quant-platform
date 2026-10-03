@@ -154,6 +154,51 @@ and validates six fixture payload shapes (including a basic list headline)
 entirely in memory. A standalone
 production relay checkout skips that one test; all other tests are independent.
 
+## Shared delivery evidence contract
+
+`scripts/delivery_evidence.py` is the single pure proof contract used by the
+research alert and the dashboard. It has no filesystem, network, sender or retry
+state access. The relay's resend-suppression state machine remains separate:
+historical `confirmed`/sent records with incomplete proof do not authorize a
+resend, nor are they silently rewritten as new proof.
+
+POST confirmation and `confirmed_via_read_only_query` both need the same stored
+receiver ID, actual payload hash, source identity and independently bound exact
+`as_of`. HTTP accepted alone is insufficient. Telegram requires explicit
+`outcome=success`, a valid zoned send receipt and matching receipt/event/file
+hashes and exact integer byte counts. Historical raw-original attachments remain
+supported only with the same proof and sealed-report identity; a missing outcome
+or malformed presentation never becomes an implicit success.
+
+Install the canonical module before either consumer. The dashboard's production
+code path is fixed at `/home/ubuntu/signal-bus/scripts/delivery_evidence.py`,
+independent of `/home/ubuntu/ops/dashboard` and `--source-root`. An explicitly
+trusted `--delivery-contract-module` path supports isolated layouts. Missing,
+incompatible or unimportable code produces explicit insufficient/unverified
+delivery evidence, never a fallback validator or a pass; seal and other
+dashboard panels continue to work. The alert's proof readers also degrade
+without crashing. Existing send ownership, timers and deduplication are unchanged.
+
+The cross-consumer fixture test requires the dashboard checkout. In the Linux
+isolated layout, set `DASHBOARD_TEST_ROOT` to the dashboard code directory and
+`DELIVERY_CONTRACT_TEST_MODULE` to the signal checkout's
+`scripts/delivery_evidence.py`; neither variable selects evidence as code.
+For the deployed layout these explicit values are
+`DASHBOARD_TEST_ROOT=/home/ubuntu/ops/dashboard` and
+`DELIVERY_CONTRACT_TEST_MODULE=/home/ubuntu/signal-bus/scripts/delivery_evidence.py`.
+For the pinned Linux test bundle they are respectively
+`/payload/lean-release-preparation/dashboard-qa` and
+`/payload/lean-release-preparation/composed/signal-bus/scripts/delivery_evidence.py`.
+The local isolated candidate fallback is the exact sibling `../dashboard`
+relative to the signal checkout, not the production two-level layout. An absent
+dashboard fixture is a test import error, never a silently skipped negative
+matrix. Production proof readers instead report a missing canonical module as
+explicit insufficient/unverified evidence; they never search `source_root` for
+replacement code.
+`tests/test_delivery_evidence_contract.py` runs identical positive/negative
+fixtures through both consumers, including partial installation and legacy
+resend suppression. These tests use temporary evidence and no real sends.
+
 ## CNINFO seal chain regression (2026-09-17)
 
 Offline full-chain check that a report with CNINFO `披露日期` + `实际采集时间`

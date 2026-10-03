@@ -7,6 +7,7 @@
 !scripts/
 scripts/*
 !scripts/research_relay.py
+!scripts/delivery_evidence.py
 !scripts/digest_freshness.py
 !scripts/build_cninfo_seal_fixture.mjs
 !scripts/morning_seal_alert.sh
@@ -15,6 +16,7 @@ scripts/*
 !tests/
 tests/*
 !tests/test_research_relay.py
+!tests/test_delivery_evidence_contract.py
 !tests/test_digest_freshness.py
 !tests/test_cninfo_seal_relay_chain.py
 !tests/test_relay_receiver_contract.py
