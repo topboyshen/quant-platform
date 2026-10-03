@@ -20,8 +20,10 @@ import time
 import uuid
 from zoneinfo import ZoneInfo
 
-import daily_snapshot as snapshot
+import snapshot_runtime as snapshot
 import snapshot_watchdog as group_guard
+from core_contract import SCHEMA as CORE, validate_calendar_evidence
+from snapshot_contract import LEGACY
 
 
 ZONE = ZoneInfo("Asia/Shanghai")
@@ -35,16 +37,28 @@ QLIB_RETRY_SECONDS = 30
 QLIB_MAX_ATTEMPTS = 20
 
 
-def _qlib_retry_allowed(final, code, *, started, hard, monotonic_stop, attempt):
+def _qlib_retry_allowed(final, code, *, started, hard, monotonic_stop, attempt, contract=LEGACY):
     """Retry only the known readiness deferral, within this run's deadlines."""
     current = dt.datetime.now(ZONE)
     stage = final.get("akshareStage") or {}
+    if contract == CORE:
+        try:
+            calendar = validate_calendar_evidence(final.get("calendarEvidence"), current)
+        except (ValueError, TypeError, KeyError):
+            return False
+        identity = (final.get("schema") == CORE and final.get("fullSnapshot") is False
+                    and calendar["status"] == "open"
+                    and calendar["targetDate"] == final.get("target") == current.date().isoformat())
+        reason = "core_qlib_not_current_for_expected_trading_day"
+    else:
+        identity = (isinstance(stage, dict)
+                    and stage.get("tradeDate") == final.get("target") == current.date().isoformat())
+        reason = "qlib_not_current_for_expected_trading_day"
     return (
         code == snapshot.SNAPSHOT_DEFERRED_EXIT
         and final.get("status") == "deferred"
-        and final.get("reason") == "qlib_not_current_for_expected_trading_day"
-        and isinstance(stage, dict)
-        and stage.get("tradeDate") == final.get("target") == current.date().isoformat()
+        and final.get("reason") == reason
+        and identity
         and current.date() == started.astimezone(ZONE).date()
         and current.time() < START_LATEST
         and current.timestamp() < hard.timestamp()
@@ -93,12 +107,33 @@ def _publish_record(state_dir, record):
 def _reconcile_read_only(progress, db_path, stage_dir, stage_only=False):
     """Describe persisted evidence after interruption; never promote to pass."""
     evidence = {"stage": "unknown", "snapshot": "unknown"}
+    if progress.get("schema") == CORE:
+        evidence["stage"] = "not_required"
     target = progress.get("target")
     if not isinstance(target, str):
         return evidence
+    if progress.get("schema") == CORE:
+        evidence["stage"] = "not_required"
+        try:
+            from core_storage import read_core
+            from core_contract import digest
+            row = read_core(target, db_path)
+            current = digest(row) if row is not None else None
+            previous = progress.get("preexistingRowSha256")
+            candidate = progress.get("snapshotCandidateSha256")
+            evidence["snapshot"] = ("no_row" if current is None else
+                "historical_row_changed" if previous is not None and current != previous else
+                "preexisting_row_unchanged" if previous is not None else
+                "matching_candidate_committed" if candidate == current else
+                "candidate_missing_or_mismatched")
+        except (sqlite3.Error, OSError, ValueError, TypeError):
+            evidence["snapshot"] = "row_invalid"
+        return evidence
+    # Full supplier imports are confined to this bounded reconciliation child.
+    import daily_snapshot as full
     if progress.get("stageCandidateTradeDate") == target:
         try:
-            stage = snapshot.load_akshare_market_stage(target, stage_dir)
+            stage = full.load_akshare_market_stage(target, stage_dir)
         except (snapshot.SnapshotValidationError, OSError):
             evidence["stage"] = "missing_or_invalid"
         else:
@@ -133,8 +168,8 @@ def _reconcile_read_only(progress, db_path, stage_dir, stage_only=False):
                         parsed = snapshot._strict_json(row[0])
                         dates_match = (parsed.get("date") == target
                                        and (parsed.get("qlib") or {}).get("date") == target
-                                       and snapshot.activity_trade_date(parsed.get("akshare") or {}) == target)
-                        source_clean = not snapshot.required_source_errors(
+                                       and full.activity_trade_date(parsed.get("akshare") or {}) == target)
+                        source_clean = not full.required_source_errors(
                             snapshot.source_error_paths(parsed)
                         )
                     except (TypeError, ValueError, AttributeError):
@@ -478,11 +513,13 @@ def _run_attempt(*, worker_path, watchdog_path, environment, log_path, lock_fd,
 
 def run_supervised(*, worker_path=None, state_dir=None, db_path=None,
                    stage_dir=None, log_path=None, watchdog_path=None, now=None,
-                   deadline_seconds_override=None, worker_args=()):
+                   deadline_seconds_override=None, worker_args=(), contract=LEGACY):
+    if contract not in {CORE, LEGACY}:
+        raise ValueError("unknown supervisor contract")
     state_dir = state_dir or snapshot.STATE_DIR
     db_path = db_path or snapshot.DB
-    stage_dir = stage_dir or snapshot._akshare_stage_directory()
-    worker_path = worker_path or str(Path(snapshot.__file__).resolve())
+    stage_dir = stage_dir or os.environ.get("RESEARCH_DATA_AKSHARE_STAGE_DIR") or str(Path(snapshot.FULL_STATE_DIR) / "akshare-market")
+    worker_path = worker_path or str(Path(__file__).with_name("daily_snapshot.py"))
     watchdog_path = watchdog_path or str(Path(__file__).with_name("snapshot_watchdog.py"))
     log_path = log_path or str(Path(snapshot.__file__).parent / "snapshot.log")
     run_id = uuid.uuid4().hex
@@ -514,6 +551,8 @@ def run_supervised(*, worker_path=None, state_dir=None, db_path=None,
             "runId": run_id, "status": "running",
             "startedAt": started.isoformat(), "target": None,
         }
+        if contract == CORE:
+            record.update(schema=CORE, scope="core_market", fullSnapshot=False)
         # Publish a fail-closed placeholder BEFORE a worker can touch stage or
         # SQLite. If this supervisor crashes between the per-run final and the
         # shared final write, health cannot mistake yesterday's success for
@@ -529,16 +568,19 @@ def run_supervised(*, worker_path=None, state_dir=None, db_path=None,
             _publish_record(state_dir, final)
             return final, 1
         environment = os.environ.copy()
+        for suffix in ("DAY", "CALENDAR_SHA256"):
+            environment.pop("RESEARCH_DATA_RETRY_CORE_" + suffix, None)
         for suffix in ("TRADE_DATE", "PAYLOAD_SHA256", "RECORD_SHA256"):
             environment.pop("RESEARCH_DATA_RETRY_STAGE_" + suffix, None)
         environment.update({
             "RESEARCH_DATA_SUPERVISED_RUN_ID": run_id,
+            "RESEARCH_DATA_EXPECTED_RUN_DAY": local.date().isoformat(),
             "RESEARCH_DATA_SUPERVISOR_LOCK_FD": str(lock_file.fileno()),
             "RESEARCH_DATA_SOFT_DEADLINE_EPOCH": str(soft.timestamp()),
             "RESEARCH_DATA_STATE_DIR": str(state_dir),
             # Core workers have their own state directory. Preserve the full
             # contract's identity before overriding STATE_DIR for the worker.
-            "RESEARCH_DATA_FULL_STATE_DIR": str(snapshot.STATE_DIR),
+            "RESEARCH_DATA_FULL_STATE_DIR": str(snapshot.FULL_STATE_DIR),
             "RESEARCH_DATA_SNAPSHOT_DB": str(db_path),
             "RESEARCH_DATA_AKSHARE_STAGE_DIR": str(stage_dir),
         })
@@ -562,7 +604,7 @@ def run_supervised(*, worker_path=None, state_dir=None, db_path=None,
                              "reason": final.get("reason", final.get("reasonCode")),
                              "completedAt": dt.datetime.now(ZONE).isoformat()})
             if not _qlib_retry_allowed(final, code, started=started, hard=hard,
-                                       monotonic_stop=monotonic_stop, attempt=attempt):
+                                       monotonic_stop=monotonic_stop, attempt=attempt, contract=contract):
                 break
             retry_stop = min(
                 dt.datetime.combine(local.date(), START_LATEST, ZONE).timestamp(),
@@ -570,7 +612,7 @@ def run_supervised(*, worker_path=None, state_dir=None, db_path=None,
             )
             verify_budget = min(RECONCILE_MAX_SECONDS, retry_stop - time.time(),
                                 monotonic_stop - time.monotonic())
-            if not _retry_stage_matches(final, stage_dir, lock_file.fileno(), verify_budget):
+            if contract == LEGACY and not _retry_stage_matches(final, stage_dir, lock_file.fileno(), verify_budget):
                 break
             delay = min(QLIB_RETRY_SECONDS, retry_stop - time.time(),
                         monotonic_stop - time.monotonic())
@@ -582,8 +624,12 @@ def run_supervised(*, worker_path=None, state_dir=None, db_path=None,
             })
             time.sleep(delay)
             if not _qlib_retry_allowed(final, code, started=started, hard=hard,
-                                       monotonic_stop=monotonic_stop, attempt=attempt):
+                                       monotonic_stop=monotonic_stop, attempt=attempt, contract=contract):
                 break
+            if contract == CORE:
+                environment["RESEARCH_DATA_RETRY_CORE_DAY"] = final["target"]
+                environment["RESEARCH_DATA_RETRY_CORE_CALENDAR_SHA256"] = final["calendarEvidence"]["sha256"]
+                continue
             for field, suffix in (("tradeDate", "TRADE_DATE"),
                                   ("payloadSha256", "PAYLOAD_SHA256"),
                                   ("recordSha256", "RECORD_SHA256")):

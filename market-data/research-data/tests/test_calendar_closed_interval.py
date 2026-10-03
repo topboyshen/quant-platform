@@ -79,13 +79,13 @@ class ClosedIntervalTests(unittest.TestCase):
                    "data": {"tradingCalendar": calendar}, "sources": [{"id": calendar["sourceIds"][0],
                    "dataAsOf": calendar["dataAsOf"], "url": "https://finance.sina.com.cn/realstock/company/klc_td_sh.txt"}]}
         path = self.write("work/morning-context.json", context)
-        last = {"targetDate": day, "status": status, "phase": "collect",
+        last = {"schemaVersion": "1.0", "targetDate": day, "status": status, "phase": "collect",
                 "startedAt": day + "T08:00:00+08:00", "frozenCutoffInstant": day + "T08:00:00+08:00",
                 "contextFile": "work/morning-context.json", "contextSha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                 "publicationGate": "not_applicable" if status == "skipped" else "blocked"}
         last["completedAt" if status == "skipped" else "failedAt"] = day + "T08:00:11+08:00"
         if status == "skipped": last["tradingStatus"] = "non_trading_day"
-        state = {"task": "morning-report", "targetDate": day, "status": status,
+        state = {"schemaVersion": "1.0", "task": "morning-report", "targetDate": day, "status": status,
                  "invocationId": "synthetic-occurrence", "startedAt": day + "T08:00:00+08:00",
                  "completedAt": day + "T08:00:12+08:00", "childExitCode": 0 if status == "skipped" else 1,
                  "timedOut": False, "interrupted": False}

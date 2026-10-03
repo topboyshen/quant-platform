@@ -43,14 +43,16 @@ class CoreHealthTests(unittest.TestCase):
     def test_default_keeps_full_contract_even_when_core_file_exists(self):
         result = self.audit(contract_policy=None)
         self.assertEqual(result["activeContract"], "research.full-snapshot.v1")
-        self.assertEqual(result["coreMarket"]["readState"], "not_configured")
+        self.assertEqual(result["coreMarket"]["readState"], "checked")
+        self.assertIn("core_history_policy_missing_or_conflicting", self.codes(result))
         self.assertIn("unresolved_trading_day_gaps", self.codes(result))
 
     def test_preinstalled_unit_with_missing_policy_stays_full(self):
         self.policy.unlink()
         result = self.audit()
         self.assertEqual(result["activeContract"], "research.full-snapshot.v1")
-        self.assertEqual(result["coreMarket"]["readState"], "not_configured")
+        self.assertEqual(result["coreMarket"]["readState"], "checked")
+        self.assertIn("core_history_policy_missing_or_conflicting", self.codes(result))
         self.assertIn("unresolved_trading_day_gaps", self.codes(result))
 
     def test_effective_day_is_core_not_fake_full_success(self):

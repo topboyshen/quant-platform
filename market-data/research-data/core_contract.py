@@ -59,7 +59,7 @@ def validate_calendar_evidence(evidence, now):
                        for k in ("contextSha256", "lastRunSha256", "stateSha256"))):
             raise ValueError("invalid calendar skip binding")
         bound_date, cutoff = binding["targetDate"], instant(binding["completedAt"])
-    elif set(binding) == {"kind", "targetDate", "contextSha256", "lastRunSha256", "stateSha256",
+    elif set(binding) - {"stateSchemaVersion", "stateFrozenCutoffInstant"} == {"kind", "targetDate", "contextSha256", "lastRunSha256", "stateSha256",
                            "invocationId", "cutoffInstant", "occurrenceStartedAt", "occurrenceCompletedAt",
                            "runStartedAt", "runCompletedAt", "stateStatus", "runStatus", "childExitCode"}:
         if (binding["kind"] != "validated_terminal_context" or doc["status"] != "open"
@@ -71,12 +71,21 @@ def validate_calendar_evidence(evidence, now):
                 or not ((binding["stateStatus"] == "success" and binding["runStatus"] == "success"
                          and binding["childExitCode"] == 0)
                         or (binding["stateStatus"] == "failed" and binding["runStatus"] in {"failed", "blocked"}
-                            and binding["childExitCode"] > 0))):
+                            and binding["childExitCode"] > 0)
+                        or (binding["stateStatus"] == "blocked" and binding["runStatus"] == "blocked"
+                            and binding["childExitCode"] == 2))):
             raise ValueError("invalid terminal calendar context binding")
         bound_date, cutoff = binding["targetDate"], instant(binding["cutoffInstant"])
         started, completed, run_started, run_completed = (instant(binding[k]) for k in (
             "occurrenceStartedAt", "occurrenceCompletedAt", "runStartedAt", "runCompletedAt"))
-        if (not cutoff == started <= run_started <= run_completed <= completed <= now
+        if "stateSchemaVersion" in binding or "stateFrozenCutoffInstant" in binding:
+            canonical = bound_date + "T00:00:00.000Z"
+            cutoff_bound = (binding.get("stateSchemaVersion") == "2.0"
+                            and binding.get("stateFrozenCutoffInstant") == canonical
+                            and binding["cutoffInstant"] == canonical and cutoff <= started)
+        else:
+            cutoff_bound = cutoff == started  # immutable legacy v1 evidence
+        if (not cutoff_bound or not started <= run_started <= run_completed <= completed <= now
                 or any(t.astimezone(dt.timezone(dt.timedelta(hours=8))).date().isoformat() != bound_date
                        for t in (started, completed, run_started, run_completed))):
             raise ValueError("terminal calendar context run time mismatch")

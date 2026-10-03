@@ -37,6 +37,34 @@ def record(status, **values):
 
 if mode == "success":
     record("inserted", payloadSha256="a" * 64)
+elif mode in {"core_stale_then_success", "core_stale_then_hang"}:
+    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=8)))
+    target = now.date().isoformat()
+    attempt_path = state / "fixture-core-attempts.json"
+    attempts = json.loads(attempt_path.read_text()) if attempt_path.exists() else []
+    attempts.append({"runId": run_id, "soft": os.environ["RESEARCH_DATA_SOFT_DEADLINE_EPOCH"],
+                     "day": os.environ.get("RESEARCH_DATA_RETRY_CORE_DAY"),
+                     "calendarSha": os.environ.get("RESEARCH_DATA_RETRY_CORE_CALENDAR_SHA256"),
+                     "stageRetry": any(k.startswith("RESEARCH_DATA_RETRY_STAGE_") for k in os.environ)})
+    attempt_path.write_text(json.dumps(attempts))
+    if len(attempts) == 1:
+        observed = (now - dt.timedelta(seconds=2)).isoformat()
+        evidence = {"document": {"schemaVersion": 1, "targetDate": target, "status": "open",
+            "previousTradingDate": (now.date() - dt.timedelta(days=1)).isoformat(),
+            "nextTradingDate": (now.date() + dt.timedelta(days=1)).isoformat(),
+            "sourceIds": ["akshare:sina:trade-calendar"], "observedAt": observed,
+            "validUntil": now.replace(hour=23, minute=59, second=59).isoformat()},
+            "binding": {"archiveDate": target, "inputSha256": "a" * 64,
+                        "cutoffInstant": observed, "publishedStatus": "sealed"}}
+        evidence["sha256"] = hashlib.sha256(json.dumps(evidence, sort_keys=True,
+            ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+        record("deferred", schema="research.core-market.v1", fullSnapshot=False,
+            reason="core_qlib_not_current_for_expected_trading_day", calendarEvidence=evidence)
+        raise SystemExit(69)
+    if mode == "core_stale_then_hang":
+        while True:
+            time.sleep(1)
+    record("inserted", schema="research.core-market.v1", fullSnapshot=False, payloadSha256="a" * 64)
 elif mode in {"qlib_stale_then_success", "qlib_stale_then_hang"}:
     target = dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date().isoformat()
     stage = json.loads((Path(os.environ["RESEARCH_DATA_AKSHARE_STAGE_DIR"]) / (target + ".json")).read_text())

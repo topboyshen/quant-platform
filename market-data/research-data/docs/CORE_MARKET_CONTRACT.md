@@ -1,5 +1,9 @@
 # Batch 3: isolated explicit-contract cutover preparation
 
+2026-10-02 supersedes the single-boundary policy and runtime dependency details:
+see [ESSENTIAL_CORE_20261002.md](ESSENTIAL_CORE_20261002.md). Legacy v1 remains readable;
+v2 uses append-only future transitions and preserves core history after full resumes.
+
 > Current isolated-candidate guide: [LIGHTWEIGHT_RUNTIME.md](LIGHTWEIGHT_RUNTIME.md).
 > This document records earlier contract preparation; superseded behavior is
 > marked below. No production cutover is implied by either document.

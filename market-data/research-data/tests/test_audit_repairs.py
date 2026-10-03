@@ -11,6 +11,7 @@ from unittest import mock
 
 import absence_policy
 import core_market
+import snapshot_runtime
 import calendar_evidence
 import daily_snapshot as daily
 import data_health
@@ -38,18 +39,20 @@ class CurrentDayTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             full = str(Path(directory) / "full-state")
             core = str(Path(directory) / "core-state")
-            with mock.patch.object(daily, "STATE_DIR", core), \
-                 mock.patch.object(daily, "_supervised_run_id", return_value="a" * 32), \
+            policy = Path(directory) / "contract.json"
+            policy.write_text(json.dumps({"activeContract": core_market.SCHEMA, "effectiveTradeDate": "2000-01-01"}))
+            with mock.patch.object(snapshot_runtime, "STATE_DIR", core), \
+                 mock.patch.object(snapshot_runtime, "_supervised_run_id", return_value="a" * 32), \
                  mock.patch.dict(os.environ, {"RESEARCH_DATA_FULL_STATE_DIR": full}), \
-                 mock.patch.object(daily, "_await_supervisor_gate"), \
-                 mock.patch.object(daily, "_verify_supervisor_lock"), \
+                 mock.patch.object(snapshot_runtime, "_await_supervisor_gate"), \
+                 mock.patch.object(snapshot_runtime, "_verify_supervisor_lock"), \
                  mock.patch.object(core_market, "load_calendar_evidence", return_value={}), \
                  mock.patch.object(core_market, "run_core", return_value={"status": "skipped_non_trading"}), \
-                 mock.patch.object(daily, "write_last_run") as record, mock.patch("builtins.print"):
-                self.assertEqual(core_market.main(["--state-dir", core], _cli=True), 0)
+                 mock.patch.object(snapshot_runtime, "write_last_run") as record, mock.patch("builtins.print"):
+                self.assertEqual(core_market.main(["--state-dir", core, "--contract-policy", str(policy)], _cli=True), 0)
                 self.assertEqual(record.call_args.args[1], core)
                 with self.assertRaises(SystemExit):
-                    core_market.main(["--state-dir", full], _cli=True)
+                    core_market.main(["--state-dir", full, "--contract-policy", str(policy)], _cli=True)
 
     def test_stale_qlib_preserves_stage_before_stopping_full_assembly(self):
         stage = {"status": "reused", "tradeDate": "2026-09-28",

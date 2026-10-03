@@ -40,9 +40,9 @@ class TerminalCalendarTests(unittest.TestCase):
         if status == "failed":
             last.update(failureCode="workflow_internal_error", retryable=False)
         state = {"schemaVersion": "1.0", "task": "morning-report", "targetDate": DAY,
-                 "invocationId": "4d330bd6-14da-4428-bc25-8952ef32a057", "status": "success" if status == "success" else "failed",
+                 "invocationId": "4d330bd6-14da-4428-bc25-8952ef32a057", "status": status,
                  "startedAt": DAY + "T08:00:02.699+08:00", "completedAt": DAY + "T08:00:10.932+08:00",
-                 "childExitCode": 0 if status == "success" else 1, "timedOut": False, "interrupted": False}
+                 "childExitCode": 0 if status == "success" else 2 if status == "blocked" else 1, "timedOut": False, "interrupted": False}
         lp = self.write_json("work/last-run.json", last)
         sp = self.write_json("work/orchestrator/states/morning-report-" + DAY + ".json", state)
         return {"context": cp, "last": lp, "state": sp}
@@ -64,7 +64,7 @@ class TerminalCalendarTests(unittest.TestCase):
             self.assertEqual(evidence["binding"]["contextSha256"], hashlib.sha256(paths["context"].read_bytes()).hexdigest())
             self.assertFalse((self.root / "work/report-archives").exists())
             q = qlib(); q["date"] = DAY
-            with mock.patch.object(legacy, "qlib_market", return_value=q):
+            with mock.patch.object(core, "qlib_market", return_value=q):
                 result = core.run_core(db_path=self.root / "core.db", now=NOW.isoformat(), calendar_evidence=evidence)
             self.assertEqual(result["status"], "inserted")
             self.assertEqual(data_health.core_market_rows(self.root / "core.db", NOW)[0][DAY]["state"], "valid")

@@ -9,7 +9,7 @@ import sys
 import uuid
 
 import core_market as core
-import daily_snapshot as legacy
+import snapshot_runtime as runtime
 
 SCHEMA = "research.appendix.v1"
 APPENDIX_DB = Path.home() / "research-data/research-appendix.db"
@@ -17,6 +17,7 @@ APPENDIX_DB = Path.home() / "research-data/research-appendix.db"
 
 def collectors(day, codes):
     """Creating this map performs no network calls; only requested entries execute."""
+    import daily_snapshot as legacy  # load suppliers only for an explicit appendix request
     return {
         "akshareMarket": legacy.akshare_market,
         "lhb": lambda: legacy.akshare_lhb(day), "spot": legacy.spot_market,
@@ -51,7 +52,7 @@ def build_appendix(core_record, requested, codes, *, source_collectors=None, clo
         try:
             payload = available[name]()
             core.encode(payload)  # reject non-finite JSON
-            errors = legacy.source_error_paths(payload)
+            errors = runtime.source_error_paths(payload)
             sources[name] = {"status": "source_error" if errors else "observed_unreviewed",
                              "observedAt": observed_at, "completedAt": clock(), "payload": payload,
                              "errorPaths": errors}
@@ -107,12 +108,12 @@ def store_appendix(record, core_record, db_path=APPENDIX_DB):
     path = Path(db_path)
     if path.is_symlink():
         raise ValueError("appendix database is symlinked")
-    if path.resolve() in {Path(legacy.DB).resolve(), core.CORE_DB.resolve()}:
+    if path.resolve() in {Path(runtime.FULL_DB).resolve(), core.CORE_DB.resolve()}:
         raise ValueError("appendix database must be separate")
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = core.encode(record)
     sha = core.digest(record)
-    with sqlite3.connect(path, timeout=legacy.SQLITE_TIMEOUT) as conn:
+    with sqlite3.connect(path, timeout=runtime.SQLITE_TIMEOUT) as conn:
         conn.execute("BEGIN IMMEDIATE")
         names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if names & {"snapshot", "core_market"}:

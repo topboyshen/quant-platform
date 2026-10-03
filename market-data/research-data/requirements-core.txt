@@ -1,0 +1,3 @@
+# Core writer, storage, supervisor and audit only. Not full/appendix suppliers.
+# Preinstalling these does not activate a contract or authorize removing full dependencies.
+numpy==2.5.1

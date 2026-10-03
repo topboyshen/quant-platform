@@ -68,6 +68,16 @@ def _open_context_evidence(read, today, now, state_raw, last_raw, *, project_roo
     """Read already-collected calendar evidence, never run or approve publication."""
     _assert_publication_absent(project_root, unpublished_archive, today)
     state, last = strict_json(state_raw), strict_json(last_raw)
+    version = state.get("schemaVersion")
+    if last.get("schemaVersion") != "1.0":
+        raise ValueError("unsupported terminal calendar run schema")
+    if version == "2.0":
+        canonical_cutoff = today + "T00:00:00.000Z"
+        if (state.get("frozenCutoffInstant") != canonical_cutoff
+                or last.get("frozenCutoffInstant") != canonical_cutoff):
+            raise ValueError("invalid v2 terminal calendar frozen cutoff")
+    elif version != "1.0" or "frozenCutoffInstant" in state:
+        raise ValueError("unsupported terminal calendar state schema")
     if (state.get("task") != "morning-report" or state.get("targetDate") != today
             or state.get("timedOut") is not False or state.get("interrupted") is not False
             or last.get("targetDate") != today
@@ -103,6 +113,8 @@ def _open_context_evidence(read, today, now, state_raw, last_raw, *, project_roo
                "occurrenceCompletedAt": state["completedAt"], "runStartedAt": last["startedAt"],
                "runCompletedAt": last[completed_key], "stateStatus": state["status"],
                "runStatus": last["status"], "childExitCode": state["childExitCode"]}
+    if version == "2.0":
+        binding.update(stateSchemaVersion=version, stateFrozenCutoffInstant=state["frozenCutoffInstant"])
     # The bridge declares second-resolution meta.asOf; do not interpret its
     # truncation as a subsecond occurrence mismatch.
     if not _instant(last["startedAt"]).replace(microsecond=0) <= _instant(meta["asOf"]) <= _instant(last[completed_key]):

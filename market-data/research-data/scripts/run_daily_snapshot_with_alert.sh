@@ -50,8 +50,9 @@ fi
 # No policy: keep the full contract and its original paths. Both contracts now
 # use the bounded CLI entry and the same scheduled health-alert owner.
 # A present but invalid policy blocks selection; it never silently falls back.
-if [[ -e "$CONTRACT_POLICY" || -L "$CONTRACT_POLICY" ]]; then
-  if ! selected_contract="$("$PYTHON" "${RD_ROOT}/snapshot_contract.py" --policy "$CONTRACT_POLICY")"; then
+  # Always run the state guard: an accidentally deleted policy must not hide
+  # existing core history or silently reactivate full after a cutover.
+  if ! selected_contract="$("$PYTHON" "${RD_ROOT}/snapshot_contract.py" --policy "$CONTRACT_POLICY" --core-db "${RD_ROOT}/core-market.db")"; then
     printf 'snapshot contract policy invalid; no writer started\n' >>"$LOG"
     exit 78
   fi
@@ -63,7 +64,6 @@ if [[ -e "$CONTRACT_POLICY" || -L "$CONTRACT_POLICY" ]]; then
     full) ;;
     *) printf 'unknown snapshot contract selection; no writer started\n' >>"$LOG"; exit 78 ;;
   esac
-fi
 readonly SNAPSHOT LAST_RUN
 if [[ ! -f "$SNAPSHOT" ]]; then
   echo "snapshot script missing: $SNAPSHOT" >&2

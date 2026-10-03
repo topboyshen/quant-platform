@@ -21,6 +21,11 @@ import time
 import uuid
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 
+import qlib_summary
+from qlib_summary import limit_pct
+import snapshot_runtime as runtime
+from snapshot_runtime import (QlibDateError, SnapshotValidationError, SnapshotUsageError, SnapshotTemporaryError, SnapshotDeferredError, _supervised_run_id, _await_supervisor_gate, _supervised_soft_deadline, _atomic_run_json, _snapshot_payload, _payload_sha256, _reject_json_constant, _strict_json, source_error_paths)
+
 from qlib_io import load_qlib_features, read_qlib_day_bin
 from cninfo_source import CninfoClient, CninfoError, safe_diagnostic
 from concept_source import ConceptError, safe_concept_diagnostic
@@ -62,113 +67,12 @@ SQLITE_TIMEOUT = 30
 _RUN_PROGRESS = {}
 
 
-def _supervised_run_id():
-    value = os.environ.get("RESEARCH_DATA_SUPERVISED_RUN_ID")
-    if value is None:
-        return None
-    if re.fullmatch(r"[0-9a-f]{32}", value) is None:
-        raise SnapshotUsageError("supervised run ID is invalid")
-    return value
-
-def _await_supervisor_gate():
-    """Do not begin any source work until the watchdog acknowledges the PGID."""
-    if _supervised_run_id() is None:
-        return
-    fd_text = os.environ.pop("RESEARCH_DATA_SUPERVISOR_GATE_FD", None)
-    parent_text = os.environ.get("RESEARCH_DATA_SUPERVISOR_PID")
-    if fd_text is None or parent_text is None:
-        raise SnapshotUsageError("supervisor start gate is missing")
-    try:
-        gate_fd = int(fd_text)
-        expected_parent = int(parent_text)
-        released = os.read(gate_fd, 1)
-    except (OSError, ValueError) as exc:
-        raise SnapshotTemporaryError("supervisor start gate unavailable") from exc
-    finally:
-        try:
-            os.close(gate_fd)
-        except (OSError, UnboundLocalError):
-            pass
-    if released != b"G" or os.getppid() != expected_parent:
-        raise SnapshotTemporaryError("supervisor exited before worker release")
-
-def _supervised_soft_deadline(phase):
-    value = os.environ.get("RESEARCH_DATA_SOFT_DEADLINE_EPOCH")
-    if value is None:
-        return
-    try:
-        deadline = float(value)
-    except ValueError as exc:
-        raise SnapshotUsageError("supervised deadline is invalid") from exc
-    if time.time() >= deadline:
-        raise SnapshotTemporaryError(f"safe snapshot window ended before {phase}")
-
 def write_run_checkpoint(run_id, **fields):
-    """The worker records only its own progress; the supervisor owns last-run."""
-    if _supervised_run_id() is None:
-        return
-    if run_id != _supervised_run_id():
-        raise SnapshotUsageError("supervised run ID differs from worker")
-    _RUN_PROGRESS.update(fields)
-    _RUN_PROGRESS.update({"runId": run_id, "status": "running"})
-    state_dir = STATE_DIR
-    os.makedirs(os.path.join(state_dir, "runs"), mode=0o700, exist_ok=True)
-    path = os.path.join(state_dir, "runs", f"{run_id}.json")
-    _atomic_run_json(path, _RUN_PROGRESS)
+    return runtime.write_run_checkpoint(run_id, state_dir=STATE_DIR, **fields)
 
-def _atomic_run_json(path, record):
-    temporary_path = f"{path}.{os.getpid()}.tmp"
-    payload = _snapshot_payload(record) + "\n"
-    with open(temporary_path, "w", encoding="utf-8") as state_file:
-        state_file.write(payload)
-        state_file.flush()
-        os.fsync(state_file.fileno())
-    os.replace(temporary_path, path)
 
 def _verify_supervisor_lock():
-    descriptor = os.environ.get("RESEARCH_DATA_SUPERVISOR_LOCK_FD")
-    if descriptor is None:
-        raise SnapshotUsageError("supervised snapshot lock descriptor missing")
-    try:
-        fd = int(descriptor)
-        inherited = os.fstat(fd)
-        lock = os.stat(os.path.join(STATE_DIR, "snapshot.lock"))
-    except (ValueError, OSError) as exc:
-        raise SnapshotUsageError("supervised snapshot lock invalid") from exc
-    if (inherited.st_dev, inherited.st_ino) != (lock.st_dev, lock.st_ino):
-        raise SnapshotUsageError("supervised snapshot lock mismatch")
-
-
-class QlibDateError(ValueError):
-    """The requested trade date is not present in the local Qlib calendar."""
-
-
-class SnapshotValidationError(RuntimeError):
-    """The candidate snapshot is unsafe to persist."""
-
-    def __init__(self, message, *, details=None):
-        super().__init__(message)
-        self.details = details or {}
-
-
-class SnapshotUsageError(RuntimeError):
-    """The command-line invocation is unsupported."""
-
-
-class SnapshotTemporaryError(RuntimeError):
-    """A transient lock or database-busy condition blocked the run."""
-
-
-class SnapshotDeferredError(RuntimeError):
-    """Required same-trade-date source material has not arrived yet."""
-
-    def __init__(self, message, *, target=None, qlib_tag=None, source_failure=None,
-                 akshare_stage=None):
-        super().__init__(message)
-        self.target = target
-        self.qlib_tag = qlib_tag
-        self.source_failure = source_failure
-        self.akshare_stage = akshare_stage
+    return runtime._verify_supervisor_lock(STATE_DIR)
 
 
 class AkshareMarketSourceError(RuntimeError):
@@ -182,59 +86,8 @@ class AkshareMarketSourceError(RuntimeError):
         )
 
 
-def _snapshot_payload(snapshot):
-    try:
-        return json.dumps(
-            snapshot,
-            allow_nan=False,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-    except (TypeError, ValueError) as exc:
-        raise SnapshotValidationError(f"payload is not strict JSON: {exc}") from exc
-
-
-def _payload_sha256(payload):
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _reject_json_constant(value):
-    raise ValueError(f"non-finite JSON constant: {value}")
-
-
-def _strict_json(raw):
-    """Match the audit's finite-number and unique-object-key JSON contract."""
-    def finite(value):
-        number = float(value)
-        if not math.isfinite(number):
-            raise ValueError(f"non-finite JSON number: {value}")
-        return number
-
-    def unique(pairs):
-        result = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError(f"duplicate JSON key: {key}")
-            result[key] = value
-        return result
-
-    return json.loads(raw, parse_constant=_reject_json_constant,
-                      parse_float=finite, object_pairs_hook=unique)
-
-
 def write_last_run(record, state_dir=None):
-    state_dir = state_dir or STATE_DIR
-    os.makedirs(state_dir, exist_ok=True)
-    supervised = _supervised_run_id()
-    if supervised is None:
-        path = os.path.join(state_dir, "last-run.json")
-    else:
-        if record.get("runId") != supervised:
-            raise SnapshotUsageError("supervised final record has wrong run ID")
-        os.makedirs(os.path.join(state_dir, "runs"), mode=0o700, exist_ok=True)
-        path = os.path.join(state_dir, "runs", f"{supervised}.json")
-    _atomic_run_json(path, record)
+    return runtime.write_last_run(record, state_dir or STATE_DIR)
 
 
 def emit_status(record, stream=None):
@@ -251,26 +104,8 @@ def emit_status(record, stream=None):
     write_last_run(record)
 
 
-@contextmanager
 def snapshot_run_lock(state_dir=None):
-    state_dir = state_dir or STATE_DIR
-    os.makedirs(state_dir, exist_ok=True)
-    lock_path = os.path.join(state_dir, "snapshot.lock")
-    lock_file = open(lock_path, "a+", encoding="utf-8")
-    acquired = False
-    try:
-        try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            acquired = True
-        except BlockingIOError as exc:
-            raise SnapshotTemporaryError("another snapshot run holds the lock") from exc
-        yield
-    finally:
-        try:
-            if acquired:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-        finally:
-            lock_file.close()
+    return runtime.snapshot_run_lock(state_dir or STATE_DIR)
 
 
 def _ensure_snapshot_table(conn):
@@ -383,22 +218,6 @@ def store_snapshot(snapshot, db_path=None, *, expected_day=None):
         "payloadSha256": payload_sha256,
         "quickCheck": integrity,
     }
-
-
-def source_error_paths(value, path=""):
-    errors = []
-    if isinstance(value, dict):
-        for key, child in value.items():
-            child_path = f"{path}.{key}" if path else str(key)
-            if (key == "error" or key.endswith("_error")) and child:
-                errors.append(child_path)
-            else:
-                errors.extend(source_error_paths(child, child_path))
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            child_path = f"{path}[{index}]"
-            errors.extend(source_error_paths(child, child_path))
-    return errors
 
 
 def json_scalar(value, allow_nan_as_null=False):
@@ -988,176 +807,19 @@ def read_bin(path):
     return read_qlib_day_bin(path)
 
 
-def limit_pct(sym):
-    code = sym[2:]
-    if sym.startswith("bj"):
-        return 0.30
-    if code.startswith("30") or code.startswith("68"):
-        return 0.20
-    return 0.10
-
-
 def qlib_generation():
-    tag_path = os.path.join(os.path.dirname(QLIB), ".tag")
-    try:
-        with open(tag_path, encoding="utf-8") as tag_file:
-            tag = tag_file.read().strip()
-        inode = os.stat(QLIB).st_ino
-    except (FileNotFoundError, OSError) as exc:
-        raise SnapshotValidationError(f"Qlib generation marker unavailable: {exc}") from exc
-    if not tag:
-        raise SnapshotValidationError("Qlib generation marker is empty")
-    return {"tag": tag, "inode": inode}
+    return qlib_summary.qlib_generation(QLIB)
 
 
 def reference_complete_date(calendar, symbol):
-    try:
-        start, features = load_qlib_features(
-            QLIB, symbol, ("close", "high", "low", "amount")
-        )
-    except (FileNotFoundError, ValueError) as exc:
-        raise SnapshotValidationError(
-            f"Qlib reference features unavailable for {symbol}: {exc}"
-        ) from exc
-    usable = min(len(values) for values in features.values())
-    close = features["close"]
-    for index in range(usable - 1, 0, -1):
-        values = (
-            close[index - 1],
-            close[index],
-            features["high"][index],
-            features["low"][index],
-            features["amount"][index],
-        )
-        calendar_index = start + index
-        if (
-            0 <= calendar_index < len(calendar)
-            and all(math.isfinite(float(value)) for value in values)
-        ):
-            return calendar[calendar_index]
-    raise SnapshotValidationError(
-        f"Qlib reference has no complete finite date: {symbol}"
-    )
+    return qlib_summary.reference_complete_date(calendar, symbol, QLIB, load_qlib_features)
 
 
 def qlib_market(date):
-    generation_before = qlib_generation()
-    with open(os.path.join(QLIB, "calendars/day.txt"), encoding="utf-8") as calendar_file:
-        cal = [line.strip() for line in calendar_file if line.strip()]
-    if date is None:
-        # 日历可能领先特征数据；四只参考股的四字段必须共同对齐。
-        ref_syms = ["sh600000", "sz000001", "sh600519", "sz300750"]
-        reference_dates = {
-            symbol: reference_complete_date(cal, symbol) for symbol in ref_syms
-        }
-        unique_dates = sorted(set(reference_dates.values()))
-        if len(unique_dates) != 1:
-            raise SnapshotValidationError(
-                f"Qlib reference dates disagree: {reference_dates}"
-            )
-        date = unique_dates[0]
-    elif date not in cal:
-        raise QlibDateError(f"requested date is not in Qlib calendar: {date}")
-    di = cal.index(date)
-    insts = []
-    with open(os.path.join(QLIB, "instruments/all.txt"), encoding="utf-8") as instruments_file:
-        for line in instruments_file:
-            p = line.split()
-            if len(p) >= 3:
-                insts.append((p[0], p[1], p[2]))
-    up = down = flat = invalid = eligible = 0
-    limit_up, limit_down, rows = [], [], []
-    for sym, sd, ed in insts:
-        # A prior close is required to calculate the daily change, so first-day
-        # listings are intentionally excluded from the eligible population.
-        if not (sd < date <= ed):
-            continue
-        eligible += 1
-        sym = sym.lower()  # all.txt 大写, feature 目录小写
-        try:
-            s, features = load_qlib_features(QLIB, sym, ("close", "high", "low", "amount"))
-        except (FileNotFoundError, ValueError) as exc:
-            raise SnapshotValidationError(
-                f"Qlib feature structure unavailable for {sym}: {exc}"
-            ) from exc
-        close = features["close"]
-        high = features["high"]
-        low = features["low"]
-        amount = features["amount"]
-        li = di - s
-        if li < 1 or any(li >= len(values) for values in features.values()):
-            raise SnapshotValidationError(
-                f"Qlib feature index is out of range for {sym} on {date}"
-            )
-        required_values = (close[li - 1], close[li], high[li], low[li], amount[li])
-        if not all(math.isfinite(float(value)) for value in required_values):
-            invalid += 1
-            continue
-        chg = close[li] / close[li - 1] - 1
-        if chg > 1e-4:
-            up += 1
-        elif chg < -1e-4:
-            down += 1
-        else:
-            flat += 1
-        lim = limit_pct(sym)
-        lp = round(close[li - 1] * (1 + lim), 2)
-        if abs(close[li] - lp) < 0.005 and abs(high[li] - close[li]) < 0.005:
-            streak, j = 0, li
-            while j >= 1:
-                lpj = round(close[j - 1] * (1 + lim), 2)
-                if abs(close[j] - lpj) < 0.005 and abs(high[j] - close[j]) < 0.005:
-                    streak += 1
-                    j -= 1
-                else:
-                    break
-            limit_up.append({
-                "sym": sym,
-                "chg": round(float(chg) * 100, 2),
-                "streak": streak,
-                "close": round(float(close[li]), 2),
-            })
-        lpd = round(close[li - 1] * (1 - lim), 2)
-        if abs(close[li] - lpd) < 0.005 and abs(low[li] - close[li]) < 0.005:
-            limit_down.append({
-                "sym": sym,
-                "chg": round(float(chg) * 100, 2),
-                "close": round(float(close[li]), 2),
-            })
-        rows.append((sym, float(chg), float(amount[li]), float(close[li])))
-    coverage = (len(rows) / eligible) if eligible else 0.0
-    if eligible < QLIB_MIN_ELIGIBLE or coverage < QLIB_MIN_COVERAGE:
-        raise SnapshotValidationError(
-            "Qlib market coverage is incomplete: "
-            f"date={date}, valid={len(rows)}, eligible={eligible}, "
-            f"invalid={invalid}, coverage={coverage:.6f}"
-        )
-    generation_after = qlib_generation()
-    if generation_before != generation_after:
-        raise SnapshotValidationError(
-            "Qlib generation changed during snapshot scan: "
-            f"before={generation_before}, after={generation_after}"
-        )
-    rows.sort(key=lambda r: -r[1])
-    return {
-        "date": date,
-        "generation": generation_after,
-        "coverage": {
-            "valid": len(rows),
-            "eligible": eligible,
-            "invalid": invalid,
-            "ratio": round(coverage, 6),
-        },
-        "breadth": {"up": up, "down": down, "flat": flat, "total": up + down + flat},
-        "limitUpCount": len(limit_up),
-        "limitDownCount": len(limit_down),
-        "limitUp": sorted(limit_up, key=lambda x: -x["streak"])[:30],
-        "limitDown": limit_down[:10],
-        "topGainers": [{"sym": r[0], "chg": round(r[1] * 100, 2)} for r in rows[:10]],
-        "topLosers": [{"sym": r[0], "chg": round(r[1] * 100, 2)} for r in rows[-10:][::-1]],
-        "topAmount": [{"sym": r[0], "amount": round(r[2], 0)} for r in sorted(rows, key=lambda r: -r[2])[:10]],
-    }
-
+    return qlib_summary.qlib_market(date, qlib_root=QLIB,
+        min_eligible=QLIB_MIN_ELIGIBLE, min_coverage=QLIB_MIN_COVERAGE,
+        feature_loader=load_qlib_features, generation_reader=qlib_generation,
+        reference_reader=reference_complete_date)
 
 def akshare_market():
     import akshare as ak
@@ -1845,6 +1507,11 @@ def run_snapshot(run_id, started_monotonic, expected_day=None):
 def run_current_day(run_id, started_monotonic):
     """Mandatory independent calendar gate for every live writer entry."""
     requested_trade_date(sys.argv[1:])
+    import snapshot_contract
+    policy = snapshot_contract.read_policy(os.path.join(os.path.dirname(__file__), "config", "snapshot-contract.json"))
+    snapshot_contract.assert_core_history(policy, os.path.join(os.path.dirname(__file__), "core-market.db"))
+    if snapshot_contract.select(policy, datetime.datetime.now(snapshot_contract.CST)) != snapshot_contract.LEGACY:
+        raise SnapshotDeferredError("full_contract_not_active")
     from calendar_evidence import load_calendar_evidence
     from core_contract import validate_calendar_evidence
     now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))

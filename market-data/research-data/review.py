@@ -6,8 +6,51 @@
   review.py YYYY-MM-DD  → 指定历史日(qlib 量价 + 龙虎榜)
 """
 import sqlite3, json, os, sys
+import datetime as dt
+from pathlib import Path
+import snapshot_contract
+from core_storage import CORE_DB, read_core
 
 DB = os.path.expanduser("~/research-data/snapshot.db")
+POLICY = Path(__file__).with_name("config") / "snapshot-contract.json"
+
+
+def show_core(record):
+    q = record["qlib"]
+    print(f"=== A股核心行情摘要 {record['date']}（已封存，非实时、非完整快照） ===")
+    _show_breadth(q["breadth"])
+    coverage = q["coverage"]
+    print(f"有效报价 {coverage['valid']}/{coverage['eligible']}，缺失 {coverage['invalid']}")
+    print(f"涨停 {q.get('limitUpCount', '未提供')}  跌停 {q.get('limitDownCount', '未提供')}")
+    print("研究附录未请求：不提供每日新闻、公告、资金流、板块或估值归档。")
+
+
+def read_review(day=None, *, db_path=DB, core_db=CORE_DB, policy_path=POLICY, now=None):
+    """Read the contract appropriate to the requested date, without any writer."""
+    policy = snapshot_contract.read_policy(policy_path)
+    snapshot_contract.assert_core_history(policy, core_db)
+    now = now or dt.datetime.now(snapshot_contract.CST)
+    selected = snapshot_contract.contract_for_day(policy, day) if day else snapshot_contract.select(policy, now)
+    if selected == snapshot_contract.CORE:
+        if day is None:
+            path = Path(core_db)
+            if not path.exists():
+                return selected, None
+            with sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True) as conn:
+                days = [row[0] for row in conn.execute("SELECT date FROM core_market ORDER BY date DESC")]
+            day = next((d for d in days if d <= now.date().isoformat()
+                        and snapshot_contract.contract_for_day(policy, d) == selected), None)
+        return selected, read_core(day, core_db) if day else None
+    path = Path(db_path)
+    if not path.exists():
+        return selected, None
+    with sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True) as conn:
+        values = conn.execute("SELECT date,payload FROM snapshot ORDER BY date DESC").fetchall()
+    for found, raw in values:
+        if (found == day if day else found <= now.date().isoformat()):
+            if snapshot_contract.contract_for_day(policy, found) == selected:
+                return selected, json.loads(raw)
+    return selected, None
 
 
 def _f(v):
@@ -237,20 +280,15 @@ def show_historical(d):
 
 def main():
     date = sys.argv[1] if len(sys.argv) > 1 else None
-    conn = sqlite3.connect(DB)
-    if date:
-        row = conn.execute("select payload from snapshot where date=?", (date,)).fetchone()
-        if not row:
-            print(f"无 {date} 快照, 先跑: daily_snapshot.py {date}")
-            return 1
-        show_historical(json.loads(row[0]))
+    contract, record = read_review(date)
+    if record is None:
+        print(f"无对应已封存产物（{contract}）；禁止用今日采集回填历史。")
+        return 1
+    if contract == snapshot_contract.CORE:
+        show_core(record)
     else:
-        row = conn.execute("select payload from snapshot order by date desc limit 1").fetchone()
-        if not row:
-            print("无快照, 先跑 daily_snapshot.py")
-            return 1
-        show_current(json.loads(row[0]))
-        _show_history_compare(conn, json.loads(row[0]))
+        print(f"已封存 full 记录日期：{record['date']}；不代表实时行情。")
+        show_historical(record)
     return 0
 
 

@@ -88,7 +88,7 @@ class CalendarAdapterTests(unittest.TestCase):
         self.skip()
         evidence = core.load_calendar_evidence(self.root, NOW)
         db = self.root / "no-core.db"
-        with mock.patch.object(legacy, "qlib_market", side_effect=AssertionError("must not scan")):
+        with mock.patch.object(core, "qlib_market", side_effect=AssertionError("must not scan")):
             result = core.run_core(db_path=db, now=NOW.isoformat(), calendar_evidence=evidence)
         self.assertEqual(result["status"], "skipped_non_trading")
         self.assertEqual(result["target"], "2026-09-24")

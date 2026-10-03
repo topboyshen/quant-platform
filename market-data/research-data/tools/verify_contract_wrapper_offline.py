@@ -18,6 +18,7 @@ if args[0].endswith("snapshot_contract.py"):
     selector=importlib.util.module_from_spec(spec);spec.loader.exec_module(selector)
     try:
         policy=selector.read_policy(pathlib.Path(args[args.index("--policy")+1]))
+        selector.assert_core_history(policy,pathlib.Path(args[args.index("--core-db")+1]))
         chosen=selector.select(policy,dt.datetime.fromisoformat(os.environ["FIXED_INSTANT"]))
     except (OSError,ValueError,TypeError):
         raise SystemExit(78)
@@ -121,14 +122,33 @@ class WrapperFixtureTests(unittest.TestCase):
             self.assertEqual(result.stdout, "")
             self.assertEqual(self.old_state.read_bytes(), self.old_bytes)
 
-    def test_no_policy_legacy_failure_still_uses_original_alert_branch(self):
+    def test_no_policy_full_failure_preserves_exit_without_direct_send(self):
         self.env.update(STUB_STATUS="failed", STUB_EXIT="1")
         result = self.run_wrapper()
         self.assertEqual(result.returncode, 1)
-        self.assertIn("research-data", result.stdout)
+        self.assertEqual(result.stdout, "")
+
+    def test_v2_forward_full_restores_dispatch_without_deleting_core_state(self):
+        self.policy.write_text(json.dumps({"schema": "research.contract-policy.v2", "transitions": [
+            {"activeContract": "research.core-market.v1", "effectiveTradeDate": "2026-10-08"},
+            {"activeContract": "research.full-snapshot.v1", "effectiveTradeDate": "2026-10-09"}]}))
+        self.env["FIXED_INSTANT"] = "2026-10-08T22:30:00+08:00"
+        self.assertEqual(self.run_wrapper().returncode, 0)
+        sealed = (self.root / "state/core-market/last-run.json").read_bytes()
+        self.env["FIXED_INSTANT"] = "2026-10-09T22:30:00+08:00"
+        self.assertEqual(self.run_wrapper().returncode, 0)
+        self.assertEqual(json.loads((self.root / "dispatch.json").read_text()), [str(self.root / "daily_snapshot.py")])
+        self.assertEqual((self.root / "state/core-market/last-run.json").read_bytes(), sealed)
 
     def test_dangling_symlink_is_not_absent_policy_fallback(self):
         self.policy.symlink_to(self.root / "missing.json")
+        result = self.run_wrapper()
+        self.assertEqual(result.returncode, 78)
+        self.assertFalse((self.root / "dispatch.json").exists())
+        self.assertEqual(self.old_state.read_bytes(), self.old_bytes)
+
+    def test_missing_policy_with_unreadable_core_history_starts_no_writer(self):
+        (self.root / "core-market.db").mkdir()
         result = self.run_wrapper()
         self.assertEqual(result.returncode, 78)
         self.assertFalse((self.root / "dispatch.json").exists())

@@ -804,7 +804,8 @@ def active_run_decision(*, contract, last, rows, stages, now, calendar, evidence
               "last_core_market_not_successful" if contract == _core_contract.SCHEMA else "last_snapshot_not_successful",
               "core_market_run_missing_or_mismatched" if contract == _core_contract.SCHEMA else "last_run_snapshot_missing_or_mismatched"}
     integrity = {"business_mode_not_frozen", "historical_rows_changed_or_missing", "future_snapshot_date",
-                 "legacy_full_rows_after_cutover", "core_calendar_schedule_conflict"}
+                 "legacy_full_rows_after_cutover", "core_calendar_schedule_conflict", "core_rows_outside_contract_interval",
+                 "core_history_policy_missing_or_conflicting"}
     for item in issues:
         code = item["code"]
         dates = set(item.get("dates") or item.get("affectedDates") or item.get("overdueStageDates") or [])
@@ -901,9 +902,12 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
         raise EvidenceError("calendar_coverage_or_complete_date_invalid")
     rows = snapshot_rows(db)
     policy = read_contract_policy(contract_policy)
-    effective = policy["effectiveTradeDate"]
-    core_active = effective is not None and now.date().isoformat() >= effective
-    core_rows, core_read_state = (core_market_rows(core_db, now) if effective is not None
+    effective = _contract_selector.first_core_date(policy)
+    core_active = _contract_selector.select(policy, now) == _core_contract.SCHEMA
+    def full_expected_on(day):
+        return _contract_selector.contract_for_day(policy, day) == _core_contract.LEGACY_SCHEMA
+    has_core_storage = core_db is not None and (core_db.exists() or core_db.is_symlink())
+    core_rows, core_read_state = (core_market_rows(core_db, now) if effective is not None or has_core_storage
                                  else ({}, "not_configured"))
     core_last, core_last_time = (recent_core_run(core_last_run, now) if effective is not None
                                  else ({"status": "not_configured"}, None))
@@ -914,6 +918,9 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
 
     def issue(code, severity="warning", **details):
         issues.append({"code": code, "severity": severity, **details})
+
+    if effective is None and (core_rows or core_read_state == "invalid"):
+        issue("core_history_policy_missing_or_conflicting", "critical", dates=sorted(core_rows))
 
     if gen[3] is not None:
         quality = gen[3][9]
@@ -984,7 +991,7 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
     # AkShare market stage is mandatory only for the old full contract. On
     # cutover, keep its historical evidence and anomalies without making a
     # missing optional current stage a new core failure.
-    mandatory_stages = {d: v for d, v in stage_rows.items() if effective is None or d < effective}
+    mandatory_stages = {d: v for d, v in stage_rows.items() if full_expected_on(d)}
     if ((not core_active and stage_state != "checked")
             or any(v["state"] != "valid" for v in mandatory_stages.values())):
         issue("market_stage_missing_or_invalid", contract=_core_contract.LEGACY_SCHEMA,
@@ -1048,7 +1055,7 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
                 issue("qlib_not_current_for_expected_trading_day", dueDate=due_date.isoformat(),
                       expectedTarget=expected, actualTarget=complete,
                       calendarEvidenceSha256=expected_evidence["sha256"])
-    full_run_due = effective is None or due_date.isoformat() < effective
+    full_run_due = full_expected_on(due_date.isoformat())
     if full_run_due and (last_time is None or last_time < due_start):
         issue("scheduled_snapshot_missing", dueDate=due_date.isoformat())
     if full_run_due and last["status"] in FAILURES:
@@ -1077,7 +1084,7 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
         stage = stage_rows.get(day, {"state": "missing"})
         legacy = day < monitor_since.isoformat()
         pending = day == now.date().isoformat() and now < deadline
-        full_expected = effective is None or day < effective
+        full_expected = full_expected_on(day)
         item = {"tradeDate": day, "snapshotState": row["state"], "stageState": stage["state"],
                 "contract": _core_contract.LEGACY_SCHEMA, "fullSnapshot": True,
                 "expectedUnderContract": full_expected,
@@ -1100,10 +1107,10 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
     core_ledger = []
     core_gaps = []
     if effective is not None:
-        unexpected_full = sorted(d for d in rows if d >= effective)
+        unexpected_full = sorted(d for d in rows if not full_expected_on(d))
         if unexpected_full:
             issue("legacy_full_rows_after_cutover", "critical", dates=unexpected_full)
-        for day in (d for d in ledger_calendar if max(effective, since.isoformat()) <= d <= ledger_end):
+        for day in (d for d in ledger_calendar if max(effective, since.isoformat()) <= d <= ledger_end and not full_expected_on(d)):
             row = core_rows.get(day, {"state": "missing"})
             pending = day == now.date().isoformat() and now < deadline
             core_ledger.append({"tradeDate": day, "coreState": row["state"], "pendingWindow": pending,
@@ -1111,7 +1118,7 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
                                 **{k: row[k] for k in ("payloadSha256", "reason") if k in row}})
             if row["state"] != "valid" and not pending:
                 core_gaps.append(day)
-        if core_active and core_read_state != "checked" and (core_ledger or core_read_state == "invalid"):
+        if core_read_state != "checked" and (core_ledger or core_read_state == "invalid"):
             issue("core_market_evidence_unavailable", readState=core_read_state)
         if not full_run_due:
             if core_last_time is None or core_last_time < due_start:
@@ -1131,6 +1138,9 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
                     issue("core_market_run_missing_or_mismatched", "critical", tradeDate=core_last.get("target"))
         if core_gaps:
             issue("unresolved_core_market_gaps", "critical" if len(core_gaps) >= 2 else "warning", dates=core_gaps)
+        wrong_contract = sorted(d for d in core_rows if full_expected_on(d))
+        if wrong_contract:
+            issue("core_rows_outside_contract_interval", "critical", dates=wrong_contract)
         outside = sorted(d for d in core_rows if calendar[0] <= d <= calendar[-1] and d not in calendar_set)
         if outside:
             issue("core_market_outside_known_trading_calendar", dates=outside)
@@ -1153,9 +1163,14 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
     return {"schemaVersion": 1, "generatedAt": now.isoformat(), "readOnly": True,
             "activeContract": _core_contract.SCHEMA if core_active else _core_contract.LEGACY_SCHEMA,
             "effectiveTradeDate": effective, "contractPolicy": policy,
+            "contractIntervals": _contract_selector.intervals(policy),
             "activeLastRun": core_last if core_active else last,
             "activeRunDecision": decision,
-            "legacyFullSnapshot": {"contract": _core_contract.LEGACY_SCHEMA, "scheduledBefore": effective,
+            "legacyFullSnapshot": {"contract": _core_contract.LEGACY_SCHEMA,
+                                   "scheduledBefore": effective if len(_contract_selector.transitions(policy)) <= 1 else None,
+                                   "intervals": ([{"fromInclusive": None, "untilExclusive": effective}] if effective else []) +
+                                       [{"fromInclusive": i["fromInclusive"], "untilExclusive": i["untilExclusive"]}
+                                        for i in _contract_selector.intervals(policy) if i["activeContract"] == _core_contract.LEGACY_SCHEMA],
                                    "status": "historical_only" if core_active else "active"},
             "coreMarket": {"contract": _core_contract.SCHEMA, "fullSnapshot": False,
                            "artifactKind": "qlib_market_summary", "includesCompletePriceArchive": False,

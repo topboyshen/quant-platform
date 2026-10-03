@@ -50,14 +50,14 @@ class ContractDispatchTests(unittest.TestCase):
 
     def test_core_before_effective_target_defers_before_database_or_stage(self):
         db = self.root / "must-not-exist.db"
-        with mock.patch.object(daily_snapshot, "qlib_market", return_value=qlib()), \
+        with mock.patch.object(core_market, "qlib_market", return_value=qlib()), \
              mock.patch.object(core_market, "read_core") as read, \
              mock.patch.object(daily_snapshot, "load_akshare_market_stage") as load, \
              mock.patch.object(daily_snapshot, "capture_current_akshare_market") as collect:
             with self.assertRaises(daily_snapshot.SnapshotDeferredError) as caught:
                 core_market.run_core(db_path=db, effective_trade_date="2026-09-28",
                                     now="2026-09-28T22:30:00+08:00", calendar_evidence=calendar("2026-09-28"))
-            self.assertEqual(caught.exception.target, "2026-09-24")
+            self.assertEqual(caught.exception.target, "2026-09-28")
             read.assert_not_called(); load.assert_not_called(); collect.assert_not_called()
         self.assertFalse(db.exists())
 

@@ -283,7 +283,7 @@ class SnapshotSupervisorTests(unittest.TestCase):
     def test_crash_between_final_journal_and_shared_publish_is_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state"
-            original = snapshot._atomic_run_json
+            original = supervisor.snapshot._atomic_run_json
 
             def interrupted(path, record):
                 if (path == str(state / "last-run.json")
@@ -291,7 +291,7 @@ class SnapshotSupervisorTests(unittest.TestCase):
                     raise OSError("simulated supervisor crash before shared final")
                 return original(path, record)
 
-            with mock.patch.object(snapshot, "_atomic_run_json", side_effect=interrupted):
+            with mock.patch.object(supervisor.snapshot, "_atomic_run_json", side_effect=interrupted):
                 with self.assertRaises(OSError):
                     self.execute(directory, "success")
             shared = json.loads((state / "last-run.json").read_text())

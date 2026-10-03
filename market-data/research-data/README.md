@@ -148,6 +148,10 @@ AkShare 暂存文件默认位于 `~/.local/state/research-data/akshare-market/YY
 
 ### 候选轻量化与统一告警
 
+2026-10-02 核心解耦/同日有界等待、合同日期区间与保留历史的前向 full 回退，
+详见 [当前实施候选说明](docs/ESSENTIAL_CORE_20261002.md)。未创建活动政策或部署；
+`evidence/core-contract-policy-20261008.json` 只是最早生效10-08的候选。
+
 `snapshot-contract.json` 缺失时仍选 `research.full-snapshot.v1`；只有独立批准的 policy 与首个生效交易日才切换 `research.core-market.v1`。core 使用独立库/表/状态，是 Qlib 市场摘要，明确非完整价格归档，附录为按需 `not_requested`，不放宽旧 full 合同。
 
 定时 wrapper 不发送通知；现有健康告警状态机统一判新增、恶化、恢复和未运行，23:00 独立检查当日审计是否真实产出。`businessAtoms` 在不可观测阶段保留，历史缺口不每日重报。timer/override 为待审候选，不因文件存在而认为已安装或自然验收通过。

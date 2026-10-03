@@ -135,7 +135,7 @@ class CoreContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "hash mismatch"): core.read_core(DAY, self.db)
 
     def run_fixture(self, **kwargs):
-        with mock.patch.object(legacy, "qlib_market", return_value=qlib()), \
+        with mock.patch.object(core, "qlib_market", return_value=qlib()), \
              mock.patch.object(legacy, "load_akshare_market_stage", return_value=stage()), \
              mock.patch.object(legacy, "capture_current_akshare_market", return_value={"tradeDate": DAY}), \
              mock.patch.object(legacy, "collect_cninfo_announcements", side_effect=AssertionError("research source called")), \
@@ -153,13 +153,13 @@ class CoreContractTests(unittest.TestCase):
         self.run_fixture()
         before = self.db.read_bytes()
         changed = qlib(); changed["generation"]["tag"] = "new-same-day-source"
-        with mock.patch.object(legacy, "qlib_market", return_value=changed):
+        with mock.patch.object(core, "qlib_market", return_value=changed):
             with self.assertRaisesRegex(legacy.SnapshotDeferredError, "differs"):
                 core.run_core(db_path=self.db, now=NOW, calendar_evidence=calendar())
         self.assertEqual(self.db.read_bytes(), before)
 
     def test_calendar_missing_defers_without_row(self):
-        with mock.patch.object(legacy, "qlib_market", return_value=qlib()), \
+        with mock.patch.object(core, "qlib_market", return_value=qlib()), \
              mock.patch.object(legacy, "load_akshare_market_stage", return_value=None), \
              mock.patch.object(legacy, "capture_current_akshare_market", side_effect=legacy.SnapshotDeferredError("fixed failure")):
             with self.assertRaises(legacy.SnapshotDeferredError): core.run_core(db_path=self.db)
@@ -167,14 +167,14 @@ class CoreContractTests(unittest.TestCase):
 
     def test_old_target_not_success_when_new_trading_day_due(self):
         core.store_core(record(), self.db)
-        with mock.patch.object(legacy, "qlib_market", return_value=qlib()), \
+        with mock.patch.object(core, "qlib_market", return_value=qlib()), \
              mock.patch.object(legacy, "load_akshare_market_stage", return_value=stage()), \
              mock.patch.object(legacy, "capture_current_akshare_market", return_value={"tradeDate": "2026-09-25"}):
             with self.assertRaises(legacy.SnapshotDeferredError):
                 core.run_core(db_path=self.db, now="2026-09-25T22:30:00+08:00", calendar_evidence=calendar("2026-09-25"))
 
     def test_no_tables_found_in_optional_market_source_cannot_block_core(self):
-        with mock.patch.object(legacy, "qlib_market", return_value=qlib()), \
+        with mock.patch.object(core, "qlib_market", return_value=qlib()), \
              mock.patch.object(legacy, "capture_current_akshare_market", side_effect=ValueError("No tables found")) as capture, \
              mock.patch.object(legacy, "akshare_market", side_effect=ValueError("No tables found")) as market:
             result = core.run_core(db_path=self.db, now=NOW, calendar_evidence=calendar())
@@ -186,7 +186,7 @@ class CoreContractTests(unittest.TestCase):
             self.assertEqual(core.read_core(DAY, self.db)["date"], DAY)
 
     def test_historical_cli_arguments_rejected_before_sources(self):
-        with mock.patch.object(legacy, "qlib_market") as scan:
+        with mock.patch.object(core, "qlib_market") as scan:
             with self.assertRaises(SystemExit): core.main(["2026-09-22"])
             scan.assert_not_called()
 
