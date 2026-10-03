@@ -49,6 +49,11 @@ UNITS = (
     ("astock-morning-notify.service", "user", "service"),
     ("nng8-research-digest.timer", "user", "timer"),
     ("nng8-research-digest.service", "user", "service"),
+    # Observe the existing alert chain; this list never installs or starts units.
+    ("research-chain-alert.timer", "user", "timer"),
+    ("research-chain-alert.service", "user", "service"),
+    ("research-chain-alert-post.service", "user", "service"),
+    ("research-chain-alert-generation.service", "user", "service"),
     ("astock-acceptance-night.timer", "user", "timer"),
     ("astock-acceptance-monday.timer", "user", "timer"),
     ("hermes-telegram-watchdog.timer", "user", "timer"),

@@ -11,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import collect_services as collector  # noqa: E402
 import export_dashboard as exporter  # noqa: E402
+import os
+exporter.DELIVERY_CONTRACT_PATH = Path(os.environ.get("DELIVERY_CONTRACT_TEST_MODULE",
+    str(Path(__file__).resolve().parents[3] / "signal/scripts/delivery_evidence.py")))
 
 CST = dt.timezone(dt.timedelta(hours=8))
 

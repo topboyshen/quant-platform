@@ -28,6 +28,7 @@ import argparse
 import datetime as dt
 import grp
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -66,6 +67,8 @@ KNOWN_UNITS = (
     "astock-xhs-draft.service", "astock-research-seal.service",
     "astock-morning-notify.service",
     "nng8-research-digest.timer", "nng8-research-digest.service",
+    "research-chain-alert.timer", "research-chain-alert.service",
+    "research-chain-alert-post.service", "research-chain-alert-generation.service",
     "astock-cninfo-precollect.timer", "astock-cninfo-precollect.service",
     "research-data-health.timer", "research-data-health.service",
     "research-data-health-alert.service", "research-ledger.service",
@@ -102,15 +105,32 @@ PENDING_AUTHORIZATION = (
     "公网发布（含认证、证书与最小暴露面）",
     "维护窗口：libc6 重启标记、可升级清单复核",
 )
-RECEIPT_KEYS = ("messageId", "message_id", "platformMessageId", "platform_message_id")
-# Only the v2 receiver content hash certifies the actual transmitted object.
-# Legacy report/ack aliases (including nested ack fields) cannot substitute.
-RECEIVER_HASH_KEYS = ("receiver_content_sha256",)
 # Fixed pass-through for the service snapshot; unknown keys are dropped.
 UNIT_FIELDS = ("unit", "scope", "kind", "health", "note", "loadState", "activeState", "subState",
                "unitFileState", "result", "execMainStatus", "restarts", "lastStart", "lastExit",
                "nextElapse", "nextElapseSource", "unitType", "invocationId")
 UNIT_TEXT_LIMIT = 200
+
+
+# Trusted CODE path, never inferred from --source-root or a receipt.
+DELIVERY_CONTRACT_PATH = Path("/home/ubuntu/signal-bus/scripts/delivery_evidence.py")
+
+
+def load_delivery_contract(module_path=None):
+    """Controlled code-path hook for isolated tests / explicitly staged deployments."""
+    path = Path(module_path) if module_path is not None else DELIVERY_CONTRACT_PATH
+    if not path.is_absolute() or path.is_symlink() or not path.is_file():
+        raise ValueError("delivery_contract_unavailable")
+    spec = importlib.util.spec_from_file_location("dashboard_delivery_evidence", path)
+    if spec is None or spec.loader is None:
+        raise ValueError("delivery_contract_unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if type(getattr(module, "CONTRACT_VERSION", None)) is not int or module.CONTRACT_VERSION != 1 \
+            or not all(callable(getattr(module, name, None)) for name in
+                       ("relay_verdict", "telegram_verdict", "validate_send_receipt", "platform_receipt")):
+        raise ValueError("delivery_contract_version_unsupported")
+    return module
 
 
 def parse_instant(value):
@@ -1004,15 +1024,42 @@ def audited_contract_evidence(health, errors):
     declared = health.get("activeContract")
     active = declared if isinstance(declared, str) and declared in {FULL_CONTRACT, CORE_CONTRACT} else None
     effective = health.get("effectiveTradeDate") if is_iso_date(health.get("effectiveTradeDate")) else None
+    legacy = health.get("legacyFullSnapshot") if isinstance(health.get("legacyFullSnapshot"), dict) else {}
     result = {"activeContract": active, "contractSource": "audit_decision",
               "effectiveTradeDate": effective,
               "activeLastRun": contract_run(health.get("activeLastRun")),
               "activeRunDecision": decision, "legacyFullSnapshot": {"contract": FULL_CONTRACT,
                   "status": "historical_only" if active == CORE_CONTRACT else "active",
-                  "scheduledBefore": effective}, "coreMarket": None}
-    if active != CORE_CONTRACT:
-        return result
+                  "scheduledBefore": legacy.get("scheduledBefore") if is_iso_date(legacy.get("scheduledBefore")) else None}, "coreMarket": None}
+    if "intervals" in legacy:
+        intervals = legacy["intervals"]
+        if (not isinstance(intervals, list) or len(intervals) > 17 or any(not isinstance(row, dict)
+                or any(key not in row or row[key] is not None and not is_iso_date(row[key])
+                       for key in ("fromInclusive", "untilExclusive")) for row in intervals)):
+            errors.append("full_contract_intervals_projection_invalid")
+            result["legacyFullSnapshot"]["intervals"] = None
+        else:
+            result["legacyFullSnapshot"]["intervals"] = [{key: row[key] for key in
+                ("fromInclusive", "untilExclusive")} for row in intervals]
+    # Project the auditor's interval evidence, never select a contract here.
+    intervals = health.get("contractIntervals")
+    if intervals is not None:
+        if not isinstance(intervals, list) or len(intervals) > 16 or any(
+                not isinstance(row, dict) or not isinstance(row.get("activeContract"), str)
+                or row["activeContract"] not in {CORE_CONTRACT, FULL_CONTRACT}
+                or "untilExclusive" not in row
+                or not is_iso_date(row.get("fromInclusive"))
+                or row.get("untilExclusive") is not None and not is_iso_date(row.get("untilExclusive"))
+                for row in intervals):
+            errors.append("contract_intervals_projection_invalid")
+            result["contractIntervals"] = None
+        else:
+            result["contractIntervals"] = [{key: row.get(key) for key in
+                ("activeContract", "fromInclusive", "untilExclusive")} for row in intervals]
     raw = health.get("coreMarket") if isinstance(health.get("coreMarket"), dict) else {}
+    historical = active == FULL_CONTRACT and effective is not None
+    if active != CORE_CONTRACT and not historical:
+        return result
     raw_ledger = raw.get("ledger") if isinstance(raw.get("ledger"), list) else []
     ledger = [{"date": row["tradeDate"], "state": row["coreState"], "pendingWindow": row["pendingWindow"],
                "payloadSha256": row.get("payloadSha256"), "contract": CORE_CONTRACT, "fullSnapshot": False}
@@ -1024,19 +1071,22 @@ def audited_contract_evidence(health, errors):
     if not ledger_ok:
         errors.append("core_ledger_projection_invalid")
     due = [row for row in ledger if row["pendingWindow"] is False]
-    result["contractPolicy"] = {"activeContract": CORE_CONTRACT, "effectiveTradeDate": result["effectiveTradeDate"]}
+    result["contractPolicy"] = {"activeContract": active, "effectiveTradeDate": result["effectiveTradeDate"]}
+    # The current full-run decision cannot certify a historical core run.
+    core_decision = decision if active == CORE_CONTRACT else None
     result["coreMarket"] = {"contract": CORE_CONTRACT, "fullSnapshot": False, "artifactKind": "qlib_market_summary",
-        "includesCompletePriceArchive": False,
+        "includesCompletePriceArchive": False, "historicalOnly": historical,
         "readState": raw.get("readState") if isinstance(raw.get("readState"), str) and raw["readState"] in {"checked", "missing", "invalid", "not_configured"} else None,
-        "status": decision["verification"]["status"] if decision else "insufficient",
+        "status": core_decision["verification"]["status"] if core_decision else "insufficient",
         "expectedFrom": result["effectiveTradeDate"], "rowCount": raw.get("rowCount") if type(raw.get("rowCount")) is int and raw["rowCount"] >= 0 else None,
         "latestValidDate": raw.get("latestValidDate") if is_iso_date(raw.get("latestValidDate")) else None,
-        "lastRun": result["activeLastRun"],
-        "quality": decision["artifact"]["quality"] if decision else None,
+        "lastRun": contract_run(raw.get("lastRun")) if historical else result["activeLastRun"],
+        "quality": core_decision["artifact"]["quality"] if core_decision else None,
         "knownDates": len(due) if ledger_ok else None,
         "validDates": sum(row["state"] == "valid" for row in due) if ledger_ok else None,
-        "ledger": ledger, "evidenceProblems": [] if decision else ["active_run_decision_invalid"],
-        "blockingReasons": decision["verification"]["reasons"] if decision else []}
+        "ledger": ledger, "evidenceProblems": (["historical_core_not_current_run"] if historical
+            else [] if core_decision else ["active_run_decision_invalid"]),
+        "blockingReasons": core_decision["verification"]["reasons"] if core_decision else []}
     return result
 
 
@@ -1404,87 +1454,20 @@ def acceptance_latest(root: Path):
     return latest
 
 
-# 新的发送回执（AStock 2026-09-20 起落盘）：只允许这些字段，确认时间必须带时区。
-SEND_RECEIPT_KEYS = frozenset(("schemaVersion", "eventId", "targetDate", "route", "payloadSha256",
-                               "payloadBytes", "sourceSha256", "platformMessageId", "ackKind",
-                               "confirmedAt"))
-SEND_RECEIPT_ACK_KIND = "hermes_cli_json_message_id"
+# Timestamp syntax for a held-attempt observation (not delivery proof).
 ZONED_INSTANT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$")
 
 
-def read_send_receipt(project: Path, date: str):
-    """平台发送回执：事件、消息 ID、内容哈希与带时区的确认时间缺一不可。
-
-    历史记录没有回执就是“发送记录存在、回执缺失”，不补造也不据此判通过。
-    """
+def read_send_receipt(project: Path, date: str, contract=None):
     event_id = f"astock-{date}-success-telegram-v1"
-    record, issue = read_telegram_event(project / "work" / "notifications" / "receipts" / "send" / f"{event_id}.json")
+    record, issue = read_telegram_event(project / "work/notifications/receipts/send" / f"{event_id}.json")
     if issue is not None:
         return None, f"receipt_{issue}"
-    if not isinstance(record, dict):
-        return None, "receipt_not_object"
-    if set(record) - SEND_RECEIPT_KEYS:
-        return None, "receipt_unknown_fields"
-    if record.get("schemaVersion") != "1.0" or record.get("eventId") != event_id:
-        return None, "receipt_event_mismatch"
-    if record.get("targetDate") != date or record.get("route") != "telegram":
-        return None, "receipt_target_mismatch"
-    if record.get("ackKind") != SEND_RECEIPT_ACK_KIND:
-        return None, "receipt_ack_kind_unknown"
-    message_id = record.get("platformMessageId")
-    if not isinstance(message_id, str) or not re.fullmatch(r"[1-9][0-9]*", message_id):
-        return None, "receipt_message_id_invalid"
-    if not isinstance(record.get("payloadSha256"), str) \
-            or not HASH_RE.fullmatch(record["payloadSha256"]):
-        return None, "receipt_payload_hash_invalid"
-    if type(record.get("payloadBytes")) is not int or record["payloadBytes"] < 0:
-        return None, "receipt_payload_bytes_invalid"
-    source = record.get("sourceSha256")
-    if source is not None and (not isinstance(source, str) or not HASH_RE.fullmatch(source)):
-        return None, "receipt_source_hash_invalid"
-    if not isinstance(record.get("confirmedAt"), str) \
-            or not ZONED_INSTANT_RE.fullmatch(record["confirmedAt"]) \
-            or parse_instant(record["confirmedAt"]) is None:
-        return None, "receipt_confirmed_at_invalid"
-    return record, None
+    return (contract or load_delivery_contract()).validate_send_receipt(record, date)
 
 
 def platform_receipt(record):
-    """A verified platform receipt: success=true, a message id, and not skipped.
-
-    Returns (receipt, reason, explicit_failure). A message id alone is not a
-    delivery: a receipt that reports success=false is explicit failure evidence,
-    and a receipt with neither flag is missing evidence, not a pass.
-    """
-    if not isinstance(record, dict):
-        return None, "no_record", False
-    receipt_container = record.get("receipt")
-    platform_container = record.get("platformReceipt")
-    containers = [record,
-                  receipt_container if isinstance(receipt_container, dict) else {},
-                  platform_container if isinstance(platform_container, dict) else {}]
-    saw_message_id = False
-    for container in containers:
-        if not isinstance(container, dict):
-            continue
-        success = container.get("success")
-        # A reported failure is explicit failure evidence, with or without an id.
-        if success is False:
-            return None, "receipt_success_false", True
-        if container.get("skipped") is True:
-            return None, "receipt_skipped", False
-        value = next((container.get(key) for key in RECEIPT_KEYS
-                      if not isinstance(container.get(key), bool)
-                      and isinstance(container.get(key), (str, int))
-                      and str(container.get(key)).strip()), None)
-        if value is None:
-            continue
-        saw_message_id = True
-        if success is not True:
-            continue
-        return {"messageId": str(value)[:128], "skipped": False, "success": True,
-                "target": container.get("target") if isinstance(container.get("target"), str) else None}, None, False
-    return None, ("receipt_success_missing" if saw_message_id else "receipt_missing_message_id"), False
+    return load_delivery_contract().platform_receipt(record)
 
 
 def receiver_content_hash(record):
@@ -1647,154 +1630,42 @@ def build_delivery(root: Path, exported: dt.datetime, today_panel: dict):
                                "limitations": limitations}
     sealed_report = recomputed["report"]
 
-    # --- Telegram：必须有平台回执（消息 ID、非 skipped）且完整哈希一致
+    # A missing/invalid code dependency degrades only delivery proof, never PASS.
+    try:
+        contract = load_delivery_contract()
+    except Exception:
+        errors.append("delivery_contract_unavailable")
+        for name in ("telegram", "relay"):
+            panel["layers"][name] = {"status": "insufficient", "evidence": {},
+                "limitations": ["共享送达证据模块缺失或不可用，不能确认送达"],
+                "contractReason": "delivery_contract_unavailable"}
+        panel.update(report_freshness(project, date, exported, source_time, "delivery"))
+        return panel
+
     notification, notification_issue = read_telegram_event(
-        project / "work" / "notifications" / "sent"
-        / f"astock-{date}-success-telegram-v1.json")
-    send_receipt, send_receipt_error = read_send_receipt(project, date)
-    if send_receipt_error in {"receipt_unreadable", "receipt_malformed", "receipt_not_object"}:
-        errors.append(f"telegram_{send_receipt_error}")
-    if notification_issue == "missing":
-        # Missing delivery evidence is a layer verdict, not an exporter read
-        # failure. Older exports may still carry the old readErrors code;
-        # the workbench adapter suppresses only that exact legacy duplicate.
-        panel["layers"]["telegram"] = {"status": "insufficient", "evidence": {},
-                                       "limitations": ["尚无当日发送记录；事件名不等价送达"]}
-    elif notification_issue is not None:
+        project / "work/notifications/sent" / f"astock-{date}-success-telegram-v1.json")
+    receipt_path = project / "work/notifications/receipts/send" / f"astock-{date}-success-telegram-v1.json"
+    send_receipt, receipt_read_issue = read_telegram_event(receipt_path)
+    if receipt_read_issue in {"unreadable", "malformed", "not_object"}:
+        errors.append(f"telegram_receipt_{receipt_read_issue}")
+    if notification_issue not in (None, "missing"):
         errors.append(f"telegram_record_{notification_issue}")
-        panel["layers"]["telegram"] = {
-            "status": "insufficient", "evidence": {"recordReadStatus": notification_issue},
-            "limitations": ["当日发送记录存在但不可读取或格式无效；无法确认实际发送或送达"]}
-    else:
-        receipt, receipt_error, receipt_failed = platform_receipt(notification)
-        report_block = notification.get("report") if isinstance(notification.get("report"), dict) else {}
-        # 事件里的两个对象：实际发送的附件（payload）与完整来源报告（source）。
-        event_payload = report_block.get("sha256")
-        event_source = report_block.get("sourceSha256")
-        payload_path = (project / "work" / "notifications" / "payloads"
-                        / f"astock-{date}-success-telegram-v1.md")
-        payload_file_sha = sha256_file(payload_path)
-        payload_file_bytes = (payload_path.stat().st_size
-                              if payload_file_sha is not None and payload_path.is_file() else None)
-        event_payload_bytes = report_block.get("bytes")
-        if type(event_payload_bytes) is not int or event_payload_bytes < 0:
-            event_payload_bytes = None
-        outcome = notification.get("outcome")
-        # 附件哈希：回执 payloadSha256 ↔ 事件附件哈希 ↔ 附件文件重算（三项都要）。
-        payload_checks = None
-        if isinstance(send_receipt, dict) and isinstance(event_payload, str):
-            receipt_payload = send_receipt.get("payloadSha256")
-            payload_checks = {
-                "receipt_vs_event": receipt_payload == event_payload,
-                "event_vs_file": event_payload == payload_file_sha,
-                "receipt_vs_file": receipt_payload == payload_file_sha}
-        # 附件字节数同样三方：回执 payloadBytes ↔ 事件 report.bytes ↔ 附件文件长度。
-        bytes_checks = None
-        if isinstance(send_receipt, dict) and event_payload_bytes is not None:
-            receipt_bytes = send_receipt.get("payloadBytes")
-            bytes_checks = {
-                "receipt_vs_event": receipt_bytes == event_payload_bytes,
-                "event_vs_file": event_payload_bytes == payload_file_bytes,
-                "receipt_vs_file": receipt_bytes == payload_file_bytes}
-        # 来源报告：回执 sourceSha256 ↔ 事件来源哈希 ↔ 密封报告重算（结果版事件才有）。
-        source_checks = None
-        if isinstance(send_receipt, dict) and isinstance(event_source, str) \
-                and isinstance(send_receipt.get("sourceSha256"), str):
-            receipt_source_hash = send_receipt.get("sourceSha256")
-            source_checks = {
-                "receipt_vs_event": receipt_source_hash == event_source,
-                "event_vs_sealed": event_source == sealed_report,
-                "receipt_vs_sealed": receipt_source_hash == sealed_report}
-        platform_message_id = (send_receipt or {}).get("platformMessageId") or (receipt or {}).get("messageId")
-        receipt_source = ("send_receipt" if isinstance(send_receipt, dict)
-                          else "embedded" if receipt is not None else None)
-        event_id = f"astock-{date}-success-telegram-v1"
-        result_presentation = report_block.get("presentation") or notification.get("presentation")
-        notify_root = project / "work/notifications"
-        bad_ancestor = any((notify_root / relative).is_symlink()
-                           for relative in ("", "sent", "receipts", "receipts/send", "payloads"))
-        if bad_ancestor or notification.get("schemaVersion") != "1.0" \
-                or notification.get("source") != "AStock_AI_System":
-            status, limitations = "insufficient", ["发送记录类型或证据路径不合法，不能确认送达"]
-        elif notification.get("eventId") != event_id or notification.get("targetDate") != date \
-                or notification.get("route") != "telegram":
-            status, limitations = "insufficient", ["发送记录缺少或不匹配当日事件身份，不能确认送达"]
-        elif outcome not in (None, "success"):
-            status, limitations = "fail", [f"本地发送结果为 {outcome}"]
-        elif receipt_failed:
-            status, limitations = "fail", [f"平台回执明确失败（{receipt_error}）"]
-        elif isinstance(event_payload, str) and not HASH_RE.fullmatch(event_payload):
-            status = "fail"
-            limitations = ["发送事件里的附件哈希不是完整 64 位十六进制"]
-        elif report_block.get("payloadFile") != f"payloads/{event_id}.md" or payload_path.is_symlink():
-            status, limitations = "insufficient", ["发送事件的附件路径缺失或不匹配当日附件，不能确认送达"]
-        elif not isinstance(send_receipt, dict):
-            status = "insufficient"
-            limitations = [f"发送记录存在、回执缺失（{send_receipt_error}）：无法证明实际送达"]
-        elif payload_file_sha is None:
-            status = "insufficient"
-            limitations = ["附件文件缺失，无法重算发送内容哈希"]
-        elif payload_checks is None:
-            status = "insufficient"
-            limitations = ["发送事件缺少附件哈希，无法与回执/文件三方核验"]
-        elif not all(payload_checks.values()):
-            status = "fail"
-            failed = "、".join(key for key, value in payload_checks.items() if not value)
-            limitations = [f"发送附件哈希与回执/事件/文件不一致（{failed}）"]
-        elif bytes_checks is None:
-            status = "insufficient"
-            limitations = ["发送事件缺少附件字节数，无法与回执/文件三方核验"]
-        elif not all(bytes_checks.values()):
-            status = "fail"
-            failed = "、".join(key for key, value in bytes_checks.items() if not value)
-            limitations = [f"发送附件字节数与回执/事件/文件不一致（{failed}）"]
-        elif result_presentation and not isinstance(event_source, str):
-            status = "insufficient"
-            limitations = ["结果版事件缺少来源报告哈希，无法核验来源绑定"]
-        elif isinstance(event_source, str) and source_checks is None:
-            status = "insufficient"
-            limitations = ["结果版事件缺少回执 sourceSha256：无法核验来源绑定"]
-        elif isinstance(event_source, str) and source_checks is not None \
-                and not all(source_checks.values()):
-            status = "fail"
-            failed = "、".join(key for key, value in source_checks.items() if not value)
-            limitations = [f"来源报告与回执/事件/密封件不一致（{failed}）"]
-        elif not isinstance(event_source, str) and event_payload != sealed_report:
-            status = "fail"
-            limitations = ["完整报告事件的附件哈希与密封报告重算值不一致"]
-        elif not isinstance(event_source, str) and "sourceSha256" in send_receipt \
-                and send_receipt["sourceSha256"] != sealed_report:
-            status = "fail"
-            limitations = ["完整报告回执所声明的来源哈希与密封报告不一致"]
-        else:
-            status = "pass"
-            limitations = ["平台回执含消息 ID，发送附件的哈希与字节数（及结果版来源报告）均三方一致；"
-                           "平台回执不代表用户已读"]
-        panel["layers"]["telegram"] = {
-            "status": status,
-            "evidence": {"outcome": outcome, "route": notification.get("route"),
-                         "messageId": platform_message_id,
-                         "receiptSource": receipt_source,
-                         "receiptReason": send_receipt_error,
-                         "platformConfirmedAt": (send_receipt or {}).get("confirmedAt"),
-                         "platformPayloadSha256": (send_receipt or {}).get("payloadSha256"),
-                         "platformSourceSha256": (send_receipt or {}).get("sourceSha256"),
-                         "eventPayloadSha256": event_payload,
-                         "eventPayloadBytes": event_payload_bytes,
-                         "eventSourceSha256": event_source,
-                         "recomputedPayloadSha256": payload_file_sha,
-                         "recomputedPayloadBytes": payload_file_bytes,
-                         "sealedReportSha256": sealed_report,
-                         "payloadChecks": payload_checks,
-                         "bytesChecks": bytes_checks,
-                         "sourceChecks": source_checks,
-                         "receiptSuccess": (receipt or {}).get("success"),
-                         # A validated send_receipt supersedes the old embedded
-                         # receipt parser's missing-id diagnostic. Preserve an
-                         # explicit embedded failure, which still blocks pass.
-                         "receiptError": (receipt_error if not isinstance(send_receipt, dict)
-                                          or receipt_failed else None)},
-            "limitations": limitations}
+    notify_root = project / "work/notifications"
+    payload_path = notify_root / "payloads" / f"astock-{date}-success-telegram-v1.md"
+    safe = not any((notify_root / relative).is_symlink()
+                   for relative in ("", "sent", "receipts", "receipts/send", "payloads"))
+    safe = safe and not payload_path.is_symlink()
+    payload_sha = sha256_file(payload_path) if safe else None
+    payload_bytes = payload_path.stat().st_size if payload_sha is not None else None
+    decision = contract.telegram_verdict(notification, send_receipt,
+        date=date, report_sha256=sealed_report, payload_sha256=payload_sha,
+        payload_bytes=payload_bytes, paths_safe=safe,
+        receipt_issue=f"receipt_{receipt_read_issue}" if receipt_read_issue else None)
+    panel["layers"]["telegram"] = {key: decision[key] for key in ("status", "evidence", "limitations")}
+    panel["layers"]["telegram"]["contractReason"] = decision["reason"]
+    if notification_issue not in (None, "missing"):
+        panel["layers"]["telegram"]["evidence"]["recordReadStatus"] = notification_issue
+        panel["layers"]["telegram"]["limitations"] = ["当日发送记录存在但不可读取或格式无效；无法确认实际发送或送达"]
 
     # --- relay：无内容哈希最高 insufficient
     relay, relay_issue = read_telegram_event(bus / "out" / "relay-delivery" / f"{date}.json")
@@ -1849,59 +1720,11 @@ def build_delivery(root: Path, exported: dt.datetime, today_panel: dict):
                          "sealedReportSha256": sealed_report},
             "limitations": []}
         entry = panel["layers"]["relay"]
-        # Split by evidence kind: a contradiction is a failure, missing or
-        # unusable evidence is insufficient. The receipt's as_of must match the
-        # data day independently bound to the sealed report's archived inputs;
-        # merely preceding (or equalling) the report date cannot prove identity.
-        # 同一对象原则：接收端返回的内容哈希只与**本次发送的字节**比较，
-        # 绝不拿它去比密封报告哈希。
-        payload_sha = relay.get("payload_sha256")
-        if relay_status in ("rejected", "failed", "error"):
-            entry["status"], entry["limitations"] = "fail", [f"relay 终态为 {relay_status}"]
-        elif relay_target not in (None, "") and relay_target != date:
-            entry["status"], entry["limitations"] = "fail", [
-                f"relay 记录日期 {relay_target} 与本次 {date} 不一致"]
-        elif relay_status == "accepted":
-            entry["status"], entry["limitations"] = "insufficient", [
-                "HTTP 已接受，但接收端未确认存储：不能据此判通过"]
-        elif relay_status != "confirmed" or relay_reason != "accepted":
-            entry["status"], entry["limitations"] = "insufficient", ["relay 终态未确认为 accepted"]
-        elif stored != "receiver_reported_stored":
-            entry["status"], entry["limitations"] = "insufficient", ["接收端未自报已存储"]
-        elif receiver_hash is None:
-            entry["status"], entry["limitations"] = "insufficient", [
-                "接收端未返回内容哈希；本地 report_sha256 不能自证送达"]
-        elif not isinstance(payload_sha, str) or not HASH_RE.fullmatch(payload_sha):
-            entry["status"], entry["limitations"] = "insufficient", [
-                "接收端返回了内容哈希，但本地没有保存发送字节哈希：无法与同一对象比较"]
-        elif receiver_hash != payload_sha:
-            entry["status"], entry["limitations"] = "fail", [
-                "接收端内容哈希与本次发送字节不一致（同一对象比较）"]
-        elif relay_target in (None, ""):
-            entry["status"], entry["limitations"] = "insufficient", ["relay 记录缺少 target_date"]
-        elif not is_iso_date(relay_as_of):
-            entry["status"], entry["limitations"] = "insufficient", [
-                "relay 的 as_of 缺失或不是有效日期"]
-        elif not isinstance(relay.get("receiver_record_id"), str) \
-                or not relay["receiver_record_id"].strip():
-            entry["status"], entry["limitations"] = "insufficient", ["接收端记录 ID 缺失"]
-        elif not isinstance(relay.get("report_sha256"), str):
-            entry["status"], entry["limitations"] = "insufficient", ["relay 缺少来源报告哈希"]
-        elif relay.get("report_sha256") != sealed_report:
-            entry["status"], entry["limitations"] = "fail", ["relay 来源报告哈希与本次密封报告不一致"]
-        elif relay.get("content_match") is not True:
-            entry["status"], entry["limitations"] = "insufficient", ["relay 未记录内容一致确认"]
-        elif expected_data_date is None:
-            entry["status"], entry["limitations"] = "insufficient", ["缺少独立且已绑定的期望数据日"]
-        elif is_iso_date(relay_target) and relay_as_of > relay_target:
-            entry["status"], entry["limitations"] = "fail", ["relay 数据日晚于报告日期，违反协议顺序"]
-        elif relay_as_of != expected_data_date:
-            entry["status"], entry["limitations"] = "fail", [
-                f"relay 数据日 {relay_as_of} 与独立封存的期望数据日 {expected_data_date} 不一致"]
-        else:
-            entry["status"], entry["limitations"] = "pass", [
-                "接收记录 ID、报告日/数据日和存储证据完整，内容哈希与实际发送字节一致；"
-                "一致性仅针对研究摘要，不代表完整 Markdown 附件送达"]
+        decision = contract.relay_verdict(relay, report_date=date,
+            report_sha256=sealed_report, data_date=expected_data_date)
+        entry["status"] = decision["status"]
+        entry["limitations"] = decision["limitations"]
+        entry["contractReason"] = decision["reason"]
     panel.update(report_freshness(project, date, exported, source_time, "delivery"))
     return panel
 
@@ -2208,11 +2031,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--allow-symlinked-ancestors", action="store_true",
                         help="local/dev only: permit a symlinked prefix above the output root")
     parser.add_argument("--now")
+    parser.add_argument("--delivery-contract-module", type=Path,
+                        help="Trusted code file; never a source-root evidence path")
     return parser
 
 
 def main(argv=None) -> int:
+    global DELIVERY_CONTRACT_PATH
     args = build_parser().parse_args(argv)
+    if args.delivery_contract_module is not None:
+        DELIVERY_CONTRACT_PATH = args.delivery_contract_module
     exported = now_cst(args.now)
     manifest = export_all(Path(args.source_root), Path(args.out), exported, Path(args.health_json),
                           Path(args.services_json) if args.services_json else None,

@@ -27,6 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import export_dashboard as exporter  # noqa: E402
+exporter.DELIVERY_CONTRACT_PATH = Path(os.environ.get("DELIVERY_CONTRACT_TEST_MODULE",
+    str(ROOT.parents[1] / "signal/scripts/delivery_evidence.py")))
 EVIDENCE = json.loads((ROOT.parent / "fixtures/gap_evidence_20260924.json").read_text(encoding="utf-8"))
 BRIDGE_EVIDENCE = json.loads((ROOT.parent / "fixtures/snapshot_diagnostic_chain.json")
                              .read_text(encoding="utf-8"))
@@ -583,7 +585,7 @@ class ExporterTests(unittest.TestCase):
             ("zone-less confirmedAt", {"confirmedAt": f"{DATE} 00:02"}, "receipt_confirmed_at_invalid"),
             ("non numeric message id", {"platformMessageId": "abc"}, "receipt_message_id_invalid"),
             ("zero message id", {"platformMessageId": "0"}, "receipt_message_id_invalid"),
-            ("wrong event", {"eventId": "astock-2026-09-09-success-telegram-v1"}, "receipt_event_mismatch"),
+            ("invalid event", {"eventId": "garbage"}, "receipt_event_mismatch"),
             ("wrong ack kind", {"ackKind": "hermes_cli_exit_0"}, "receipt_ack_kind_unknown"),
             ("bad payload hash", {"payloadSha256": "short"}, "receipt_payload_hash_invalid"),
             ("bad source hash", {"sourceSha256": "short"}, "receipt_source_hash_invalid"),
