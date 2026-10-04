@@ -1091,6 +1091,7 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
     # that Qlib alone establishes today's expected target.
     expected = None
     expected_evidence = expected_calendar = None
+    calendar_load_failed = False
     if calendar_project is not None:
         try:
             expected_evidence = _calendar_evidence.load_calendar_evidence(calendar_project, now)
@@ -1099,6 +1100,7 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
                         else expected_calendar["previousTradingDate"])
         except (ValueError, OSError, TypeError, KeyError):
             expected_evidence = expected_calendar = None
+            calendar_load_failed = True
             if now >= deadline:
                 issue("independent_expected_day_unavailable", dueDate=due_date.isoformat())
         else:
@@ -1211,7 +1213,23 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
                                    rows=core_rows if core_active else rows, stages=stage_rows, now=now,
                                    calendar=expected_calendar, evidence=expected_evidence, issues=issues,
                                    known_trading_dates=calendar_set)
+    # Supply-chain freshness is judged independently of whether today's
+    # snapshot is required: a verified holiday skip says nothing about whether
+    # the price library reached the last expected trading day.
+    if now < deadline or (calendar_project is None and not calendar_load_failed):
+        freshness_status = "not_evaluated"
+    elif expected is None:
+        freshness_status = "unknown"
+    else:
+        freshness_status = "current" if complete == expected else "stale"
+    supply_freshness = {
+        "schema": "research.supply-freshness.v1", "source": "qlib", "status": freshness_status,
+        "dueDate": due_date.isoformat(), "expectedTargetDate": expected, "actualTargetDate": complete,
+        "calendarStatus": expected_calendar["status"] if expected_calendar else None,
+        # None while today's snapshot verdict is still pending/insufficient.
+        "snapshotRequired": {"not_required": False, "pass": True, "fail": True}.get(decision["verification"]["status"])}
     return {"schemaVersion": 1, "generatedAt": now.isoformat(), "readOnly": True,
+            "supplyFreshness": supply_freshness,
             "activeContract": _core_contract.SCHEMA if core_active else _core_contract.LEGACY_SCHEMA,
             "effectiveTradeDate": effective, "contractPolicy": policy,
             "contractIntervals": _contract_selector.intervals(policy),

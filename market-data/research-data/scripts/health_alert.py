@@ -241,6 +241,43 @@ def _run_decision(data, generated):
             "contract": contract, "materialWarningCodes": list(check["materialWarningCodes"])}
 
 
+FRESHNESS_SCHEMA = "research.supply-freshness.v1"
+FRESHNESS_STATUSES = ("current", "stale", "unknown", "not_evaluated")
+
+
+def _supply_freshness(data):
+    """Validated supply-chain freshness, independent of the snapshot verdict.
+
+    Producers that predate the explicit field are read from their issue list.
+    Raises ValueError for a present but malformed field.
+    """
+    value = data.get("supplyFreshness")
+    if value is None:
+        for issue in data.get("issues") or []:
+            if not isinstance(issue, dict):
+                continue
+            if issue.get("code") == "qlib_not_current_for_expected_trading_day" and _iso_day(issue.get("expectedTarget")):
+                return {"status": "stale", "expectedTargetDate": issue["expectedTarget"],
+                        "actualTargetDate": issue.get("actualTarget") if _iso_day(issue.get("actualTarget")) else None,
+                        "dueDate": issue.get("dueDate") if _iso_day(issue.get("dueDate")) else None,
+                        "snapshotRequired": None, "derived": True}
+            if issue.get("code") == "independent_expected_day_unavailable" and _iso_day(issue.get("dueDate")):
+                return {"status": "unknown", "expectedTargetDate": None, "actualTargetDate": None,
+                        "dueDate": issue["dueDate"], "snapshotRequired": None, "derived": True}
+        return None
+    if (not isinstance(value, dict) or value.get("schema") != FRESHNESS_SCHEMA
+            or value.get("status") not in FRESHNESS_STATUSES or not _iso_day(value.get("dueDate"))
+            or (value.get("status") in ("current", "stale")
+                and not (_iso_day(value.get("expectedTargetDate")) and _iso_day(value.get("actualTargetDate"))))
+            or (value.get("status") == "stale" and value["expectedTargetDate"] == value["actualTargetDate"])
+            or (value.get("status") == "current" and value["expectedTargetDate"] != value["actualTargetDate"])
+            or (value.get("snapshotRequired") is not None and type(value.get("snapshotRequired")) is not bool)):
+        raise ValueError("invalid_supply_freshness")
+    return {"status": value["status"], "expectedTargetDate": value.get("expectedTargetDate"),
+            "actualTargetDate": value.get("actualTargetDate"), "dueDate": value["dueDate"],
+            "snapshotRequired": value["snapshotRequired"], "derived": False}
+
+
 def load_retained(path=None):
     """Return {'baseline': {code: set}, 'later': {code: set}} or None if unusable."""
     try:
@@ -343,6 +380,10 @@ def describe(path, now=None, max_age_hours=6.0, retained_path=None):
         result.update(stale=True, reason=result["reason"] or "health_generated_at_invalid")
         return result
     result["generatedAt"] = data["generatedAt"]
+    try:
+        result["supplyFreshness"] = _supply_freshness(data)
+    except (ValueError, TypeError, KeyError):
+        result["supplyFreshnessInvalid"] = True
     if "activeRunDecision" in data:
         # New producers own the current-run judgement. Do not independently
         # reinterpret their legacy run issues alongside the unique verdict.
@@ -392,6 +433,15 @@ def alert_atoms(info, unit_state, now=None):
         run = info.get("activeRunDecision")
         if isinstance(run, dict) and run.get("status") in ("fail", "insufficient"):
             atoms.add(f"active_run_{run['status']}|{run['scheduledDate']}")
+        # Keyed by the expected target, not the audit day: one stale price
+        # library over a multi-day holiday is one fault, not one per night.
+        fresh = info.get("supplyFreshness")
+        if isinstance(fresh, dict) and fresh.get("status") == "stale":
+            atoms.add(f"qlib_supply_stale|{fresh['expectedTargetDate']}")
+        elif isinstance(fresh, dict) and fresh.get("status") == "unknown":
+            atoms.add(f"qlib_supply_freshness_unknown|{fresh.get('dueDate') or day}")
+    if info.get("supplyFreshnessInvalid"):
+        atoms.add(f"audit_supply_freshness_invalid|{day}")
     if info.get("activeRunDecisionInvalid"):
         atoms.add(f"audit_run_decision_invalid|{day}")
     if status in ("missing", "unknown"):
@@ -576,6 +626,20 @@ def _run_line(info):
     return [f"当前运行核验：{run['status']}；计划日期 {run['scheduledDate']}；目标 {run['targetDate'] or '未记录'}{warning}"]
 
 
+def _freshness_line(info):
+    if info.get("supplyFreshnessInvalid"):
+        return ["供应链新鲜度：字段无效，待核；不据此确认价格库已更新。"]
+    fresh = info.get("supplyFreshness")
+    if not isinstance(fresh, dict) or fresh.get("status") == "not_evaluated":
+        return []
+    labels = {"current": "当前", "stale": "滞后", "unknown": "无法判定"}
+    detail = ""
+    if fresh.get("status") in ("current", "stale"):
+        detail = f"（应到 {fresh.get('expectedTargetDate')}，实际 {fresh.get('actualTargetDate') or '未知'}）"
+    snapshot = {True: "；快照：需运行", False: "；快照：休市无需运行"}.get(fresh.get("snapshotRequired"), "")
+    return [f"供应链新鲜度：{labels.get(fresh.get('status'), '无法判定')}{detail}{snapshot}"]
+
+
 def message(info, hostname="unknown", unit_state="unknown", now=None, entry_reason="scheduled_audit",
             decision=None):
     now = now or dt.datetime.now(CST)
@@ -590,6 +654,7 @@ def message(info, hostname="unknown", unit_state="unknown", now=None, entry_reas
         f"research-data 健康告警｜{now.astimezone(CST).strftime('%Y-%m-%d %H:%M:%S %Z')}",
         f"状态：{status}",
         *_run_line(info),
+        *_freshness_line(info),
         *_change_lines(decision),
         f"审计单元：{state}",
         f"触发：{entry}",
