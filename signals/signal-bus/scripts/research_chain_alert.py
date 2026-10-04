@@ -63,6 +63,10 @@ RELAY_LAST_RUN = (8, 10)
 WINDOW_END = (8, 14)
 IN_FLIGHT_SECONDS = 300
 MAX_ATTEMPTS = 2
+# A send that provably never started (no process spawned) reaches nobody, so it
+# is neither "uncertain" nor a definite delivery failure. Separately bounded.
+MAX_NOT_STARTED_ATTEMPTS = 6
+_LEGACY_NOT_STARTED_DETAILS = frozenset(("expected_chat_not_configured", "not_configured"))
 
 BENIGN_REASONS = {"delivery_busy", "already_confirmed"}
 HASH_RE = re.compile(r"[a-f0-9]{64}\Z")
@@ -72,7 +76,7 @@ class Sender:
     """Injected in tests. Real implementation queries the platform ack."""
 
     def send(self, message: str) -> tuple[str, str, dict]:  # pragma: no cover - exercised live
-        return "uncertain", "not_configured", {}
+        return "not_sent", "not_started:not_configured", {}
 
 
 class HermesSender(Sender):
@@ -84,18 +88,25 @@ class HermesSender(Sender):
 
     def send(self, message: str) -> tuple[str, str, dict]:
         if not EXPECTED_CHAT:
-            # Fail closed: without a configured target no ack can be validated.
-            return "uncertain", "expected_chat_not_configured", {}
+            # Without a configured target nothing is spawned: provably not sent.
+            return "not_sent", "not_started:expected_chat_not_configured", {}
         try:
-            result = subprocess.run(
+            proc = subprocess.Popen(
                 [str(self.python), "-m", "hermes_cli.main", "send", "--to", "telegram",
                  "--file", "-", "--json"],
-                input=message + "\n", capture_output=True, text=True, timeout=self.timeout, check=False)
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except OSError as exc:
+            # exec failed before the child ran: provably not sent.
+            return "not_sent", f"not_started:spawn_failed:{type(exc).__name__}", {}
+        try:
+            stdout, _ = proc.communicate(input=message + "\n", timeout=self.timeout)
         except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
             return "uncertain", "send_timeout", {"timeout": self.timeout}
         except OSError as exc:
-            return "uncertain", f"spawn_failed:{type(exc).__name__}", {}
-        return classify_send(result.returncode, result.stdout, EXPECTED_CHAT)
+            return "uncertain", f"io_failed:{type(exc).__name__}", {}
+        return classify_send(proc.returncode, stdout, EXPECTED_CHAT)
 
 
 def classify_send(returncode: int, output: str, expected_chat: str = "") -> tuple[str, str, dict]:
@@ -647,7 +658,21 @@ def process(incidents: list[dict], state_dir: Path, now: datetime, *, date: str,
         event = state.get("transition")
         legacy_attempts = (prior_incident or {}).get("attempts", [])
         all_attempts = list(legacy_attempts) + list((event or {}).get("attempts", []))
-        if any(attempt.get("outcome") in ("sending", "uncertain") for attempt in all_attempts):
+        reclassified = False
+        for attempt in all_attempts:
+            # Legacy states recorded pre-send configuration errors as uncertain.
+            detail = str(attempt.get("detail") or "")
+            if attempt.get("outcome") == "uncertain" and not attempt.get("evidence") and (
+                    detail in _LEGACY_NOT_STARTED_DETAILS or detail.startswith("spawn_failed:")):
+                attempt.update(outcome="failed", notStarted=True, reclassifiedFrom="uncertain",
+                               detail=f"not_started:{detail}")
+                reclassified = True
+        possibly_sent = any(attempt.get("outcome") in ("sending", "uncertain") for attempt in all_attempts)
+        if (reclassified and state.get("uncertainSend") and not possibly_sent
+                and not state.get("uncertainLedger")):
+            state["uncertainSend"] = False
+            summary["problems"].append("not_started_reclassified")
+        if possibly_sent:
             state["uncertainSend"] = True
         for attempt in all_attempts:
             if attempt.get("outcome") == "sending":
@@ -695,7 +720,10 @@ def process(incidents: list[dict], state_dir: Path, now: datetime, *, date: str,
             _save_state(path, state)
             return summary
         attempts = event["attempts"]
-        if any(attempt.get("outcome") == "confirmed" for attempt in attempts) or len(attempts) >= MAX_ATTEMPTS:
+        started = [attempt for attempt in attempts if not attempt.get("notStarted")]
+        not_started = len(attempts) - len(started)
+        if (any(attempt.get("outcome") == "confirmed" for attempt in attempts) or len(started) >= MAX_ATTEMPTS
+                or not_started >= MAX_NOT_STARTED_ATTEMPTS):
             summary["skipped"] = 1
             _save_state(path, state)
             _append_log(state_dir, {"at": now.isoformat(), "event": "unchanged_suppressed",
@@ -709,11 +737,16 @@ def process(incidents: list[dict], state_dir: Path, now: datetime, *, date: str,
         _save_state(path, state)
         try:
             outcome, detail, extra = getattr(sender, "send", sender)(_message(message_item))
-            if outcome not in ("confirmed", "failed", "uncertain"):
+            if outcome not in ("confirmed", "failed", "uncertain", "not_sent"):
                 outcome, detail, extra = "uncertain", "invalid_sender_outcome", {}
         except Exception:
             outcome, detail, extra = "uncertain", "sender_result_unknown", {}
-        event["attempts"][-1].update(outcome=outcome, detail=detail, evidence=extra)
+        if outcome == "not_sent":
+            # Stored with the existing schema ("failed") so older readers stay valid.
+            event["attempts"][-1].update(outcome="failed", notStarted=True, detail=detail, evidence=extra)
+            outcome = "failed"
+        else:
+            event["attempts"][-1].update(outcome=outcome, detail=detail, evidence=extra)
         if state.get("incident") is not None:
             state["incident"]["attempts"] = event["attempts"]
         if outcome == "confirmed":
@@ -721,9 +754,12 @@ def process(incidents: list[dict], state_dir: Path, now: datetime, *, date: str,
             if state.get("incident") is not None:
                 state["incident"]["notified_at"] = now.isoformat()
         else:
-            summary["problems"].append(f"send_{outcome}")
+            summary["problems"].append("send_not_started" if event["attempts"][-1].get("notStarted")
+                                       else f"send_{outcome}")
             if outcome == "uncertain":
                 state["uncertainSend"] = True
+                state["uncertainLedger"] = list(state.get("uncertainLedger") or []) + [
+                    {"at": now.isoformat(), "detail": detail, "fingerprint": event["fingerprint"]}]
         _save_state(path, state)
         _append_log(state_dir, {"at": now.isoformat(), "event": "send", "outcome": outcome,
                                 "detail": detail, "key": message_item["key"], "fingerprint": event["fingerprint"]})

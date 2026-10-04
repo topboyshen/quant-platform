@@ -211,12 +211,12 @@ class FakeSenderIntegrationTests(unittest.TestCase):
         self.assertIn("研究链路告警", self.sent[0])
         self.assertNotIn("演练", self.sent[0])
 
-    def test_unconfigured_target_stays_uncertain_and_does_not_call_platform(self):
+    def test_unconfigured_target_is_not_sent_and_does_not_call_platform(self):
         rca.EXPECTED_CHAT = ""
         sender = self.original_sender()
         outcome, detail, extra = sender.send("should not go out")
-        self.assertEqual(outcome, "uncertain")
-        self.assertEqual(detail, "expected_chat_not_configured")
+        self.assertEqual(outcome, "not_sent")
+        self.assertEqual(detail, "not_started:expected_chat_not_configured")
         self.assertEqual(self.sent, [])
         self.assertEqual(extra, {})
 

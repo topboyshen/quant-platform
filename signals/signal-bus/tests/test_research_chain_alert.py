@@ -114,12 +114,14 @@ class ConfirmationTests(unittest.TestCase):
         try:
             rca.EXPECTED_CHAT = ""
             calls = []
-            real_run = rca.subprocess.run
-            rca.subprocess.run = lambda *a, **k: calls.append(a) or (_ for _ in ()).throw(AssertionError("spawned"))
+            real_run, real_popen = rca.subprocess.run, rca.subprocess.Popen
+            spawn = lambda *a, **k: calls.append(a) or (_ for _ in ()).throw(AssertionError("spawned"))
+            rca.subprocess.run = rca.subprocess.Popen = spawn
             outcome = rca.HermesSender().send("message")
-            rca.subprocess.run = real_run
-            self.assertEqual(outcome[0], "uncertain")
-            self.assertEqual(outcome[1], "expected_chat_not_configured")
+            rca.subprocess.run, rca.subprocess.Popen = real_run, real_popen
+            # Nothing was spawned, so this is provably not sent (not "uncertain").
+            self.assertEqual(outcome[0], "not_sent")
+            self.assertEqual(outcome[1], "not_started:expected_chat_not_configured")
             self.assertEqual(calls, [])
         finally:
             rca.EXPECTED_CHAT = original
