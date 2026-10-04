@@ -117,6 +117,55 @@ def read_file(path, limit=4 * 1024 * 1024, private=False):
         return raw
 
 
+# Exact producer exceptions to the ten-day historical tail-gap claim bound.
+# Mirrors qlib_dolt_incremental run.TailGapException (record pinned by SHA-256,
+# exchange suspension 2026-08-31..2026-09-29 per SZSE announcements 2026-089 and
+# 2026-097). Any other long tail gap, or a near match, is still rejected.
+QLIB_TAIL_GAP_EXCEPTIONS = {
+    "qlib-tail-gap-SZ301139-20260831-v1": {
+        "symbol": "SZ301139",
+        "recordSha256": "3ed73aa02e5f207eedc250c41cd6a6964d9ac72d9143080e11bfa481984afbb2",
+        "lastStoredDate": "2026-08-28",
+        "resumeDate": "2026-09-30",
+        "gapDates": (
+            "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-07",
+            "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-14", "2026-09-15",
+            "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23",
+            "2026-09-24", "2026-09-28", "2026-09-29",
+        ),
+        "resumeRowSha256": "b41cd898ded75dc783e4e71c2baee482642bf6d83a64c846fbe3b6385aacedb1",
+        "lastStoredRowSha256": "cbb9686194d6f788a04ebff79aafe611e973d07eb859c34e37c3a2df5d513eaf",
+        "officialEvidenceSha256": ("eb93005104bd94d8896c4c4fcb27ecbd4478ba6d7c4b3a03b134a586aadc50d6", "cef3ef06550bf6e942a29ee39bf4f11b91dc8b6b8e228ba3c5cb0b91285e4aae"),
+        "meaning": "exchange_announced_full_day_suspension_source_absent_nan_slots_no_prices_fabricated",
+    },
+}
+
+
+def tail_gap_exception(document, gaps, missing, last_quotes):
+    """Authorize a >10-day tail gap only for an exact allowlisted, exercised claim."""
+    claim = document.get("historicalTailGapException")
+    if claim is None:
+        return {}
+    keys = {"policyId", "recordSha256", "symbol", "lastStoredDate", "gapDates", "resumeDate", "sourceCommit",
+            "resumeRowSha256", "lastStoredRowSha256", "officialEvidenceSha256", "meaning"}
+    if not isinstance(claim, dict) or set(claim) != keys or claim["policyId"] not in QLIB_TAIL_GAP_EXCEPTIONS:
+        raise EvidenceError("incremental_tail_gap_exception_invalid")
+    expected = QLIB_TAIL_GAP_EXCEPTIONS[claim["policyId"]]
+    symbol, dates = claim["symbol"], claim["gapDates"]
+    if (any(claim[key] != expected[key] for key in ("symbol", "recordSha256", "lastStoredDate", "resumeDate",
+                                                    "resumeRowSha256", "lastStoredRowSha256", "meaning"))
+            or dates != list(expected["gapDates"])
+            or claim["officialEvidenceSha256"] != list(expected["officialEvidenceSha256"])
+            or claim["sourceCommit"] != document["sourceCommit"]
+            or document["baseDate"] != dates[-1]
+            or claim["resumeDate"] not in document["calendarAdded"]
+            or gaps.get(symbol) != dates
+            or not set(dates) <= set(missing.get(symbol, []))
+            or not isinstance(last_quotes.get(symbol), str) or last_quotes[symbol] < claim["resumeDate"]):
+        raise EvidenceError("incremental_tail_gap_exception_invalid")
+    return {symbol: list(dates)}
+
+
 def incremental_quality(document):
     """Validate producer claims and their arithmetic, not underlying market rows."""
     absence, price = document["sourceAbsence"], document["priceValidation"]
@@ -155,9 +204,11 @@ def incremental_quality(document):
     gaps = price["historical_tail_gaps"]
     if not isinstance(gaps, dict):
         raise EvidenceError("incremental_historical_tail_claim_invalid")
+    allowed_long = tail_gap_exception(document, gaps, missing, price["lastQuotedDate"])
     for symbol, dates in gaps.items():
         if (not isinstance(symbol, str) or re.fullmatch(r"(?:SH|SZ|BJ)[0-9]{6}", symbol) is None
-                or not isinstance(dates, list) or not 1 <= len(dates) <= 10):
+                or not isinstance(dates, list)
+                or not (1 <= len(dates) <= 10 or (len(dates) > 10 and allowed_long.get(symbol) == dates))):
             raise EvidenceError("incremental_historical_tail_claim_invalid")
         for day in dates:
             iso_date(day)

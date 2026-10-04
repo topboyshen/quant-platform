@@ -531,5 +531,91 @@ class IncrementalQlibTests(unittest.TestCase):
             health.qlib_evidence(self.root)
 
 
+class TailGapExceptionTests(unittest.TestCase):
+    """SZ301139 21-day exchange suspension: exact allowlisted claim only."""
+
+    GAP = list(health.QLIB_TAIL_GAP_EXCEPTIONS["qlib-tail-gap-SZ301139-20260831-v1"]["gapDates"])
+    write = IncrementalQlibTests.write
+    features = IncrementalQlibTests.features
+
+    def setUp(self):
+        IncrementalQlibTests.setUp(self)
+        self.days = ["2026-08-27", "2026-08-28"] + self.GAP + ["2026-09-30"]
+        (self.root / "calendars/day.txt").write_text("\n".join(self.days) + "\n")
+        for symbol in health.REFERENCES:
+            self.features(symbol, len(self.days))
+        expected = health.QLIB_TAIL_GAP_EXCEPTIONS["qlib-tail-gap-SZ301139-20260831-v1"]
+        document = copy.deepcopy(self.document)
+        document.update(baseDate="2026-09-29", targetDate="2026-09-30", calendarAdded=["2026-09-30"])
+        absence = {"SZ301139": list(self.GAP)}
+        document["sourceAbsence"]["dates"] = absence
+        document["priceValidation"] = price_claim(["2026-09-30"], absence,
+            {"2026-09-30": {"SZ301139": ["prior_close_source_absent"]}},
+            {"SZ301139": "2026-09-30"}, gaps={"SZ301139": list(self.GAP)})
+        document["legacyUnquotedCSI"] = dict(legacy_claim(["2026-09-30"]), baseDate="2026-09-29")
+        document["indexPriceValidation"] = dict(index_claim("2026-09-30"), legacyUnquotedBaseDate="2026-09-29")
+        document["historicalTailGapException"] = {
+            "policyId": "qlib-tail-gap-SZ301139-20260831-v1", "recordSha256": expected["recordSha256"],
+            "symbol": "SZ301139", "lastStoredDate": "2026-08-28", "gapDates": list(self.GAP),
+            "resumeDate": "2026-09-30", "sourceCommit": document["sourceCommit"],
+            "resumeRowSha256": expected["resumeRowSha256"], "lastStoredRowSha256": expected["lastStoredRowSha256"],
+            "officialEvidenceSha256": list(expected["officialEvidenceSha256"]), "meaning": expected["meaning"]}
+        self.document = document
+        self.write()
+
+    def test_exact_exception_accepted_and_reported_partial(self):
+        _, complete, gen = health.qlib_evidence(self.root)
+        self.assertEqual(complete, "2026-09-30")
+        quality = gen[3][9]
+        self.assertEqual(quality["status"], "partial")
+        self.assertEqual(quality["historicalTailGaps"], {"SZ301139": self.GAP})
+
+    def test_same_long_gap_without_exception_still_rejected(self):
+        document = copy.deepcopy(self.document)
+        document.pop("historicalTailGapException")
+        self.write(document)
+        with self.assertRaisesRegex(health.EvidenceError, "historical_tail_claim_invalid"):
+            health.qlib_evidence(self.root)
+
+    def test_altered_or_stale_exception_rejected(self):
+        changes = [("recordSha256", "0" * 64), ("gapDates", self.GAP[1:]), ("resumeDate", "2026-10-08"),
+                   ("sourceCommit", "0" * 32), ("symbol", "SZ301266"), ("policyId", "other"),
+                   ("resumeRowSha256", "0" * 64), ("officialEvidenceSha256", [])]
+        for key, value in changes:
+            with self.subTest(key=key):
+                document = copy.deepcopy(self.document)
+                document["historicalTailGapException"][key] = value
+                self.write(document)
+                with self.assertRaisesRegex(health.EvidenceError, "tail_gap_exception_invalid"):
+                    health.qlib_evidence(self.root)
+        document = copy.deepcopy(self.document)
+        document["historicalTailGapException"]["extra"] = True
+        self.write(document)
+        with self.assertRaisesRegex(health.EvidenceError, "tail_gap_exception_invalid"):
+            health.qlib_evidence(self.root)
+        # Stale reuse: claim present but the generation has no such long gap.
+        document = copy.deepcopy(self.document)
+        document["priceValidation"]["historical_tail_gaps"] = {}
+        self.write(document)
+        with self.assertRaisesRegex(health.EvidenceError, "tail_gap_exception_invalid"):
+            health.qlib_evidence(self.root)
+
+    def test_exception_does_not_cover_another_long_gap(self):
+        document = copy.deepcopy(self.document)
+        other = self.GAP[-11:]
+        document["sourceAbsence"]["dates"]["SZ301266"] = other
+        price = document["priceValidation"]
+        price["sourceAbsentDates"]["SZ301266"] = other
+        price["lastQuotedDate"]["SZ301266"] = "2026-09-30"
+        price["historical_tail_gaps"]["SZ301266"] = other
+        for row in [price] + price["daily_coverage"]:
+            row["invalid_symbols"] = sorted(row["invalid_symbols"] + ["SZ301266"])
+            row["invalid_reasons"]["SZ301266"] = ["prior_close_source_absent"]
+            row["invalid"] += 1; row["valid"] -= 1; row["coverage"] = row["valid"] / row["eligible"]
+        self.write(document)
+        with self.assertRaisesRegex(health.EvidenceError, "historical_tail_claim_invalid"):
+            health.qlib_evidence(self.root)
+
+
 if __name__ == "__main__":
     unittest.main()
