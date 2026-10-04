@@ -200,7 +200,10 @@ class RelayTests(unittest.TestCase):
     def test_legacy_confirmation_is_not_reissued_when_the_research_seal_appears(self):
         """Legacy confirms first; the later research seal must not resend or overwrite."""
         self.config()
-        sender = Mock(return_value={"status": "confirmed", "reason": "accepted"})
+        sender = Mock(return_value={"status": "confirmed", "reason": "accepted",
+                                    "receiver_storage": "receiver_reported_stored", "payload_sha256": "c" * 64,
+                                    "receiver_content_sha256": "c" * 64, "receiver_record_id": "rec-1",
+                                    "content_match": True})
         self.assertEqual(self.execute(sender=sender)["status"], "confirmed")
         state_path = self.bus / f"out/relay-delivery/{DAY}.json"
         before = state_path.read_bytes()
@@ -598,7 +601,10 @@ class RelayTests(unittest.TestCase):
 
     def test_confirmed_delivery_deduplicated(self):
         self.config()
-        sender = Mock(return_value={"status": "confirmed", "reason": "accepted"})
+        sender = Mock(return_value={"status": "confirmed", "reason": "accepted",
+                                    "receiver_storage": "receiver_reported_stored", "payload_sha256": "c" * 64,
+                                    "receiver_content_sha256": "c" * 64, "receiver_record_id": "rec-1",
+                                    "content_match": True})
         self.assertEqual(self.execute(sender=sender)["status"], "confirmed")
         self.assertEqual(self.execute(sender=sender)["status"], "already_confirmed")
         self.assertEqual(sender.call_count, 1)
@@ -1025,10 +1031,12 @@ class RelayTests(unittest.TestCase):
         legacy_sender = Mock(return_value={"status": "confirmed", "reason": "accepted",
                                            "ack_scope": "http_accepted",
                                            "receiver_storage": "not_in_acknowledgement"})
-        self.assertEqual(self.execute(sender=legacy_sender)["status"], "confirmed")
-        # 旧记录：状态仍是 confirmed，再跑一次只回显，不重发、不改写状态。
+        # 无存储证据的“confirmed”只能是已发出但未证实，不能报告为已确认。
+        self.assertEqual(self.execute(sender=legacy_sender)["status"], "confirmed_unverified")
+        # 旧记录：状态仍是 confirmed，再跑一次只回显，不重发、不改写状态，也不冒充已确认。
         again = self.execute(sender=legacy_sender)
-        self.assertEqual(again["status"], "already_confirmed")
+        self.assertEqual(again["status"], "already_recorded_unverified")
+        self.assertFalse(again["confirmed"])
         self.assertEqual(again["sent"], 0)
         self.assertEqual(legacy_sender.call_count, 1)
         state = json.loads((self.bus / f"out/relay-delivery/{DAY}.json").read_text())

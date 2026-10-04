@@ -71,6 +71,7 @@ case "$r_status" in
     echo "research_relay unresolved_result; triggering unified alert"
     case "$r_status" in
       rejected|not_sent|failed|already_failed|ambiguous|accepted|already_accepted) alert_status="$r_status" ;;
+      already_recorded_unverified|confirmed_unverified) alert_status="unverified" ;;
       *) alert_status="unknown" ;;
     esac
     "$PYTHON" -B "$ALERT" --phase post --relay-status "$alert_status" --json || true

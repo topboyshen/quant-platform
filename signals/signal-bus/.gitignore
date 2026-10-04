@@ -59,3 +59,4 @@ systemd/astock-research-seal.service.d/*
 tests/fixtures/*
 !tests/fixtures/research_contract_3fafc74e.py
 !tests/fixtures/RECEIVER_IDENTITY.json
+!tests/test_relay_confirmation_split.py

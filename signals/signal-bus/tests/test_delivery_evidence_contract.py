@@ -193,7 +193,9 @@ class SharedDeliveryContractTests(unittest.TestCase):
             result = relay.run_relay(project_root=self.project, bus_root=self.root / "signal-bus",
                 now=dt.datetime(2026, 9, 21, 8, 5, tzinfo=relay.SHANGHAI),
                 sender=lambda *a: self.fail("old confirmed record must suppress sending"))
-        self.assertEqual(result["status"], "already_confirmed", result)
+        # Suppressed (no resend) but NOT reported as confirmed: proof is incomplete.
+        self.assertEqual(result["status"], "already_recorded_unverified", result)
+        self.assertFalse(result["confirmed"])
         self.assertEqual(result["sent"], 0)
         self.assertEqual(self.relay_path.read_bytes(), before)
         with patch.object(relay, "_DELIVERY", None), \
@@ -202,7 +204,8 @@ class SharedDeliveryContractTests(unittest.TestCase):
             result = relay.run_relay(project_root=self.project, bus_root=self.root / "signal-bus",
                 now=dt.datetime(2026, 9, 21, 8, 5, tzinfo=relay.SHANGHAI),
                 sender=lambda *a: self.fail("missing proof code must not authorize a resend"))
-        self.assertEqual(result["status"], "already_confirmed", result)
+        self.assertEqual(result["status"], "already_recorded_unverified", result)
+        self.assertEqual(result["reason"], "delivery_contract_unavailable")
         self.assertEqual(result["sent"], 0)
         self.assertEqual(self.relay_path.read_bytes(), before)
         self.assertEqual(self.layer("relay")["status"], "insufficient")

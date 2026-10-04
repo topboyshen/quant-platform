@@ -117,6 +117,30 @@ def local_delivery_is_confirmed(record, **expected):
     return result["status"] == "pass", result["state"], result["evidence"]
 
 
+# Statuses that prove a POST may have reached (or did reach) the receiver.
+_SUPPRESSING = frozenset(("sending", "ambiguous", "confirmed", "accepted", "failed", "rejected"))
+
+
+def relay_delivery_decision(record, **expected):
+    """The single relay decision shared by every entry point.
+
+    Two independent answers:
+    - ``doNotResend``: idempotency hold. Any record that may have reached the
+      receiver suppresses a new POST, whatever its proof quality.
+    - ``evidenceConfirmed``: only a full ``relay_verdict`` pass (receiver id,
+      stored, matching hashes, bound source and dates).
+    A record that merely *says* confirmed is never reported as confirmed.
+    Ambiguous/sending states never auto-resend; they need manual review.
+    """
+    proof = relay_verdict(record, **expected)
+    status = record.get("status") if isinstance(record, dict) else None
+    return {"doNotResend": status in _SUPPRESSING,
+            "manualReviewRequired": status in ("sending", "ambiguous"),
+            "recordedStatus": status,
+            "evidenceConfirmed": proof["status"] == "pass",
+            "proof": proof}
+
+
 def validate_send_receipt(record, date):
     if not isinstance(record, dict):
         return None, "receipt_not_object"

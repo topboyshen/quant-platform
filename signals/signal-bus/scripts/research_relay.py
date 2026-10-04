@@ -156,6 +156,26 @@ def local_delivery_is_confirmed(record, **expected):
     return _DELIVERY.local_delivery_is_confirmed(record, **expected)
 
 
+def delivery_decision(record, **expected):
+    """Shared resend-hold vs evidence decision; fails toward hold + unconfirmed."""
+    if _DELIVERY is None or not callable(getattr(_DELIVERY, "relay_delivery_decision", None)):
+        status = record.get("status") if isinstance(record, dict) else None
+        return {"doNotResend": isinstance(record, dict) and status != "not_sent",
+                "manualReviewRequired": status in ("sending", "ambiguous"), "recordedStatus": status,
+                "evidenceConfirmed": False,
+                "proof": {"status": "insufficient", "reason": "delivery_contract_unavailable", "state": "unverified"}}
+    return _DELIVERY.relay_delivery_decision(record, **expected)
+
+
+def _expected_proof(prepared):
+    kind = prepared.get("kind", "research")
+    if kind == "skip":
+        return {"report_date": prepared["target_date"], "payload_kind": "skip",
+                "skip_sha256": prepared["proof"]["skip_sha256"], "data_date": prepared["as_of"]}
+    return {"report_date": prepared["target_date"], "report_sha256": prepared["proof"]["report_sha256"],
+            "data_date": prepared["as_of"]}
+
+
 def sha256(body):
     return hashlib.sha256(body).hexdigest()
 
@@ -1239,8 +1259,14 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
                     hold("same_day_contract_kind_changed")
                 if existing.get(identity_key) != prepared["proof"][identity_key]:
                     hold("same_day_report_changed")
+                decision = delivery_decision(existing, **_expected_proof(prepared))
                 if existing["status"] == "confirmed":
-                    return {"status": "already_confirmed", **public, "sent": 0, "confirmed": True}
+                    if decision["evidenceConfirmed"]:
+                        return {"status": "already_confirmed", **public, "sent": 0, "confirmed": True}
+                    # Recorded as confirmed but the proof is incomplete or conflicting:
+                    # never resend, never report as confirmed.
+                    return {"status": "already_recorded_unverified", **public, "sent": 0, "confirmed": False,
+                            "reason": decision["proof"]["reason"], "evidence_state": decision["proof"]["state"]}
                 if existing["status"] == "rejected":
                     echo = {"status": "already_rejected", **public, "sent": 0,
                             "confirmed": False, "reason": existing.get("reason")}
@@ -1274,6 +1300,12 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
                             upgraded["stored_at"] = probed["stored_at"]
                         if "ack_scope" not in upgraded:
                             upgraded["ack_scope"] = "http_accepted"
+                        upgrade_decision = delivery_decision(upgraded, **_expected_proof(prepared))
+                        if not upgrade_decision["evidenceConfirmed"]:
+                            # The query answer does not bind to this record: keep it accepted.
+                            return {"status": "already_accepted", **public, "sent": 0, "confirmed": False,
+                                    "reason": existing.get("reason"), "query": "unverified",
+                                    "query_reason": upgrade_decision["proof"]["reason"]}
                         _write_state(directory, target, upgraded)
                         echo = {"status": "confirmed_from_query", **public, "sent": 0,
                                 "confirmed": True, "confirmed_via": "read_only_query",
@@ -1343,8 +1375,15 @@ def run_relay(project_root=PROJECT_ROOT, bus_root=BUS_ROOT, now=None, dry_run=Fa
                 if key in result:
                     record[key] = result[key]
             _write_state(directory, target, record)
+            send_decision = delivery_decision(record, **_expected_proof(prepared))
+            if status == "confirmed" and not send_decision["evidenceConfirmed"]:
+                # Delivered once (do not resend) but not proven; report it as such.
+                status = "confirmed_unverified"
             outcome = {"status": status, "reason": reason, **public,
-                       "sent": int(status == "confirmed"), "confirmed": status == "confirmed"}
+                       "sent": int(status in ("confirmed", "confirmed_unverified")),
+                       "confirmed": status == "confirmed"}
+            if status == "confirmed_unverified":
+                outcome["evidence_reason"] = send_decision["proof"]["reason"]
             if "ack_scope" in record:
                 outcome["ack_scope"] = record["ack_scope"]
             if "receiver_storage" in record:
@@ -1387,6 +1426,7 @@ acknowledgement_content_hash_invalid delivery_busy already_confirmed already_acc
 already_failed already_rejected already_not_sent read_only_query receiver_data_date_incompatible
 """.split())
 ATTEMPT_STATUSES = frozenset(("held", "skipped", "confirmed", "accepted", "failed", "ambiguous",
+                              "already_recorded_unverified", "confirmed_unverified",
                               "not_sent", "rejected", "already_confirmed", "already_accepted",
                               "already_failed", "already_rejected", "already_not_sent"))
 

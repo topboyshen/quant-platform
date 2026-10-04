@@ -424,7 +424,8 @@ def classify(facts: dict) -> list[dict]:
         if run["status"] in ("held", "rejected", "not_sent", "failed", "already_failed") and reason not in BENIGN_REASONS:
             add("relay_blocked", f"relay 结果 status={run['status']} reason={reason or 'unparseable_output'}；"
                                  f"投递状态：{wording}。", reason or "unparseable_output")
-        elif run["status"] in ("ambiguous", "accepted", "already_accepted", "unknown"):
+        elif run["status"] in ("ambiguous", "accepted", "already_accepted", "unverified",
+                               "already_recorded_unverified", "confirmed_unverified", "unknown"):
             add("relay_unconfirmed", f"relay 结果未确认：status={run['status']} reason={reason or 'unknown'}；{wording}。",
                 reason or "unknown")
     if not relay_ok and isinstance(facts["delivery"], dict):
@@ -751,7 +752,8 @@ def main(argv=None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--relay-status", choices=("held", "rejected", "not_sent", "failed", "already_failed",
-                                                   "ambiguous", "accepted", "already_accepted", "unknown"))
+                                                   "ambiguous", "accepted", "already_accepted", "unverified",
+                                                   "unknown"))
     parser.add_argument("--state-dir", type=Path, default=STATE_DIR)
     args = parser.parse_args(argv)
     now = datetime.fromisoformat(args.now).astimezone(TZ) if args.now else datetime.now(TZ)
