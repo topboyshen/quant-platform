@@ -78,12 +78,14 @@ class QlibMarketJsonTests(unittest.TestCase):
                     "high": np.array([10.0, 11.0], dtype=np.float32),
                     "low": np.array([10.0, 10.5], dtype=np.float32),
                     "amount": np.array([1000.0, 2000.0], dtype=np.float32),
+                    "factor": np.array([1.0, 1.0], dtype=np.float32),
                 },
                 "sh600001": {
                     "close": np.array([10.0, 9.0], dtype=np.float32),
                     "high": np.array([10.0, 9.5], dtype=np.float32),
                     "low": np.array([10.0, 9.0], dtype=np.float32),
                     "amount": np.array([3000.0, 4000.0], dtype=np.float32),
+                    "factor": np.array([1.0, 1.0], dtype=np.float32),
                 },
             }
 

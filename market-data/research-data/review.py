@@ -21,7 +21,7 @@ def show_core(record):
     _show_breadth(q["breadth"])
     coverage = q["coverage"]
     print(f"有效报价 {coverage['valid']}/{coverage['eligible']}，缺失 {coverage['invalid']}")
-    print(f"涨停 {q.get('limitUpCount', '未提供')}  跌停 {q.get('limitDownCount', '未提供')}")
+    print(f"涨停 {q.get('limitUpCount', '未提供')}  跌停 {q.get('limitDownCount', '未提供')}{_limit_note(q)}")
     print("研究附录未请求：不提供每日新闻、公告、资金流、板块或估值归档。")
 
 
@@ -58,6 +58,15 @@ def _f(v):
         return float(v)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _limit_note(q):
+    status = q.get("limitStatus")
+    if not isinstance(status, dict):
+        return "（旧口径，未核对原始价与板块规则）"
+    if status.get("complete"):
+        return ""
+    return f"（下限值：另有 {status.get('unverified', '?')} 只无法核实，不计入）"
 
 
 def _show_breadth(b):
@@ -269,7 +278,7 @@ def show_historical(d):
     l = d.get("lhb", {})
     print(f"=== A股每日复盘 {q['date']} (历史) ===")
     _show_breadth(q["breadth"])
-    print(f"涨停 {q['limitUpCount']}  跌停 {q['limitDownCount']}")
+    print(f"涨停 {q['limitUpCount']}  跌停 {q['limitDownCount']}{_limit_note(q)}")
     print()
     _show_limitup(q["limitUp"], "涨停梯队(连板)")
     print("【领涨】", [(x["sym"], x["chg"]) for x in q["topGainers"][:5]])
