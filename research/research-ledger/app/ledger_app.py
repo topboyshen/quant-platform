@@ -134,6 +134,20 @@ def require_admin(conn: psycopg.Connection, token: str | None) -> dict[str, Any]
     return require_capability(conn, token, "ADMIN")
 
 
+def bind_capability_actor(cap: dict[str, Any], claimed_actor: str | None) -> str:
+    """Return the identity bound to a verified capability.
+
+    The recorded actor is always the capability's actor_id. A client-supplied
+    identity is only accepted when it is identical; anything else is a forgery.
+    """
+    actor = cap.get("actor_id")
+    if not isinstance(actor, str) or not actor.strip():
+        raise PermissionError("capability has no bound identity")
+    if claimed_actor is not None and claimed_actor != actor:
+        raise PermissionError("claimed identity does not match capability")
+    return actor
+
+
 def create_case(conn: psycopg.Connection, title: str, classification: str, actor: str, data_cutoff: str | None = None) -> uuid.UUID:
     if classification not in {"FACT", "INFERENCE", "SCENARIO", "MIXED", "RETROSPECTIVE_EXTRACTED"}:
         raise ValueError("invalid classification")
@@ -163,10 +177,10 @@ def create_review_round(conn: psycopg.Connection, case_id: uuid.UUID, deadline_a
     return round_id
 
 
-def submit_review(conn: psycopg.Connection, token: str, round_id: uuid.UUID, role: str, content_hash: str, actor: str, classification: str = "MIXED") -> uuid.UUID:
+def submit_review(conn: psycopg.Connection, token: str, round_id: uuid.UUID, role: str, content_hash: str, actor: str | None = None, classification: str = "MIXED") -> uuid.UUID:
     if role not in {"BULL", "BEAR", "FORENSIC_FINANCE", "INDUSTRY", "SOURCE_AUDIT", "RISK_OFFICER"}:
         raise ValueError("invalid review role")
-    require_capability(conn, token, role, round_id)
+    actor = bind_capability_actor(require_capability(conn, token, role, round_id), actor)
     round_row = conn.execute("SELECT status,deadline_at FROM ledger.review_round WHERE round_id=%s", (round_id,)).fetchone()
     if not round_row or round_row["status"] != "BLIND" or round_row["deadline_at"] <= now_utc():
         raise ValueError("review round is not accepting blinded submissions")
@@ -198,8 +212,8 @@ def list_visible_reviews(conn: psycopg.Connection, token: str, round_id: uuid.UU
     return list(conn.execute("SELECT submission_id,round_id,role_name,actor_id,classification,content_hash,submitted_at FROM ledger.review_submission WHERE round_id=%s ORDER BY role_name", (round_id,)).fetchall())
 
 
-def risk_veto(conn: psycopg.Connection, token: str, round_id: uuid.UUID, reason_hash: str, actor: str, evidence_gap_code: str = "EVIDENCE_INSUFFICIENT") -> uuid.UUID:
-    require_capability(conn, token, "RISK_OFFICER", round_id)
+def risk_veto(conn: psycopg.Connection, token: str, round_id: uuid.UUID, reason_hash: str, actor: str | None = None, evidence_gap_code: str = "EVIDENCE_INSUFFICIENT") -> uuid.UUID:
+    actor = bind_capability_actor(require_capability(conn, token, "RISK_OFFICER", round_id), actor)
     row = conn.execute("SELECT case_id,status FROM ledger.review_round WHERE round_id=%s", (round_id,)).fetchone()
     if not row or row["status"] != "BLIND":
         raise ValueError("risk veto requires active blinded round")
@@ -988,14 +1002,44 @@ def ingest_daily_candidate_submission(conn: psycopg.Connection, token: str | Non
     return {"run_id": str(run_id), "candidate_count": len(candidates), "idempotent_replay": False}
 
 
+MAX_REQUEST_BODY = 131072
+
+
+class RequestBodyRejected(ValueError):
+    def __init__(self, status: HTTPStatus, reason: str) -> None:
+        super().__init__(reason)
+        self.status = status
+
+
+def parse_content_length(headers: Any, limit: int = MAX_REQUEST_BODY) -> int:
+    """Strict Content-Length: ASCII digits only, single value, 0..limit."""
+    if headers.get("Transfer-Encoding") is not None:
+        raise RequestBodyRejected(HTTPStatus.BAD_REQUEST, "transfer-encoding not supported")
+    values = headers.get_all("Content-Length") if hasattr(headers, "get_all") else None
+    if values is None:
+        single = headers.get("Content-Length")
+        values = [] if single is None else [single]
+    if not values:
+        return 0
+    if len(values) != 1:
+        raise RequestBodyRejected(HTTPStatus.BAD_REQUEST, "multiple content-length")
+    raw = values[0]
+    if not isinstance(raw, str) or not raw.isascii() or not raw.isdigit() or len(raw) > 12:
+        raise RequestBodyRejected(HTTPStatus.BAD_REQUEST, "invalid content-length")
+    length = int(raw)
+    if length > limit:
+        raise RequestBodyRejected(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "payload too large")
+    return length
+
+
 class LedgerHandler(BaseHTTPRequestHandler):
     server_version = "ResearchLedger/0.1"
 
     def _body(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length", "0"))
-        if length > 131072:
-            raise ValueError("payload too large")
-        raw = self.rfile.read(length)
+        length = parse_content_length(self.headers)
+        raw = self.rfile.read(length) if length else b""
+        if len(raw) != length:
+            raise RequestBodyRejected(HTTPStatus.BAD_REQUEST, "incomplete body")
         return json.loads(raw.decode("utf-8")) if raw else {}
 
     def _json(self, status: int, payload: Any) -> None:
@@ -1032,7 +1076,13 @@ class LedgerHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
-            payload = self._body()
+            try:
+                payload = self._body()
+            except RequestBodyRejected as exc:
+                # The body was not (fully) consumed; never reuse this connection.
+                self.close_connection = True
+                self._json(exc.status, {"error": "request_rejected"})
+                return
             with connect() as conn:
                 if self.path == "/v1/cases":
                     cap = require_admin(conn, self._capability())
@@ -1046,11 +1096,11 @@ class LedgerHandler(BaseHTTPRequestHandler):
                     return
                 if self.path == "/v1/review-submissions":
                     round_id = uuid.UUID(payload["round_id"])
-                    submission_id = submit_review(conn, self._capability() or "", round_id, payload["role"], payload["content_hash"], payload.get("actor_id", "capability_actor"), payload.get("classification", "MIXED"))
+                    submission_id = submit_review(conn, self._capability() or "", round_id, payload["role"], payload["content_hash"], payload.get("actor_id"), payload.get("classification", "MIXED"))
                     self._json(HTTPStatus.CREATED, {"submission_id": str(submission_id)})
                     return
                 if self.path == "/v1/risk-vetoes":
-                    veto_id = risk_veto(conn, self._capability() or "", uuid.UUID(payload["round_id"]), payload["reason_hash"], payload.get("actor_id", "risk_officer"))
+                    veto_id = risk_veto(conn, self._capability() or "", uuid.UUID(payload["round_id"]), payload["reason_hash"], payload.get("actor_id"))
                     self._json(HTTPStatus.CREATED, {"risk_decision_id": str(veto_id)})
                     return
                 if self.path == "/v1/daily-candidate-runs":

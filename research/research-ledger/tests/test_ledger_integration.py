@@ -55,7 +55,19 @@ def main() -> int:
         assert len(app.list_visible_reviews(conn, token("bull"), round_id)) == 1, "bull cannot read own blinded submission"
         app.submit_review(conn, token("bear"), round_id, "BEAR", digest(b"bear"), "test-bear")
         assert len(app.list_visible_reviews(conn, token("bull"), round_id)) == 1, "blind round leaked bear review to bull"
-        veto_id = app.risk_veto(conn, token("risk"), round_id, digest(b"missing-primary-source"), "test-risk", "PRIMARY_SOURCE_MISSING")
+        try:
+            app.submit_review(conn, token("bear"), round_id, "BEAR", digest(b"forged"), "test-bull")
+            raise AssertionError("bear capability recorded a submission as test-bull")
+        except PermissionError:
+            pass
+        try:
+            app.risk_veto(conn, token("risk"), round_id, digest(b"forged"), "test-admin", "PRIMARY_SOURCE_MISSING")
+            raise AssertionError("risk capability recorded a veto as test-admin")
+        except PermissionError:
+            pass
+        veto_id = app.risk_veto(conn, token("risk"), round_id, digest(b"missing-primary-source"), None, "PRIMARY_SOURCE_MISSING")
+        veto_actor = conn.execute("SELECT actor_id FROM ledger.risk_decision WHERE risk_decision_id=%s", (veto_id,)).fetchone()["actor_id"]
+        assert veto_actor == "test-risk_officer", "risk veto not bound to capability identity"
         gap = conn.execute("SELECT evidence_gap_code FROM ledger.risk_decision WHERE risk_decision_id=%s", (veto_id,)).fetchone()["evidence_gap_code"]
         assert gap == "PRIMARY_SOURCE_MISSING", "risk veto did not retain evidence gap"
         snapshot_id = uuid.uuid4()
