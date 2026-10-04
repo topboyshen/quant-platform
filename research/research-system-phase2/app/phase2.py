@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 TZ=ZoneInfo('Asia/Shanghai');PROTOCOL_SCHEMA='phase2-v1';MIN_COVERAGE=25;STABLE_BATCHES=10;STABLE_FORECASTS=300;STABLE_BIN=20
 HOLIDAYS_2026={'2026-01-01','2026-01-02','2026-01-03','2026-02-15','2026-02-16','2026-02-17','2026-02-18','2026-02-19','2026-02-20','2026-02-21','2026-02-22','2026-02-23','2026-04-04','2026-04-05','2026-04-06','2026-05-01','2026-05-02','2026-05-03','2026-05-04','2026-05-05','2026-06-19','2026-06-20','2026-06-21','2026-09-25','2026-09-26','2026-09-27','2026-10-01','2026-10-02','2026-10-03','2026-10-04','2026-10-05','2026-10-06','2026-10-07'}
+MODE_PATH=Path('/etc/research-ledger/runtime-health.mode')
 class Phase2Error(ValueError):pass
 def iso(x=None):return (x or datetime.now(TZ)).astimezone(TZ).replace(microsecond=0).isoformat()
 def parse(x):return datetime.fromisoformat(x.replace('Z','+00:00'))
@@ -112,18 +113,23 @@ def run_producer(path,protocol_path,now=None,fetcher=None):
 def run_settler(path,protocol_path,now=None,fetcher=None):
  init(path);p,ph=load_protocol(protocol_path);n=(now or datetime.now(TZ)).astimezone(TZ)
  if n.time()<time(15,40):return {'status':'PENDING','reason':'AFTER_CLOSE_NOT_REACHED'}
- made=0;blocked=0
+ made=0;blocked=0;reasons={}
  with db(path) as c:
   fs=c.execute("SELECT f.*,b.data_cutoff FROM forecast f JOIN batch b ON f.batch_id=b.batch_id WHERE f.status='SEALED' AND f.target_session<=? AND NOT EXISTS(SELECT 1 FROM outcome o WHERE o.forecast_id=f.forecast_id)",(n.date().isoformat(),)).fetchall()
   for f in fs:
    try:
     url,raw,rows=sina_history(f['symbol'],fetcher)
-    if not rows or rows[-1]['day']!=f['target_session']:raise Phase2Error('TARGET_SESSION_NOT_FINAL')
+    # Settle from the target-session row itself, so a late (cross-day) run still
+    # settles once the source has moved past the target session.
+    target=[r for r in rows if r['day']==f['target_session']]
+    if not target:raise Phase2Error('TARGET_SESSION_MISSING' if rows and rows[-1]['day']>f['target_session'] else 'TARGET_SESSION_NOT_FINAL')
     prior=[r for r in rows if r['day']==f['data_cutoff']]
     if not prior:raise Phase2Error('PRIOR_SESSION_MISSING')
-    close=rows[-1]['close'];prev=prior[-1]['close'];out=int(close>prev);ih=hashlib.sha256(raw.encode()).hexdigest();c.execute('INSERT OR IGNORE INTO outcome VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(uid('outcome'),f['forecast_id'],close,prev,out,url,f['target_session'],ih,iso(n),'PENDING_REVIEW','outcome_settler',None,None,None));audit(c,'OUTCOME_PENDING_REVIEW','outcome_settler',{'forecast_id':f['forecast_id'],'content_hash':ih});made+=1
-   except Phase2Error as e:audit(c,'SETTLEMENT_BLOCKED','outcome_settler',{'forecast_id':f['forecast_id'],'reason':str(e)});blocked+=1
- return {'status':'OK','pending_review_created':made,'blocked':blocked}
+    close=target[-1]['close'];prev=prior[-1]['close'];out=int(close>prev);ih=hashlib.sha256(raw.encode()).hexdigest();c.execute('INSERT OR IGNORE INTO outcome VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(uid('outcome'),f['forecast_id'],close,prev,out,url,f['target_session'],ih,iso(n),'PENDING_REVIEW','outcome_settler',None,None,None));audit(c,'OUTCOME_PENDING_REVIEW','outcome_settler',{'forecast_id':f['forecast_id'],'content_hash':ih});made+=1
+   except Phase2Error as e:audit(c,'SETTLEMENT_BLOCKED','outcome_settler',{'forecast_id':f['forecast_id'],'reason':str(e)});blocked+=1;reasons[str(e)]=reasons.get(str(e),0)+1
+ # OK only when nothing was blocked; a blocked settlement is never reported as OK.
+ status='OK' if not blocked else ('PARTIAL' if made else 'BLOCKED')
+ return {'status':status,'pending_review_created':made,'blocked':blocked,'blocked_reasons':reasons}
 def approve_outcome(path,forecast_id,reviewer_token,reason):
  if not reason:raise Phase2Error('独立审核理由必填')
  with db(path) as c:
@@ -153,10 +159,18 @@ def stats(path):
    pairs=[(r['probability'],r['outcome']) for r in rs];return {'n':len(pairs),'brier':sum((p-o)**2 for p,o in pairs)/len(pairs) if pairs else None,'bins':bins(pairs,STABLE_BIN)}
   formal_stat=calc(formal);provisional=calc(pend);ind=len(set(r['batch_id'] for r in formal));stable=ind>=STABLE_BATCHES and len(formal)>=STABLE_FORECASTS and formal_stat['n'] and all(x['stable_eligible'] for x in formal_stat['bins'])
   return {'sealed_batches':batches,'nominal_forecast_count':nominal,'independent_sealed_batch_count':batches,'pending_review_n':len(pend),'formal_n':len(formal),'independent_batch_count':ind,'operational_provisional':provisional,'formal_calibration':formal_stat if stable else {'status':'INSUFFICIENT_SAMPLE','n':len(formal),'reason':'requires_10_batches_300_approved_and_20_per_displayed_bin'},'calibration_state':'STABLE' if stable else 'INSUFFICIENT_SAMPLE'}
-def dashboard(path,protocol_path):
- p,h=load_protocol(protocol_path);s=stats(path);n=datetime.now(TZ);today=n.date();next_run=n.replace(hour=15,minute=20,second=0,microsecond=0);settle_run=n.replace(hour=15,minute=40,second=0,microsecond=0)
- if n>=next_run:next_run=(datetime.combine(next_session(today),time(15,20),TZ))
- if n>=settle_run:settle_run=(datetime.combine(next_session(today),time(15,40),TZ))
+def runtime_mode(mode_path=None):
+ try:return Path(mode_path or MODE_PATH).read_text().strip() or None
+ except OSError:return None
+def next_slot(n,at):
+ today=n.date();slot=datetime.combine(today,at,TZ)
+ return slot if trading_day(today) and n<slot else datetime.combine(next_session(today),at,TZ)
+def dashboard(path,protocol_path,now=None,mode_path=None):
+ p,h=load_protocol(protocol_path);s=stats(path);n=(now or datetime.now(TZ)).astimezone(TZ);mode=runtime_mode(mode_path)
+ # Only claim a next run when the runtime mode actually schedules one.
+ if mode=='FROZEN':schedule='FROZEN_NO_AUTOMATIC_RUN';next_run=settle_run=None
+ elif mode is None:schedule='MODE_UNKNOWN';next_run=settle_run=None
+ else:schedule='SCHEDULED';next_run=next_slot(n,time(15,20));settle_run=next_slot(n,time(15,40))
  with db(path) as c:
   batches=[dict(x) for x in c.execute('SELECT batch_id,target_session,status,nominal_n,qualified_n,block_reason,created_at,sealed_at FROM batch ORDER BY created_at DESC')]
- return {'protocol_hash':h,'protocol_id':p['protocol_id'],'model_status':p['model']['model_status'],'next_producer_run':iso(next_run),'next_settler_run':iso(settle_run),'batches':batches,'stats':s}
+ return {'protocol_hash':h,'protocol_id':p['protocol_id'],'model_status':p['model']['model_status'],'runtime_mode':mode,'schedule_state':schedule,'next_producer_run':iso(next_run) if next_run else None,'next_settler_run':iso(settle_run) if settle_run else None,'batches':batches,'stats':s}
