@@ -45,8 +45,10 @@ branch's `publish-branch.closed` condition. This retains one sender and one
 deduplicated delivery record per day, without extending the send window.
 See [the signed skip contract](docs/RESEARCH_PROTOCOL_V2.md#signed-calendar-skip-version-1).
 
-The existing `research-chain-alert.timer` checks at 08:12 and 08:15 using the
-same classifier and alert state. The second check runs after the 08:14 relay
+`research-chain-alert.timer` checks at 08:12 with `--phase predeadline`;
+`research-chain-alert-post.timer` invokes the existing post service at 08:15
+with `--phase post`, using the same classifier and alert state. Both timers use
+`Persistent=false` to avoid catch-up checks. The second check runs after the 08:14 relay
 cutoff, so late success can resolve an earlier alert and a newly visible fault
 can be reported once. It neither invokes the relay nor resends a daily report;
 unchanged faults and repeated recovery observations stay deduplicated. A

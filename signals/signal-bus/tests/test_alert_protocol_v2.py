@@ -133,20 +133,22 @@ class PostWindowRecheckTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.sender = fixtures.SenderFake()
 
-    def check(self, facts):
+    def check(self, facts, phase):
         """Run the installed timer's CLI path with fixture reads and a fake sender."""
         output = io.StringIO()
         with patch.object(rca, "collect", return_value=facts), \
                 patch.object(rca, "HermesSender", return_value=self.sender), \
                 contextlib.redirect_stdout(output):
-            result = rca.main(["--phase", "predeadline", "--date", fixtures.DATE,
+            result = rca.main(["--phase", phase, "--date", fixtures.DATE,
                                "--now", facts["now"].isoformat(),
                                "--state-dir", self.temp.name, "--json"])
         self.assertEqual(result, 0)
-        return json.loads(output.getvalue())
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload["phase"], phase)
+        return payload
 
     def test_0812_not_ready_0813_success_0815_recovers_once(self):
-        first = self.check(healthy(delivery=None))
+        first = self.check(healthy(delivery=None), "predeadline")
         self.assertEqual(first["incidents"][0]["causes"], ["predeadline_not_ready"])
         self.assertEqual(first["notified"], 1)
         completed = healthy(now=fixtures.PRE.replace(minute=13))
@@ -154,8 +156,8 @@ class PostWindowRecheckTests(unittest.TestCase):
         self.assertEqual(rca.classify(completed), [])
         # Success does not invoke the failure wrapper; the 08:15 timer observes it.
         recheck = {**completed, "now": fixtures.PRE.replace(minute=15)}
-        recovered = self.check(recheck)
-        repeated = self.check(recheck)
+        recovered = self.check(recheck, "post")
+        repeated = self.check(recheck, "post")
         self.assertEqual((recovered["recovered"], recovered["notified"]), (1, 1))
         self.assertEqual((repeated["recovered"], repeated["notified"]), (0, 0))
         self.assertEqual(len(self.sender.sent), 2)
@@ -164,17 +166,26 @@ class PostWindowRecheckTests(unittest.TestCase):
         self.assertIsNone(state["incident"])
 
     def test_0812_healthy_then_late_fault_0815_notifies_once(self):
-        first = self.check(healthy())
+        first = self.check(healthy(), "predeadline")
         self.assertEqual((first["incidents"], first["notified"]), ([], 0))
         late = healthy(now=fixtures.PRE.replace(minute=14, second=30),
                        telegram_state="mismatch", telegram_wording="附件哈希与密封报告不一致")
         self.assertEqual(fixtures.codes(rca.classify(late)), ["telegram_mismatch"])
         recheck = {**late, "now": fixtures.PRE.replace(minute=15)}
-        new_fault = self.check(recheck)
-        repeated = self.check(recheck)
+        new_fault = self.check(recheck, "post")
+        repeated = self.check(recheck, "post")
         self.assertEqual(new_fault["incidents"][0]["causes"], ["telegram_mismatch"])
         self.assertEqual(new_fault["notified"], 1)
         self.assertEqual(repeated["notified"], 0)
+        self.assertEqual(len(self.sender.sent), 1)
+
+    def test_same_fault_across_predeadline_and_post_notifies_once(self):
+        failed = healthy(delivery=fixtures.receipt(status="failed", reason="content_mismatch"))
+        first = self.check(failed, "predeadline")
+        recheck = self.check({**failed, "now": fixtures.PRE.replace(minute=15)}, "post")
+        self.assertEqual(first["incidents"][0]["causes"], ["relay_blocked"])
+        self.assertEqual(recheck["incidents"][0]["causes"], ["relay_blocked"])
+        self.assertEqual((first["notified"], recheck["notified"]), (1, 0))
         self.assertEqual(len(self.sender.sent), 1)
 
 

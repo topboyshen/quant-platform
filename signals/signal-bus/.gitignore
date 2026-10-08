@@ -43,6 +43,7 @@ systemd/astock-research-seal.service.d/*
 !systemd/research-chain-alert.timer
 !systemd/research-chain-alert-generation.service
 !systemd/research-chain-alert-post.service
+!systemd/research-chain-alert-post.timer
 !docs/
 !docs/RESEARCH_CHAIN_ALERT_WIRING.md
 !docs/RESEARCH_PROTOCOL_V2.md

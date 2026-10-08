@@ -33,16 +33,20 @@ def read(path: Path) -> str:
 
 
 class UnitFileTests(unittest.TestCase):
-    def test_existing_classifier_runs_before_and_after_the_relay_window(self):
-        timer = read(SYSTEMD / "research-chain-alert.timer")
-        calendars = [line for line in timer.splitlines() if line.startswith("OnCalendar=")]
-        self.assertEqual(calendars, ["OnCalendar=Mon..Fri *-*-* 08:12:00 Asia/Shanghai",
-                                    "OnCalendar=Mon..Fri *-*-* 08:15:00 Asia/Shanghai"])
-        self.assertIn("Unit=research-chain-alert.service", timer)
-        self.assertIn("Persistent=false", timer)
-        service = read(SYSTEMD / "research-chain-alert.service")
-        self.assertIn("research_chain_alert.py --phase predeadline --json", service)
-        self.assertNotIn("research_relay.py", service)
+    def test_each_timer_routes_to_its_matching_phase_without_catchup(self):
+        for name, at, phase in (("research-chain-alert", "08:12:00", "predeadline"),
+                                ("research-chain-alert-post", "08:15:00", "post")):
+            with self.subTest(timer=name):
+                timer = read(SYSTEMD / f"{name}.timer")
+                calendars = [line for line in timer.splitlines() if line.startswith("OnCalendar=")]
+                self.assertEqual(calendars, [f"OnCalendar=Mon..Fri *-*-* {at} Asia/Shanghai"])
+                self.assertIn(f"Unit={name}.service", timer)
+                self.assertIn("Persistent=false", timer)
+                self.assertIn("WantedBy=timers.target", timer)
+                service = read(SYSTEMD / f"{name}.service")
+                self.assertIn(f"research_chain_alert.py --phase {phase} --json", service)
+                self.assertNotIn("research_relay.py", service)
+                self.assertNotIn("--state-dir", service)
 
     def test_signed_skip_keeps_the_independent_relay_timer_path(self):
         timer = read(SYSTEMD / "nng8-research-digest.timer")
