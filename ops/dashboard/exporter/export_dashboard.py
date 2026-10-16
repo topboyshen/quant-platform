@@ -43,6 +43,11 @@ MAX_BLOCK_CHARS = 4000
 MAX_BLOCKS = 240
 MAX_SOURCES = 60
 MAX_TEXT_CHARS = 200
+REPORT_TEXT_CONTRACT = "nng8.report-text.v2"
+MAX_REPORT_TEXT_CHARS = 180000
+MAX_REPORT_TEXT_BYTES = 180000
+MAX_REPORT_BODY_WIRE_BYTES = 200000
+MAX_REPORT_BYTES = 1024 * 1024
 MAX_HISTORY = 30
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 REF_RE = re.compile(r"\[来源\s*([0-9]+(?:\s*、\s*[0-9]+)*)\]")
@@ -516,6 +521,52 @@ def expected_run_day(project: Path, exported: dt.datetime):
 
 # ------------------------------------------------------------- page builders
 
+def complete_report_blocks(markdown):
+    """Provide bounded whole plain-text blocks, with an explicit loss contract.
+
+    A preview is a different field. Long paragraphs are split, never silently
+    shortened to preview length. Headings, citations and source paragraphs stay
+    in this text representation, so the content hash binds what readers get.
+    """
+    blocks, reasons, total = [], [], 0
+    for raw in markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = CONTROL_RE.sub("", raw).strip()
+        if not line or line == "---":
+            continue
+        heading = HEADING_RE.match(line)
+        quote = QUOTE_RE.match(line)
+        bullet = BULLET_RE.match(line)
+        kind = (f"h{len(heading.group(1))}" if heading else "quote" if quote else
+                "bullet" if bullet else "paragraph")
+        text = heading.group(2) if heading else quote.group(1) if quote else bullet.group(2) if bullet else line
+        # Keep link destinations as plain text; no Markdown or HTML is executed.
+        text = MD_LINK_RE.sub(lambda match: f"{match.group(1)} ({match.group(2)})", text)
+        text = STRONG_RE.sub(r"\1", text)
+        total += len(text)
+        for offset in range(0, len(text), MAX_BLOCK_CHARS):
+            part = text[offset:offset + MAX_BLOCK_CHARS]
+            provided = sum(len(block["text"]) for block in blocks)
+            if len(blocks) >= MAX_BLOCKS:
+                if "block_limit" not in reasons:
+                    reasons.append("block_limit")
+                break
+            if provided + len(part) > MAX_REPORT_TEXT_CHARS:
+                if "text_limit" not in reasons:
+                    reasons.append("text_limit")
+                break
+            if sum(len(block["text"].encode("utf-8")) for block in blocks) + len(part.encode("utf-8")) > MAX_REPORT_TEXT_BYTES:
+                if "body_byte_limit" not in reasons:
+                    reasons.append("body_byte_limit")
+                break
+            offered = [{"heading": "", "text": block["text"]} for block in blocks] + [{"heading": "", "text": part}]
+            if len(json.dumps(offered, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")) > MAX_REPORT_BODY_WIRE_BYTES:
+                if "body_wire_limit" not in reasons:
+                    reasons.append("body_wire_limit")
+                break
+            blocks.append({"kind": kind, "text": part})
+    return blocks, [], {"complete": not reasons, "reasons": reasons,
+                        "blockCount": len(blocks), "textChars": total}
+
 def list_report_dates(project: Path):
     try:
         return sorted((path.stem for path in (project / "reports" / "daily").glob("*.md")), reverse=True)
@@ -524,10 +575,30 @@ def list_report_dates(project: Path):
 
 
 def report_page(project: Path, date: str, exported: dt.datetime, last_run: dict):
-    body = read_text(project / "reports" / "daily" / f"{date}.md")
-    if body is None:
+    path = project / "reports" / "daily" / f"{date}.md"
+    fd = None
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_REPORT_BYTES:
+            return None, ["report_source_limit_or_type"], None
+        raw = b""
+        while len(raw) <= MAX_REPORT_BYTES:
+            chunk = os.read(fd, min(65536, MAX_REPORT_BYTES + 1 - len(raw)))
+            if not chunk:
+                break
+            raw += chunk
+        after = os.fstat(fd)
+        if (len(raw) > MAX_REPORT_BYTES or before.st_size != len(raw)
+                or (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns)):
+            return None, ["report_source_changed_or_limit"], None
+        body = raw.decode("utf-8")
+    except (OSError, UnicodeError):
         return None, ["report_unreadable"], None
-    blocks, sources = markdown_blocks(body)
+    finally:
+        if fd is not None:
+            os.close(fd)
+    blocks, sources, completeness = complete_report_blocks(body)
     cutoff_local = None
     for line in body.split("\n")[:12]:
         cutoff_match = re.match(r"^>\s*数据截止：(\d{4}-\d{2}-\d{2} \d{2}:\d{2})", line.strip())
@@ -542,9 +613,24 @@ def report_page(project: Path, date: str, exported: dt.datetime, last_run: dict)
         "publicationGate": run_for_date.get("publicationGate"),
         "publicationLevel": clean_text(run_for_date.get("publicationLevel"), 200) or None,
         "variant": run_for_date.get("reportVariant"),
-        "sha256": sha256_bytes(body.encode()),
-        "conclusion": section_blocks(blocks, "一句话结论"),
-        "risks": section_blocks(blocks, "风险提示"),
+        "sha256": sha256_bytes(raw),
+        "sourceReportSha256": sha256_bytes(raw),
+        "contentSha256": sha256_bytes(json.dumps(
+            [{"heading": "", "text": block["text"]} for block in blocks],
+            ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")),
+        "contentContract": REPORT_TEXT_CONTRACT,
+        "bodyComplete": completeness["complete"],
+        "truncationReasons": completeness["reasons"],
+        "bodyBlockCount": completeness["blockCount"],
+        "bodyTextChars": completeness["textChars"],
+        "preview": clean_text(" ".join(block["text"] for block in blocks), MAX_TEXT_CHARS),
+        "generatedAt": iso(parsed) if (parsed := parse_instant(run_for_date.get("generatedAt")))
+            is not None and parsed.tzinfo is not None else None,
+        "dataCutoff": run_for_date.get("dataDate") if is_iso_date(run_for_date.get("dataDate")) else None,
+        "conclusion": [{"text": clean_text(block["text"], 500)}
+                       for block in section_blocks(blocks, "一句话结论")[:16]],
+        "risks": [{"text": clean_text(block["text"], 500)}
+                  for block in section_blocks(blocks, "风险提示")[:16]],
         "blocks": blocks,
         "sources": sources,
     }
@@ -1058,6 +1144,18 @@ def audited_contract_evidence(health, errors):
                 ("activeContract", "fromInclusive", "untilExclusive")} for row in intervals]
     raw = health.get("coreMarket") if isinstance(health.get("coreMarket"), dict) else {}
     historical = active == FULL_CONTRACT and effective is not None
+    if historical:
+        # A core contract whose every start is after the audit day has not run
+        # yet: it is scheduled, not history. Unknown audit time keeps old behaviour.
+        stamp = parse_instant(health.get("generatedAt"))
+        as_of = stamp.astimezone(CST).date().isoformat() if stamp and stamp.tzinfo else None
+        rows = result.get("contractIntervals")
+        starts = ([row["fromInclusive"] for row in rows if row["activeContract"] == CORE_CONTRACT]
+                  if rows is not None else [effective])
+        if as_of is not None and starts and all(start > as_of for start in starts):
+            result["coreContractSchedule"] = {"contract": CORE_CONTRACT, "fromInclusive": min(starts),
+                                              "status": "not_started"}
+            return result
     if active != CORE_CONTRACT and not historical:
         return result
     raw_ledger = raw.get("ledger") if isinstance(raw.get("ledger"), list) else []
@@ -1914,6 +2012,15 @@ def write_atomic(root: Path, relative: str, body: bytes, *, group_gid: int | Non
                                 allow_symlinked_ancestors=allow_symlinked_ancestors)
     prepare_directory(root, target.parent, group_gid=group_gid,
                       allow_symlinked_ancestors=allow_symlinked_ancestors)
+    # Separate reviewed permission candidate; only these four targets opt in.
+    if relative in {"today.json", "progress.json", "delivery.json", "projects.json"}:
+        permission_spec = importlib.util.spec_from_file_location(
+            "nng8_four_file_permissions", "/opt/nng8-permissions/nng8_publish_permissions.py")
+        permission_module = importlib.util.module_from_spec(permission_spec)
+        permission_spec.loader.exec_module(permission_module)
+        return permission_module.publish_dashboard(
+            root, relative, body, group_gid=group_gid,
+            allow_symlinked_ancestors=allow_symlinked_ancestors)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
     try:
         with os.fdopen(descriptor, "wb") as stream:
