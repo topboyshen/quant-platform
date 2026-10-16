@@ -1130,8 +1130,31 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
         issue("last_snapshot_material_warning", **details)
     ledger = []
     new_due_gaps = []
-    ledger_calendar = sorted(set(calendar) | ({expected} if expected is not None else set()))
-    ledger_end = max(complete, expected or complete)
+    if (calendar_project is not None and effective is not None
+            and now.date().isoformat() >= effective and expected_calendar is None
+            and calendar[-1] < now.date().isoformat()):
+        # A missing chain head cannot establish that prior core gaps vanished.
+        # This is historical observability, independent of today's job deadline;
+        # full-only legacy callers and future core transitions are unchanged.
+        raise EvidenceError("historical_calendar_chain_head_unavailable")
+    calendar_history = {"status": "not_configured", "openDays": [], "proofs": {}, "invalidDates": []}
+    if (calendar_project is not None and expected_calendar is not None
+            and effective is not None and now.date().isoformat() >= effective):
+        try:
+            calendar_history = {"status": "checked", **_calendar_evidence.archived_open_days(
+                calendar_project, max(since.isoformat(), effective,
+                    (iso_date(calendar[-1]) + dt.timedelta(days=1)).isoformat()), now.date().isoformat(),
+                required_previous=expected_calendar["previousTradingDate"],
+                known_last_day=calendar[-1],
+                expected_next=(expected_calendar["targetDate"] if expected_calendar["status"] == "open"
+                               else expected_calendar["nextTradingDate"]))}
+        except (ValueError, OSError, TypeError, KeyError):
+            # The existing unknown-audit path preserves businessAtoms during
+            # evidence blindness. A partial date set could falsely recover gaps.
+            raise EvidenceError("historical_calendar_evidence_unavailable_or_invalid") from None
+    ledger_calendar = sorted(set(calendar) | set(calendar_history["openDays"])
+                             | ({expected} if expected is not None else set()))
+    ledger_end = max(complete, expected or complete, *calendar_history["openDays"])
     for day in (d for d in ledger_calendar if since.isoformat() <= d <= ledger_end):
         row = rows.get(day, {"state": "missing"})
         stage = stage_rows.get(day, {"state": "missing"})
@@ -1234,6 +1257,7 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
             "effectiveTradeDate": effective, "contractPolicy": policy,
             "contractIntervals": _contract_selector.intervals(policy),
             "activeLastRun": core_last if core_active else last,
+            "historicalCalendarEvidence": calendar_history,
             "activeRunDecision": decision,
             "legacyFullSnapshot": {"contract": _core_contract.LEGACY_SCHEMA,
                                    "scheduledBefore": effective if len(_contract_selector.transitions(policy)) <= 1 else None,

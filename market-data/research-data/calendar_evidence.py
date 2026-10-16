@@ -393,3 +393,50 @@ def load_calendar_evidence(path, now):
         return evidence
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         raise ValueError("independent trading calendar evidence invalid or stale") from None
+
+
+def archived_open_days(project_root, since, before, *, required_previous, expected_next=None,
+                       known_last_day=None):
+    """Read prior sealed day proofs without deriving trading days from Qlib.
+
+    Historical runs and weekday arithmetic are not calendar evidence. Each
+    accepted day passes the same sealed-input binding checks as today's reader;
+    invalid archives remain explicit evidence failures and never become open days.
+    """
+    root = Path(project_root)
+    since, before = _contract.date(since), _contract.date(before)
+    result = {"openDays": [], "proofs": {}, "invalidDates": []}
+    day = _contract.date(required_previous)
+    following = _contract.date(expected_next) if expected_next is not None else None
+    known = _contract.date(known_last_day) if known_last_day is not None else None
+    boundary_next = ((dt.date.fromisoformat(known) + dt.timedelta(days=1)).isoformat()
+                     if known is not None else None)
+
+    def finish():
+        if known is not None and known < before and since <= boundary_next and day != known:
+            raise ValueError("historical calendar chain conflicts with known calendar boundary")
+        result["openDays"].sort()
+        return result
+
+    if day >= before:
+        raise ValueError("historical calendar chain starts outside the prior-day window")
+    if day < since:
+        return finish()
+    if root.is_symlink() or not root.is_dir() or root.resolve() != root.absolute():
+        raise ValueError("independent trading calendar evidence unavailable")
+    while day >= since:
+        archive = root / "work/report-archives" / day
+        # Missing required archives must not erase already-known failures.
+        # Walk only the predecessor chain proved by the current calendar,
+        # requiring every link until Qlib's known calendar boundary is reached.
+        when = dt.datetime.combine(dt.date.fromisoformat(day), dt.time(23, 59, 59, 999999),
+                                   snapshot_contract.CST)
+        evidence = _load_current_evidence(archive, when)
+        document = evidence["document"]
+        if document["status"] != "open" or (following is not None and document["nextTradingDate"] != following):
+            raise ValueError("historical calendar chain conflict")
+        result["openDays"].append(day)
+        result["proofs"][day] = {"calendarEvidenceSha256": evidence["sha256"],
+                                "inputSha256": evidence["binding"]["inputSha256"]}
+        following, day = day, document["previousTradingDate"]
+    return finish()

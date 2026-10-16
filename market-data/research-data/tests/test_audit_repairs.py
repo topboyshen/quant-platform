@@ -216,7 +216,12 @@ class WatchdogTests(unittest.TestCase):
     def test_core_old_success_and_predeadline_do_not_prove_todays_run(self):
         from test_core_market_health import CoreHealthTests
         fixture = CoreHealthTests(); fixture.setUp(); self.addCleanup(fixture.doCleanups)
-        with mock.patch.object(data_health._calendar_evidence, "load_calendar_evidence", return_value=calendar("2026-09-07")):
+        evidence = calendar("2026-09-07")
+        # The fixture's last known open day is Friday, not calendar-helper's
+        # mechanically previous Sunday. Preserve the original job assertions.
+        evidence["document"]["previousTradingDate"] = "2026-09-04"
+        evidence["sha256"] = core_market.digest({k: v for k, v in evidence.items() if k != "sha256"})
+        with mock.patch.object(data_health._calendar_evidence, "load_calendar_evidence", return_value=evidence):
             before = fixture.audit(now=dt.datetime.fromisoformat("2026-09-07T22:35:00+08:00"), calendar_project=fixture.f.root)
             after = fixture.audit(now=dt.datetime.fromisoformat("2026-09-07T23:00:00+08:00"), calendar_project=fixture.f.root)
         self.assertTrue(next(r for r in before["coreMarket"]["ledger"] if r["tradeDate"] == "2026-09-07")["pendingWindow"])
