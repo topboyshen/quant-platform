@@ -70,9 +70,10 @@ class CurrentDayTests(unittest.TestCase):
             prior.assert_not_called(); collector.assert_not_called()
 
     def test_missing_independent_day_cannot_run(self):
-        with mock.patch.object(calendar_evidence, "load_calendar_evidence", side_effect=ValueError("missing")), \
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(calendar_evidence, "load_calendar_evidence", side_effect=ValueError("missing")), \
              mock.patch.object(daily, "run_snapshot") as writer, mock.patch.object(sys, "argv", ["daily_snapshot.py"]), \
-             mock.patch.dict("os.environ", {"RESEARCH_DATA_CORE_POLICY_PATH": "/nonexistent/policy.json", "RESEARCH_DATA_CORE_DB_PATH": "/nonexistent/core.db"}):
+             mock.patch.dict("os.environ", {"RESEARCH_DATA_CORE_POLICY_PATH": str(Path(directory) / "policy.json"), "RESEARCH_DATA_CORE_DB_PATH": str(Path(directory) / "core.db")}):
             with self.assertRaisesRegex(daily.SnapshotDeferredError, "independent_expected_day_unavailable"):
                 daily.run_current_day("fixed", time.monotonic())
             writer.assert_not_called()
@@ -93,12 +94,12 @@ class CurrentDayTests(unittest.TestCase):
                 @classmethod
                 def now(cls, tz=None):
                     return fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None)
-            with self.subTest(hour=hour), \
+            with self.subTest(hour=hour), tempfile.TemporaryDirectory() as directory, \
                  mock.patch.object(daily.datetime, "datetime", FixedDateTime), \
                  mock.patch.object(calendar_evidence, "load_calendar_evidence", return_value=closed_calendar(day)), \
                  mock.patch.object(daily, "run_snapshot") as writer, \
                  mock.patch.object(daily, "emit_status") as emit, mock.patch.object(sys, "argv", ["daily_snapshot.py"]), \
-                 mock.patch.dict("os.environ", {"RESEARCH_DATA_CORE_POLICY_PATH": "/nonexistent/policy.json", "RESEARCH_DATA_CORE_DB_PATH": "/nonexistent/core.db"}):
+                 mock.patch.dict("os.environ", {"RESEARCH_DATA_CORE_POLICY_PATH": str(Path(directory) / "policy.json"), "RESEARCH_DATA_CORE_DB_PATH": str(Path(directory) / "core.db")}):
                 if allowed:
                     self.assertEqual(daily.run_current_day("fixed", time.monotonic()), 0)
                     self.assertEqual(emit.call_args.args[0]["status"], "skipped_non_trading")
