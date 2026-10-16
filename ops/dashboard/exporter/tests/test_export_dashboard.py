@@ -221,6 +221,21 @@ class ExporterTests(unittest.TestCase):
         self.assertIn("quote", kinds)
         self.assertEqual([item["id"] for item in today["report"]["sources"]], [9, 10])
 
+    def test_long_body_sources_still_extracted(self):
+        """Sources must survive truncation limits: long body, numbered refs at tail."""
+        long_parts = []
+        for i in range(1, 32):
+            long_parts.extend([f"## 第{i}节", "", f"段落{i}：" + "延长文本。" * 20, ""])
+        long_parts.extend(["## 来源", "", "> 仅列实际引用来源。",
+            "1. 来源一 — s1；https://example.com/1",
+            "2. 来源二 — s2；https://example.com/2"])
+        blocks, sources, completeness = exporter.complete_report_blocks("\n".join(long_parts))
+        self.assertGreater(len(blocks), 60, "fixture too short")
+        self.assertEqual(len(sources), 2)
+        self.assertEqual([s["id"] for s in sources], [1, 2])
+        self.assertTrue(all(s["url"].startswith("https://") for s in sources))
+        self.assertTrue(completeness["complete"])
+        self.assertEqual(completeness["reasons"], [])
 
     def test_history_report_page_is_self_contained(self):
         self.export()

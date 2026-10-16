@@ -529,6 +529,8 @@ def complete_report_blocks(markdown):
     in this text representation, so the content hash binds what readers get.
     """
     blocks, reasons, total = [], [], 0
+    numbered_bullets = []  # (number, text) for \d+. prefixed bullets inside ## 来源
+    in_sources_section = False
     for raw in markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         line = CONTROL_RE.sub("", raw).strip()
         if not line or line == "---":
@@ -538,9 +540,23 @@ def complete_report_blocks(markdown):
         bullet = BULLET_RE.match(line)
         kind = (f"h{len(heading.group(1))}" if heading else "quote" if quote else
                 "bullet" if bullet else "paragraph")
+        # Track when we enter/exit the ## 来源 section
+        if heading and heading.group(2).strip() == "来源":
+            in_sources_section = True
+        elif heading:
+            in_sources_section = False
+        # Capture numbered prefix before BULLET_RE strips it, plus URL extraction
+        if in_sources_section and bullet and bullet.group(1).rstrip(".").isdigit():
+            num = int(bullet.group(1).rstrip("."))
+            btext = bullet.group(2)
+            burl_match = re.search(r"https?://\S+", btext)
+            burl = burl_match.group(0) if burl_match else None
+            numbered_bullets.append((num, btext, burl))
         text = heading.group(2) if heading else quote.group(1) if quote else bullet.group(2) if bullet else line
         # Keep link destinations as plain text; no Markdown or HTML is executed.
-        text = MD_LINK_RE.sub(lambda match: f"{match.group(1)} ({match.group(2)})", text)
+        text = MD_LINK_RE.sub(
+            lambda m: m.group(1) if m.group(2).lower().startswith(("javascript:", "data:"))
+            else f"{m.group(1)} ({m.group(2)})", text)
         text = STRONG_RE.sub(r"\1", text)
         total += len(text)
         for offset in range(0, len(text), MAX_BLOCK_CHARS):
@@ -564,7 +580,9 @@ def complete_report_blocks(markdown):
                     reasons.append("body_wire_limit")
                 break
             blocks.append({"kind": kind, "text": part})
-    return blocks, [], {"complete": not reasons, "reasons": reasons,
+    # Extract source references from numbered bullets captured during parsing
+    sources = [{"id": num, "text": text, "url": url} for num, text, url in numbered_bullets]
+    return blocks, sources, {"complete": not reasons, "reasons": reasons,
                         "blockCount": len(blocks), "textChars": total}
 
 def list_report_dates(project: Path):
