@@ -28,7 +28,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import export_dashboard as exporter  # noqa: E402
 exporter.DELIVERY_CONTRACT_PATH = Path(os.environ.get("DELIVERY_CONTRACT_TEST_MODULE",
-    str(ROOT.parents[1] / "signal/scripts/delivery_evidence.py")))
+    "/home/ubuntu/signal-bus/scripts/delivery_evidence.py"))
+assert exporter.DELIVERY_CONTRACT_PATH.is_file(), \
+    f"shared delivery contract missing: {exporter.DELIVERY_CONTRACT_PATH}"
 EVIDENCE = json.loads((ROOT.parent / "fixtures/gap_evidence_20260924.json").read_text(encoding="utf-8"))
 BRIDGE_EVIDENCE = json.loads((ROOT.parent / "fixtures/snapshot_diagnostic_chain.json")
                              .read_text(encoding="utf-8"))
@@ -164,6 +166,13 @@ def build_fixture(root: Path, *, with_receipts: bool = True, telegram_receipt: d
             "report": report_path, "archive": archive}
 
 
+def _make_stub_publisher():
+        def _stub(root, target, body, **kw):
+            target.write_bytes(body)
+            os.chmod(target, 0o640)
+        return _stub
+
+
 class ExporterTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -177,6 +186,7 @@ class ExporterTests(unittest.TestCase):
         # The test temp tree sits under a symlinked system prefix on macOS, so
         # local/dev mode is explicit here; production defaults to strict.
         kwargs.setdefault("allow_symlinked_ancestors", True)
+        kwargs.setdefault("_publisher", _make_stub_publisher())
         return exporter.export_all(self.root, self.out, now, self.fixture["health"],
                                    self.fixture["services"], **kwargs)
 
@@ -210,6 +220,7 @@ class ExporterTests(unittest.TestCase):
         self.assertIn("h1", kinds)
         self.assertIn("quote", kinds)
         self.assertEqual([item["id"] for item in today["report"]["sources"]], [9, 10])
+
 
     def test_history_report_page_is_self_contained(self):
         self.export()
@@ -1235,7 +1246,8 @@ class ExporterTests(unittest.TestCase):
         root, real = self.symlinked_prefix_root()
         manifest = exporter.export_all(self.root, root, NOW, self.fixture["health"],
                                        self.fixture["services"],
-                                       allow_symlinked_ancestors=True)
+                                       allow_symlinked_ancestors=True,
+                                       _publisher=_make_stub_publisher())
         self.assertEqual(manifest["pathCheck"], "resolved-symlink-allowed")
         self.assertTrue((real / "today.json").is_file())
         self.assertTrue((real / "manifest.json").is_file())
@@ -1500,7 +1512,8 @@ class TradingCalendarFreshnessTests(unittest.TestCase):
         before = {path: sha(path.read_bytes()) for path in (self.report_path,
                   self.archive / "input.json", self.archive / "published.json")}
         out = self.root / "out"
-        manifest = exporter.export_all(self.root, out, self.now, self.root / "no-health.json")
+        manifest = exporter.export_all(self.root, out, self.now, self.root / "no-health.json",
+                                       _publisher=_make_stub_publisher())
         for name in ("today.json", "delivery.json", f"reports/{self.date}.json"):
             panel = json.loads((out / name).read_bytes())
             self.assertFalse(panel["stale"], name)

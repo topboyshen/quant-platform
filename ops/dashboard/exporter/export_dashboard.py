@@ -2007,13 +2007,16 @@ def prepare_directory(root: Path, directory: Path, *, group_gid: int | None,
 
 
 def write_atomic(root: Path, relative: str, body: bytes, *, group_gid: int | None = None,
-                 allow_symlinked_ancestors: bool = False):
+                 allow_symlinked_ancestors: bool = False, _publisher=None):
     target = ensure_within_root(root, root / relative,
                                 allow_symlinked_ancestors=allow_symlinked_ancestors)
     prepare_directory(root, target.parent, group_gid=group_gid,
                       allow_symlinked_ancestors=allow_symlinked_ancestors)
     # Separate reviewed permission candidate; only these four targets opt in.
     if relative in {"today.json", "progress.json", "delivery.json", "projects.json"}:
+        if _publisher is not None:
+            return _publisher(root, target, body, group_gid=group_gid,
+                             allow_symlinked_ancestors=allow_symlinked_ancestors)
         permission_spec = importlib.util.spec_from_file_location(
             "nng8_four_file_permissions", "/opt/nng8-permissions/nng8_publish_permissions.py")
         permission_module = importlib.util.module_from_spec(permission_spec)
@@ -2055,7 +2058,7 @@ def degraded_page(name: str, exported: dt.datetime, error: Exception):
 
 def export_all(root: Path, out: Path, exported: dt.datetime, health_path: Path,
                services_path: Path | None = None, history: int = 7, group: str | None = None,
-               allow_symlinked_ancestors: bool = False):
+               allow_symlinked_ancestors: bool = False, _publisher=None):
     group_gid = None
     if group:
         group_gid = grp.getgrnam(group).gr_gid
@@ -2091,7 +2094,7 @@ def export_all(root: Path, out: Path, exported: dt.datetime, health_path: Path,
     for name, payload in pages.items():
         body = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8") + b"\n"
         write_atomic(out, f"{name}.json", body, group_gid=group_gid,
-                     allow_symlinked_ancestors=allow_symlinked_ancestors)
+                     allow_symlinked_ancestors=allow_symlinked_ancestors, _publisher=_publisher)
         manifest["files"][f"{name}.json"] = {"sha256": sha256_bytes(body), "bytes": len(body),
                                              "stale": payload.get("stale"),
                                              "readErrors": payload.get("readErrors") or []}
@@ -2114,12 +2117,13 @@ def export_all(root: Path, out: Path, exported: dt.datetime, health_path: Path,
             payload["date"] = date
         body = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8") + b"\n"
         write_atomic(out, f"{HISTORY_PAGES}/{date}.json", body, group_gid=group_gid,
-                     allow_symlinked_ancestors=allow_symlinked_ancestors)
+                     allow_symlinked_ancestors=allow_symlinked_ancestors, _publisher=_publisher)
         manifest["history"]["pages"][date] = {"sha256": sha256_bytes(body), "bytes": len(body),
                                              "readErrors": payload.get("readErrors") or []}
     write_atomic(out, "manifest.json",
                  json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True).encode() + b"\n",
-                 group_gid=group_gid, allow_symlinked_ancestors=allow_symlinked_ancestors)
+                 group_gid=group_gid, allow_symlinked_ancestors=allow_symlinked_ancestors,
+                 _publisher=_publisher)
     return manifest
 
 
