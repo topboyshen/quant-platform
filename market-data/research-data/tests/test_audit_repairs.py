@@ -71,7 +71,8 @@ class CurrentDayTests(unittest.TestCase):
 
     def test_missing_independent_day_cannot_run(self):
         with mock.patch.object(calendar_evidence, "load_calendar_evidence", side_effect=ValueError("missing")), \
-             mock.patch.object(daily, "run_snapshot") as writer, mock.patch.object(sys, "argv", ["daily_snapshot.py"]):
+             mock.patch.object(daily, "run_snapshot") as writer, mock.patch.object(sys, "argv", ["daily_snapshot.py"]), \
+             mock.patch.dict("os.environ", {"RESEARCH_DATA_CORE_POLICY_PATH": "/nonexistent/policy.json", "RESEARCH_DATA_CORE_DB_PATH": "/nonexistent/core.db"}):
             with self.assertRaisesRegex(daily.SnapshotDeferredError, "independent_expected_day_unavailable"):
                 daily.run_current_day("fixed", time.monotonic())
             writer.assert_not_called()
@@ -96,7 +97,8 @@ class CurrentDayTests(unittest.TestCase):
                  mock.patch.object(daily.datetime, "datetime", FixedDateTime), \
                  mock.patch.object(calendar_evidence, "load_calendar_evidence", return_value=closed_calendar(day)), \
                  mock.patch.object(daily, "run_snapshot") as writer, \
-                 mock.patch.object(daily, "emit_status") as emit, mock.patch.object(sys, "argv", ["daily_snapshot.py"]):
+                 mock.patch.object(daily, "emit_status") as emit, mock.patch.object(sys, "argv", ["daily_snapshot.py"]), \
+                 mock.patch.dict("os.environ", {"RESEARCH_DATA_CORE_POLICY_PATH": "/nonexistent/policy.json", "RESEARCH_DATA_CORE_DB_PATH": "/nonexistent/core.db"}):
                 if allowed:
                     self.assertEqual(daily.run_current_day("fixed", time.monotonic()), 0)
                     self.assertEqual(emit.call_args.args[0]["status"], "skipped_non_trading")

@@ -44,6 +44,9 @@ class CurrentDayStageTests(unittest.TestCase):
             self.stack.enter_context(mock.patch.object(daily, name, value))
         self.stack.enter_context(mock.patch.object(daily.datetime, "datetime", FixedDatetime))
         self.stack.enter_context(mock.patch.object(daily.sys, "argv", ["daily_snapshot.py"]))
+        self.stack.enter_context(mock.patch.dict("os.environ", {
+            "RESEARCH_DATA_CORE_POLICY_PATH": str(self.root / "policy.json"),
+            "RESEARCH_DATA_CORE_DB_PATH": str(self.root / "core.db")}))
         self.stack.enter_context(mock.patch.object(daily, "collect_source", side_effect=lambda fn, *args, **kwargs: fn(*args)))
         self.stack.enter_context(mock.patch.object(daily, "emit_status"))
         self.stack.enter_context(mock.patch.object(calendar_evidence, "load_calendar_evidence", return_value=calendar(DAY)))

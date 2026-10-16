@@ -244,7 +244,9 @@ class ClosedIntervalTests(unittest.TestCase):
         clock = mock.Mock(wraps=dt.datetime)
         clock.now.return_value = self.now("2026-11-07")
         with mock.patch.object(full.datetime, "datetime", clock), mock.patch.dict(
-                "os.environ", {"RESEARCH_DATA_CORE_CALENDAR_PROJECT_ROOT": str(self.root)}), \
+                "os.environ", {"RESEARCH_DATA_CORE_CALENDAR_PROJECT_ROOT": str(self.root),
+                               "RESEARCH_DATA_CORE_POLICY_PATH": str(self.root / "policy.json"),
+                               "RESEARCH_DATA_CORE_DB_PATH": str(self.root / "core.db")}), \
                 mock.patch("sys.argv", ["daily_snapshot.py"]), \
                 mock.patch.object(full, "run_snapshot", side_effect=AssertionError("no snapshot")), \
                 mock.patch.object(full, "emit_status") as emitted:

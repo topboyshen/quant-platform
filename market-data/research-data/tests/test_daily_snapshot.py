@@ -1074,7 +1074,11 @@ class SnapshotSafetyTests(unittest.TestCase):
                 daily_snapshot,
                 "akshare_market",
                 return_value=sample_akshare_market("2026-08-28"),
-            ), mock.patch.object(sys, "argv", ["daily_snapshot.py"]):
+            ), mock.patch.object(sys, "argv", ["daily_snapshot.py"]), mock.patch.dict(
+                "os.environ",
+                {"RESEARCH_DATA_CORE_POLICY_PATH": str(Path(directory) / "policy.json"),
+                 "RESEARCH_DATA_CORE_DB_PATH": str(Path(directory) / "core.db")}
+            ):
                 with self.assertRaisesRegex(
                     daily_snapshot.SnapshotDeferredError,
                     "independent_expected_day_unavailable",

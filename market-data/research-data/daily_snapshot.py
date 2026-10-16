@@ -1508,8 +1508,12 @@ def run_current_day(run_id, started_monotonic):
     """Mandatory independent calendar gate for every live writer entry."""
     requested_trade_date(sys.argv[1:])
     import snapshot_contract
-    policy = snapshot_contract.read_policy(os.path.join(os.path.dirname(__file__), "config", "snapshot-contract.json"))
-    snapshot_contract.assert_core_history(policy, os.path.join(os.path.dirname(__file__), "core-market.db"))
+    policy_path = os.environ.get("RESEARCH_DATA_CORE_POLICY_PATH",
+        os.path.join(os.path.dirname(__file__), "config", "snapshot-contract.json"))
+    policy = snapshot_contract.read_policy(policy_path)
+    core_db_path = os.environ.get("RESEARCH_DATA_CORE_DB_PATH",
+        os.path.join(os.path.dirname(__file__), "core-market.db"))
+    snapshot_contract.assert_core_history(policy, core_db_path)
     if snapshot_contract.select(policy, datetime.datetime.now(snapshot_contract.CST)) != snapshot_contract.LEGACY:
         raise SnapshotDeferredError("full_contract_not_active")
     from calendar_evidence import load_calendar_evidence
