@@ -486,6 +486,75 @@ def _is_observability(atom):
     return _split_code(atom).startswith(OBSERVABILITY_PREFIX)
 
 
+def _removed_faults(info, previous, current):
+    """Separate date/scope transitions from evidence-backed recovery.
+
+    A successful *later* run does not repair an earlier missing snapshot. The
+    current-run identity may advance, while historical gap atoms remain owned by
+    the audit. Price freshness is different: a bound actual price date can prove
+    that an older target was reached, even when the new target is still stale.
+    No state/receipt normalization is done here; old pending receipts retain
+    their exact state hash and are applied by the unchanged delivery protocol.
+    """
+    recovered, advanced, unconfirmed = [], [], []
+    for atom in sorted(previous - current):
+        code, day = atom.split("|", 1)
+        if code in ("active_run_fail", "active_run_insufficient"):
+            run = info.get("activeRunDecision")
+            scheduled = run.get("scheduledDate") if isinstance(run, dict) else None
+            if (_iso_day(day) and _iso_day(scheduled)
+                    and scheduled == day and run.get("status") == "pass"):
+                recovered.append(atom)
+            elif (_iso_day(day) and scheduled == day
+                  and code == "active_run_insufficient" and run.get("status") == "fail"):
+                # A confirmed failure supersedes uncertainty, not recovery.
+                advanced.append(atom)
+            elif (_iso_day(day) and _iso_day(scheduled) and scheduled > day
+                  and run.get("status") in ("pass", "fail", "insufficient")):
+                advanced.append(atom)
+            else:
+                # Missing/unknown/pending/holiday evidence is not recovery.
+                unconfirmed.append(atom)
+        elif code == "qlib_supply_stale":
+            fresh = info.get("supplyFreshness")
+            expected = fresh.get("expectedTargetDate") if isinstance(fresh, dict) else None
+            actual = fresh.get("actualTargetDate") if isinstance(fresh, dict) else None
+            if (_iso_day(day) and _iso_day(expected) and _iso_day(actual)
+                    and fresh.get("status") in ("current", "stale") and expected >= day):
+                if actual >= day:
+                    recovered.append(atom)
+                elif expected > day:
+                    advanced.append(atom)
+                else:
+                    unconfirmed.append(atom)
+            else:
+                unconfirmed.append(atom)
+        elif code == "qlib_supply_freshness_unknown":
+            fresh = info.get("supplyFreshness")
+            due = fresh.get("dueDate") if isinstance(fresh, dict) else None
+            if (_iso_day(day) and _iso_day(due) and due >= day
+                    and fresh.get("status") in ("current", "stale")
+                    and _iso_day(fresh.get("expectedTargetDate"))
+                    and _iso_day(fresh.get("actualTargetDate"))):
+                # Only the ability to determine freshness has recovered; a
+                # known stale supply remains its own active business fault.
+                recovered.append(atom)
+            elif (_iso_day(day) and _iso_day(due) and due > day
+                  and fresh.get("status") == "unknown"):
+                advanced.append(atom)
+            else:
+                unconfirmed.append(atom)
+        elif (_iso_day(day) and (_is_observability(atom)
+                                or code in DUE_RUN_CODES + CORE_OPERATIONAL_CODES)
+              and any(_split_code(other) == code and _iso_day(other.split("|", 1)[1])
+                      and other.split("|", 1)[1] > day for other in current)):
+            # Another missed scheduled date cannot repair the previous one.
+            advanced.append(atom)
+        else:
+            recovered.append(atom)
+    return recovered, advanced, unconfirmed
+
+
 def decide(info, unit_state, previous=None, now=None):
     """Return the notification decision and the state to commit afterwards."""
     now = (now or dt.datetime.now(CST)).astimezone(CST)
@@ -510,12 +579,14 @@ def decide(info, unit_state, previous=None, now=None):
     effective = set(current)
     if not audit_visible and prev_business is not None:
         effective |= prev_business
+    advanced, unconfirmed = [], []
     if prev_atoms is None:
         added, recovered = sorted(effective), []
         kind = "first_observation" if effective else "no_fault"
     else:
         added = sorted(effective - prev_atoms)
-        recovered = sorted(prev_atoms - effective)
+        recovered, advanced, unconfirmed = _removed_faults(info, prev_atoms, effective)
+        effective.update(unconfirmed)
         kind = "unchanged"
     prev_codes = {_split_code(a) for a in (prev_atoms or set())}
     new_failure = [a for a in added if _split_code(a) not in prev_codes]
@@ -531,8 +602,10 @@ def decide(info, unit_state, previous=None, now=None):
             kind = "worsened"
         elif recovered:
             kind = "recovered"
-    notify = bool(added or recovered)
-    business = sorted(a for a in current if not _is_observability(a))
+        elif advanced:
+            kind = "scope_advanced"
+    notify = bool(added or recovered or advanced)
+    business = sorted(a for a in effective if not _is_observability(a))
     state = {"schemaVersion": STATE_SCHEMA_VERSION, "atoms": sorted(effective),
              "fingerprint": fingerprint(sorted(effective)),
              "businessAtoms": business if audit_visible else sorted(prev_business or []),
@@ -543,7 +616,8 @@ def decide(info, unit_state, previous=None, now=None):
                           "unitState": unit_state if unit_state in UNIT_STATES else "unknown"},
              "decision": kind, "decidedAt": now.isoformat()}
     return {"notify": notify, "kind": kind, "new": new_failure, "worsened": worsened,
-            "recovered": recovered, "current": list(current), "fingerprint": state["fingerprint"],
+            "recovered": recovered, "rolledForward": advanced, "recoveryUnconfirmed": unconfirmed,
+            "current": list(current), "fingerprint": state["fingerprint"],
             "previousFingerprint": previous.get("fingerprint") if isinstance(previous, dict) else None,
             "state": state}
 
@@ -593,6 +667,7 @@ def _retained_line(info):
 
 CHANGE_LABELS = {"first_observation": "首次记录（无已提交基线）", "new_failure": "新增故障",
                  "worsened": "恶化（受影响集合扩大）", "recovered": "恢复",
+                 "scope_advanced": "运行/目标日期推进（不代表旧故障恢复）",
                  "should_run_but_did_not": "应运行但未产生当次结果", "unchanged": "无变化",
                  "no_fault": "无告警级问题"}
 
@@ -613,6 +688,12 @@ def _change_lines(decision):
         lines.append(f"恶化：{_atom_text(decision['worsened'])}")
     if decision.get("recovered"):
         lines.append(f"恢复：{_atom_text(decision['recovered'])}")
+        if any(_split_code(atom) == "qlib_supply_freshness_unknown" for atom in decision["recovered"]):
+            lines.append("新鲜度判定恢复仅表示已能判定，不代表价格追平或历史缺口修复。")
+    if decision.get("rolledForward"):
+        lines.append(f"日期/运行范围推进（非恢复）：{_atom_text(decision['rolledForward'])}")
+    if decision.get("recoveryUnconfirmed"):
+        lines.append(f"恢复未证实（保留）：{_atom_text(decision['recoveryUnconfirmed'])}")
     return lines
 
 

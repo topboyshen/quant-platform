@@ -7,6 +7,7 @@ import sys
 import unittest
 
 import core_contract as contract
+import data_health as health
 import test_active_run_decision as producer_tests
 from test_core_market_contract import closed_calendar
 
@@ -69,11 +70,32 @@ class HolidaySupplyFreshnessTests(unittest.TestCase):
         self.assertFalse(second["notify"])
         self.assertEqual(second["kind"], "unchanged")
 
+    def test_lowering_expected_day_does_not_prove_old_price_target_recovered(self):
+        stale = self.decide(self.holiday("2026-09-06", "2026-09-05"), self.prior)
+        # This was previously called "catching up", although no fixture price
+        # advanced: only the independent expected date moved backwards.
+        payload = self.holiday("2026-09-07", "2026-09-04")
+        self.assertEqual(payload["supplyFreshness"]["actualTargetDate"], "2026-09-04")
+        current = self.decide(payload, stale["state"])
+        self.assertNotIn("qlib_supply_stale|2026-09-05", current["recovered"])
+        self.assertIn("qlib_supply_stale|2026-09-05", current["state"]["businessAtoms"])
+        self.assertIn("qlib_supply_stale|2026-09-05", current["recoveryUnconfirmed"])
+
     def test_qlib_catching_up_is_reported_as_recovery(self):
         stale = self.decide(self.holiday("2026-09-06", "2026-09-05"), self.prior)
-        current = self.decide(self.holiday("2026-09-07", "2026-09-04"), stale["state"])
+        days = self.f.days + ["2026-09-05"]
+        (self.f.qlib / "calendars/day.txt").write_text("\n".join(days) + "\n")
+        for symbol in health.REFERENCES:
+            self.f.features(symbol, len(days))
+        payload = self.holiday("2026-09-07", "2026-09-05")
+        self.assertEqual(payload["supplyFreshness"]["status"], "current")
+        self.assertEqual(payload["supplyFreshness"]["expectedTargetDate"], "2026-09-05")
+        self.assertEqual(payload["supplyFreshness"]["actualTargetDate"], "2026-09-05")
+        current = self.decide(payload, stale["state"])
         self.assertTrue(current["notify"])
         self.assertIn("qlib_supply_stale|2026-09-05", current["recovered"])
+        # Price recovery cannot fill the separate missing snapshot fixture.
+        self.assertIn("unresolved_trading_day_gaps|2026-09-05", current["state"]["businessAtoms"])
 
     def test_current_qlib_on_closed_day_stays_silent(self):
         payload = self.holiday("2026-09-05", "2026-09-04")

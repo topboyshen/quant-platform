@@ -164,7 +164,8 @@ class ChangeDecisionTests(Base):
         self.assertTrue(d3["notify"])
         self.assertEqual(d3["kind"], "should_run_but_did_not")
         self.assertIn("audit_not_current|2026-09-27", d3["new"] + d3["worsened"])
-        self.assertIn("audit_not_current|2026-09-26", d3["recovered"])
+        self.assertNotIn("audit_not_current|2026-09-26", d3["recovered"])
+        self.assertIn("audit_not_current|2026-09-26", d3["rolledForward"])
 
     def test_failed_audit_unit_and_missing_result_alert(self):
         previous = self.day1_state()
