@@ -110,15 +110,15 @@ if [[ "${ALERT_DRY_RUN:-0}" != "1" ]]; then
   fi
 fi
 
-# 23:00 review reconciles an unconfirmed local delivery. It must not classify
-# the audit again or call Hermes.
+# 23:00 review first reconciles an unknown delivery and never resends it.
+# With no inflight receipt it continues into the same classifier, so a missed
+# 22:45 audit is still a should-run event. Dedup is unchanged.
 if [[ "${1:-}" == "--review-unconfirmed" ]]; then
   if [[ -e "$INFLIGHT_FILE" || -L "$INFLIGHT_FILE" ]]; then
     printf '投递结果未知，需对账；不会自动重发\n' >&2
     exit 1
   fi
-  printf 'health alert review: unconfirmed delivery none\n'
-  exit 0
+  printf 'health alert review: unconfirmed delivery none; classifying scheduled audit\n'
 fi
 
 STATUS="unknown"; CODES="none"; GENERATED_AT="unknown"; STALE="yes"; REASON="helper_unavailable"; UNIT_STATE="$(unit_state)"; ALERT="unknown"

@@ -1255,19 +1255,8 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
     # license to hide tampering or a future date, but calendar advance and
     # missed collection while frozen are known limitations, not new incidents.
     accepted_freeze = business_mode == "FROZEN"
-    freeze_expected = {
-        "unresolved_trading_day_gaps", "unresolved_core_market_gaps",
-        "qlib_not_current_for_expected_trading_day", "scheduled_snapshot_missing",
-        "scheduled_core_market_missing", "last_snapshot_not_successful",
-        "last_core_market_not_successful",
-    }
-    if accepted_freeze:
-        for item in issues:
-            if item.get("code") in freeze_expected:
-                item["acceptedFreeze"] = True
-                if item.get("severity") == "critical":
-                    item["severity"] = "information"
-                    item["severityReason"] = "accepted_frozen_business_mode"
+    # FROZEN is a mode marker only. It does not downgrade an active contract's
+    # missing rows, and it is not evidence that those rows were restored.
     return {"schemaVersion": 1, "generatedAt": now.isoformat(), "readOnly": True,
             "acceptedFreeze": accepted_freeze,
             "supplyFreshness": supply_freshness,
@@ -1319,8 +1308,7 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
             "limitations": ["No independent exchange calendar or release API lookup.",
                             "Valid market stage alone cannot reconstruct historical observed_at sources.",
                             "Stored rows receive strict JSON/date/error checks, not a full market revalidation."]
-                           + (["Accepted FROZEN business mode: collection is not expected to advance; "
-                               "freeze-caused gaps and staleness are known limitations, not new incidents."]
+                           + (["FROZEN business mode is recorded; it does not waive active collection gaps or stale prices."]
                               if accepted_freeze else [])}
 
 

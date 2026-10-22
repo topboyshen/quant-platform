@@ -5,6 +5,7 @@ import json
 import contextlib
 import datetime as dt
 import os
+import re
 from pathlib import Path
 import sys
 import time
@@ -42,25 +43,61 @@ def load_calendar_evidence(path, now):
 
 
 
-def recorded_qlib_failure(expected):
-    """Same-night Qlib terminal failure. Missing file is not a failure."""
-    path = Path(os.environ.get("QLIB_UPDATE_STATUS", "/home/ubuntu/qlib/logs/update-status.json"))
+PRODUCTION_QLIB_DATA = Path("/home/ubuntu/qlib/data")
+PRODUCTION_QLIB_STATUS = Path("/home/ubuntu/qlib/logs/update-status.json")
+_ZONED = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
+_RUN_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def qlib_status_evidence(expected, now=None):
+    """Distinguish a missing status file from an unreadable or unbound one.
+
+    Only a production-mode record for this planned day, with a zoned time and
+    run identity, can stop the snapshot. A test or incomplete record cannot.
+    """
+    path = PRODUCTION_QLIB_STATUS
+    if not path.exists():
+        return {"state": "missing"}
     try:
+        if path.is_symlink() or not path.is_file():
+            return {"state": "unreadable", "reason": "status_not_regular_file"}
         document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        return None
-    if not isinstance(document, dict) or document.get("status") not in ("failed", "interrupted"):
-        return None
+    except (OSError, ValueError, TypeError, UnicodeError):
+        return {"state": "unreadable", "reason": "status_unreadable"}
+    if not isinstance(document, dict) or document.get("schemaVersion") != 1:
+        return {"state": "unreadable", "reason": "status_schema_invalid"}
+    if document.get("status") not in ("failed", "interrupted"):
+        return {"state": "not_terminal", "status": document.get("status")}
+    if document.get("mode") != "production":
+        return {"state": "rejected", "reason": "status_not_production"}
+    try:
+        if Path(document.get("dataRoot", "")).resolve() != PRODUCTION_QLIB_DATA.resolve():
+            return {"state": "rejected", "reason": "status_data_root_mismatch"}
+    except (OSError, TypeError, ValueError):
+        return {"state": "rejected", "reason": "status_data_root_mismatch"}
+    if document.get("plannedDate") != expected:
+        return {"state": "rejected", "reason": "status_planned_date_mismatch"}
     when = document.get("time")
-    cutoff = document.get("cutoff")
-    if not isinstance(when, str) or not when.startswith(expected):
-        return None
-    if cutoff not in (None, expected):
-        return None
-    error = document.get("error")
-    if not isinstance(error, str) or not error or len(error) > 300:
-        return "qlib_update_failed"
-    return "qlib_update_failed:" + error
+    if not isinstance(when, str) or _ZONED.fullmatch(when) is None:
+        return {"state": "rejected", "reason": "status_time_invalid"}
+    parsed = dt.datetime.fromisoformat(when.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return {"state": "rejected", "reason": "status_time_invalid"}
+    if parsed.astimezone(snapshot_contract.CST).date().isoformat() != expected:
+        return {"state": "rejected", "reason": "status_time_day_mismatch"}
+    current = now or dt.datetime.now(snapshot_contract.CST)
+    if parsed > current.astimezone(parsed.tzinfo) + dt.timedelta(minutes=5):
+        return {"state": "rejected", "reason": "status_time_in_future"}
+    run_id = document.get("runId")
+    if not isinstance(run_id, str) or _RUN_ID.fullmatch(run_id) is None or document.get("generation") != run_id:
+        return {"state": "rejected", "reason": "status_generation_invalid"}
+    if document.get("targetDate") not in (None, expected):
+        return {"state": "rejected", "reason": "status_target_mismatch"}
+    error = document.get("error") if isinstance(document.get("error"), str) and document.get("error") else document.get("status")
+    if not isinstance(error, str) or len(error) > 300:
+        error = "qlib_update_failed"
+    return {"state": "failed", "error": "qlib_update_failed:" + error, "runId": run_id,
+            "failureStage": document.get("failureStage"), "status": document.get("status")}
 
 
 def run_core(*, db_path=CORE_DB, run_id=None, now=None, effective_trade_date=None,
@@ -90,9 +127,11 @@ def run_core(*, db_path=CORE_DB, run_id=None, now=None, effective_trade_date=Non
         raise runtime.SnapshotDeferredError("core target predates effective date", target=expected)
     runtime.write_run_checkpoint(runtime._supervised_run_id(), target=expected,
                                  schema=SCHEMA, activePhase="qlib_readiness")
-    failed = recorded_qlib_failure(expected)
-    if failed:
-        exc = runtime.SnapshotDeferredError(failed, target=expected)
+    evidence = qlib_status_evidence(expected, now=_instant(generated_at))
+    if evidence.get("state") == "failed":
+        exc = runtime.SnapshotDeferredError(evidence["error"], target=expected, source_failure={
+            "provider": "qlib", "runId": evidence["runId"], "status": evidence["status"],
+            "failureStage": evidence.get("failureStage")})
         exc.calendar_evidence = calendar_evidence
         raise exc
     q = qlib_market(None)

@@ -35,8 +35,8 @@ class DescribeTests(unittest.TestCase):
     def test_accepted_freeze_does_not_page_on_stale_or_gap_growth(self):
         path = self.write(artifact(
             acceptedFreeze=True,
-            issues=[{"code": "unresolved_trading_day_gaps", "severity": "information",
-                     "acceptedFreeze": True, "dates": ["2026-10-21"]},
+            issues=[{"code": "unresolved_trading_day_gaps", "severity": "critical",
+                     "dates": ["2026-10-21"]},
                     {"code": "historical_rows_changed_or_missing", "severity": "critical",
                      "dates": ["2026-08-28"]}],
             supplyFreshness={"schema": "research.supply-freshness.v1", "source": "qlib",
@@ -47,8 +47,8 @@ class DescribeTests(unittest.TestCase):
         atoms = alert.alert_atoms(info, "inactive", now=NOW)
         self.assertTrue(info["acceptedFreeze"])
         self.assertIn("historical_rows_changed_or_missing|2026-08-28", atoms)
-        self.assertFalse(any(atom.startswith("unresolved_trading_day_gaps|") for atom in atoms))
-        self.assertFalse(any(atom.startswith("qlib_supply_stale|") for atom in atoms))
+        self.assertIn("unresolved_trading_day_gaps|2026-10-21", atoms)
+        self.assertIn("qlib_supply_stale|2026-10-21", atoms)
 
     def test_missing_and_invalid_artifacts_alert(self):
         info = alert.describe(self.path, now=NOW)
@@ -126,6 +126,31 @@ class DescribeTests(unittest.TestCase):
         self.assertEqual(dict(line.split("=", 1) for line in alert._shell_lines(quiet, "not-a-state"))["ALERT"], "no")
 
 
+    def test_missing_gap_row_is_not_reported_recovered(self):
+        previous = {"schemaVersion": alert.STATE_SCHEMA_VERSION,
+                    "atoms": ["unresolved_core_market_gaps|2026-10-21"],
+                    "businessAtoms": ["unresolved_core_market_gaps|2026-10-21"],
+                    "fingerprint": alert.fingerprint(["unresolved_core_market_gaps|2026-10-21"])}
+        info = alert.describe(self.write(artifact(
+            status="ok", issues=[],
+            coreMarket={"ledger": [{"tradeDate": "2026-10-21", "coreState": "missing"}]})), now=NOW)
+        decision = alert.decide(info, "inactive", previous=previous, now=NOW)
+        self.assertNotIn("unresolved_core_market_gaps|2026-10-21", decision["recovered"])
+        self.assertIn("unresolved_core_market_gaps|2026-10-21", decision["recoveryUnconfirmed"])
+
+    def test_valid_core_row_can_recover_that_gap_only(self):
+        previous = {"schemaVersion": alert.STATE_SCHEMA_VERSION,
+                    "atoms": ["unresolved_core_market_gaps|2026-10-20"],
+                    "businessAtoms": ["unresolved_core_market_gaps|2026-10-20"],
+                    "fingerprint": alert.fingerprint(["unresolved_core_market_gaps|2026-10-20"])}
+        info = alert.describe(self.write(artifact(
+            status="ok", issues=[],
+            coreMarket={"ledger": [{"tradeDate": "2026-10-20", "coreState": "valid"}]})), now=NOW)
+        decision = alert.decide(info, "inactive", previous=previous, now=NOW)
+        self.assertEqual(decision["recovered"], ["unresolved_core_market_gaps|2026-10-20"])
+
+
+
 class MessageTests(unittest.TestCase):
     def test_message_is_bounded_and_carries_the_entry_context(self):
         info = alert.describe(Path("/nonexistent"), now=NOW)
@@ -199,6 +224,7 @@ class ReceiptTests(unittest.TestCase):
             self._temp = tempfile.TemporaryDirectory()
             self.addCleanup(self._temp.cleanup)
         return self._temp.name
+
 
 
 if __name__ == "__main__":

@@ -150,15 +150,15 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(gap["recoveryReadiness"], "partial_evidence_only")
         self.assertIn("unresolved_trading_day_gaps", self.codes(result))
 
-    def test_accepted_frozen_gaps_are_limitations_not_critical(self):
+    def test_frozen_mode_does_not_downgrade_active_gaps(self):
         self.sql("DELETE FROM snapshot WHERE date IN (?,?)", ("2026-09-02", "2026-09-03"))
         result = self.run_audit()
         self.assertTrue(result["acceptedFreeze"])
-        self.assertNotEqual(result["status"], "critical")
+        self.assertEqual(result["status"], "critical")
         gap = next(item for item in result["issues"] if item["code"] == "unresolved_trading_day_gaps")
-        self.assertEqual(gap["severity"], "information")
-        self.assertTrue(gap["acceptedFreeze"])
-        self.assertTrue(any("Accepted FROZEN" in item for item in result["limitations"]))
+        self.assertEqual(gap["severity"], "critical")
+        self.assertNotIn("acceptedFreeze", gap)
+        self.assertTrue(any("does not waive" in item for item in result["limitations"]))
 
     def test_non_frozen_unresolved_days_stay_critical(self):
         self.mode.write_text("RUNNING\n")

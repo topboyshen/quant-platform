@@ -243,19 +243,47 @@ class CoreContractTests(unittest.TestCase):
             changed = copy.deepcopy(value); change(changed)
             with self.assertRaises(ValueError): appendix.store_appendix(changed, record(), Path(self.temp.name) / "appendix.db")
 
-    def test_same_night_qlib_failure_is_not_retried_as_not_current(self):
-        status = Path(self.temp.name) / "update-status.json"
-        status.write_text(json.dumps({
-            "time": DAY + "T22:18:53+08:00", "status": "failed", "cutoff": DAY,
+
+    def _status(self, **fields):
+        payload = {
+            "schemaVersion": 1, "status": "failed", "mode": "production",
+            "dataRoot": str(core.PRODUCTION_QLIB_DATA), "plannedDate": DAY,
+            "time": DAY + "T22:18:53+08:00", "runId": "6f59b442-1379-44c2-b7bf-564bf96c018b",
+            "generation": "6f59b442-1379-44c2-b7bf-564bf96c018b",
             "error": "required_reference_or_index_not_at_target:SH000300",
-        }))
-        with mock.patch.dict(os.environ, {"QLIB_UPDATE_STATUS": str(status)}), \
+            "failureStage": "required_symbol_check",
+        }
+        payload.update(fields)
+        path = Path(self.temp.name) / "update-status.json"
+        path.write_text(json.dumps(payload))
+        return path
+
+    def test_incomplete_or_nonproduction_status_does_not_block_the_price_read(self):
+        for fields in (
+                {"schemaVersion": 1, "plannedDate": None, "mode": None, "generation": None, "dataRoot": None},
+                {"mode": "isolated"},
+                {"time": DAY + "T22:18:53"},
+                {"plannedDate": "2026-10-21"},
+        ):
+            with self.subTest(fields=fields):
+                path = self._status(**fields)
+                with mock.patch.object(core, "PRODUCTION_QLIB_STATUS", path), \
+                        mock.patch.object(core, "qlib_market", return_value=qlib()) as scan:
+                    result = core.run_core(db_path=self.db, now=NOW, calendar_evidence=calendar())
+                self.assertEqual(result["status"], "inserted")
+                scan.assert_called()
+                self.db.unlink()
+
+    def test_bound_production_failure_stops_once_and_keeps_run_identity(self):
+        path = self._status()
+        with mock.patch.object(core, "PRODUCTION_QLIB_STATUS", path), \
                 mock.patch.object(core, "qlib_market", side_effect=AssertionError("scan")):
             with self.assertRaises(legacy.SnapshotDeferredError) as caught:
                 core.run_core(db_path=self.db, now=NOW, calendar_evidence=calendar())
         self.assertEqual(str(caught.exception),
                          "qlib_update_failed:required_reference_or_index_not_at_target:SH000300")
-        self.assertNotEqual(str(caught.exception), "core_qlib_not_current_for_expected_trading_day")
+        self.assertEqual(caught.exception.source_failure["runId"],
+                         "6f59b442-1379-44c2-b7bf-564bf96c018b")
 
 
 if __name__ == "__main__":

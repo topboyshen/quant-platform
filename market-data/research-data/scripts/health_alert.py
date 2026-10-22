@@ -115,7 +115,7 @@ def _due_run_atoms(data):
     atoms = set()
     if isinstance(data, dict):
         for issue in data.get("issues") or []:
-            if not isinstance(issue, dict) or issue.get("acceptedFreeze") is True:
+            if not isinstance(issue, dict):
                 continue
             if issue.get("code") not in DUE_RUN_CODES + CORE_OPERATIONAL_CODES:
                 continue
@@ -134,8 +134,7 @@ def _critical_atoms(data):
     atoms = set()
     if isinstance(data, dict):
         for issue in data.get("issues") or []:
-            if (not isinstance(issue, dict) or issue.get("severity") != "critical"
-                    or issue.get("acceptedFreeze") is True):
+            if not isinstance(issue, dict) or issue.get("severity") != "critical":
                 continue
             code = issue.get("code")
             code = code if isinstance(code, str) and CODE_RE.fullmatch(code) else "unrecognized_issue_code"
@@ -375,6 +374,12 @@ def describe(path, now=None, max_age_hours=6.0, retained_path=None):
     else:
         result["status"] = status
     result["acceptedFreeze"] = data.get("acceptedFreeze") is True
+    result["validFullDates"] = sorted({
+        row.get("tradeDate") for row in data.get("ledger") or []
+        if isinstance(row, dict) and row.get("snapshotState") == "valid" and isinstance(row.get("tradeDate"), str)})
+    result["validCoreDates"] = sorted({
+        row.get("tradeDate") for row in ((data.get("coreMarket") or {}).get("ledger") or [])
+        if isinstance(row, dict) and row.get("coreState") == "valid" and isinstance(row.get("tradeDate"), str)})
     result["codes"] = _codes(data)
     result["criticalAtoms"] = _critical_atoms(data)
     result["dueRunAtoms"] = _due_run_atoms(data)
@@ -442,7 +447,7 @@ def alert_atoms(info, unit_state, now=None):
         fresh = info.get("supplyFreshness")
         # Accepted freeze already explains a stale price library. A new expected
         # date must not become a new_failure every trading day.
-        if isinstance(fresh, dict) and fresh.get("status") == "stale" and not info.get("acceptedFreeze"):
+        if isinstance(fresh, dict) and fresh.get("status") == "stale":
             atoms.add(f"qlib_supply_stale|{fresh['expectedTargetDate']}")
         elif isinstance(fresh, dict) and fresh.get("status") == "unknown":
             atoms.add(f"qlib_supply_freshness_unknown|{fresh.get('dueDate') or day}")
@@ -552,6 +557,12 @@ def _removed_faults(info, previous, current):
             elif (_iso_day(day) and _iso_day(due) and due > day
                   and fresh.get("status") == "unknown"):
                 advanced.append(atom)
+            else:
+                unconfirmed.append(atom)
+        elif code in ("unresolved_trading_day_gaps", "unresolved_core_market_gaps"):
+            evidence = info.get("validFullDates") if code == "unresolved_trading_day_gaps" else info.get("validCoreDates")
+            if _iso_day(day) and day in set(evidence or []):
+                recovered.append(atom)
             else:
                 unconfirmed.append(atom)
         elif (_iso_day(day) and (_is_observability(atom)
