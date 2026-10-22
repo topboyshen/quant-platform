@@ -1,4 +1,6 @@
 import copy
+import json
+import os
 import datetime as dt
 import hashlib
 from pathlib import Path
@@ -240,6 +242,20 @@ class CoreContractTests(unittest.TestCase):
                        lambda r: r.update(status="passed")):
             changed = copy.deepcopy(value); change(changed)
             with self.assertRaises(ValueError): appendix.store_appendix(changed, record(), Path(self.temp.name) / "appendix.db")
+
+    def test_same_night_qlib_failure_is_not_retried_as_not_current(self):
+        status = Path(self.temp.name) / "update-status.json"
+        status.write_text(json.dumps({
+            "time": DAY + "T22:18:53+08:00", "status": "failed", "cutoff": DAY,
+            "error": "required_reference_or_index_not_at_target:SH000300",
+        }))
+        with mock.patch.dict(os.environ, {"QLIB_UPDATE_STATUS": str(status)}), \
+                mock.patch.object(core, "qlib_market", side_effect=AssertionError("scan")):
+            with self.assertRaises(legacy.SnapshotDeferredError) as caught:
+                core.run_core(db_path=self.db, now=NOW, calendar_evidence=calendar())
+        self.assertEqual(str(caught.exception),
+                         "qlib_update_failed:required_reference_or_index_not_at_target:SH000300")
+        self.assertNotEqual(str(caught.exception), "core_qlib_not_current_for_expected_trading_day")
 
 
 if __name__ == "__main__":

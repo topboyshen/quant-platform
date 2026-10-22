@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Versioned reduced-scope archive. Never writes the legacy full snapshot table."""
 import argparse
+import json
 import contextlib
 import datetime as dt
 import os
@@ -40,6 +41,28 @@ def load_calendar_evidence(path, now):
         raise runtime.SnapshotDeferredError("independent trading calendar evidence invalid or stale") from None
 
 
+
+def recorded_qlib_failure(expected):
+    """Same-night Qlib terminal failure. Missing file is not a failure."""
+    path = Path(os.environ.get("QLIB_UPDATE_STATUS", "/home/ubuntu/qlib/logs/update-status.json"))
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(document, dict) or document.get("status") not in ("failed", "interrupted"):
+        return None
+    when = document.get("time")
+    cutoff = document.get("cutoff")
+    if not isinstance(when, str) or not when.startswith(expected):
+        return None
+    if cutoff not in (None, expected):
+        return None
+    error = document.get("error")
+    if not isinstance(error, str) or not error or len(error) > 300:
+        return "qlib_update_failed"
+    return "qlib_update_failed:" + error
+
+
 def run_core(*, db_path=CORE_DB, run_id=None, now=None, effective_trade_date=None,
              calendar_evidence=None):
     """Qlib-only summary, not a complete price archive; no live source calls."""
@@ -67,6 +90,11 @@ def run_core(*, db_path=CORE_DB, run_id=None, now=None, effective_trade_date=Non
         raise runtime.SnapshotDeferredError("core target predates effective date", target=expected)
     runtime.write_run_checkpoint(runtime._supervised_run_id(), target=expected,
                                  schema=SCHEMA, activePhase="qlib_readiness")
+    failed = recorded_qlib_failure(expected)
+    if failed:
+        exc = runtime.SnapshotDeferredError(failed, target=expected)
+        exc.calendar_evidence = calendar_evidence
+        raise exc
     q = qlib_market(None)
     if q["date"] != expected:
         exc = runtime.SnapshotDeferredError(
