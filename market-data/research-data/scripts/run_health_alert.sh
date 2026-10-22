@@ -110,15 +110,22 @@ if [[ "${ALERT_DRY_RUN:-0}" != "1" ]]; then
   fi
 fi
 
-# 23:00 review first reconciles an unknown delivery and never resends it.
-# With no inflight receipt it continues into the same classifier, so a missed
-# 22:45 audit is still a should-run event. Dedup is unchanged.
+# 23:00 is reconciliation plus a missed-run check. It is not read-only:
+# recover-delivery above may apply an already confirmed local receipt
+# (stateApplied / clear the matching inflight). It does not rewrite old
+# receipts, reclassify business faults, or call Hermes.
 if [[ "${1:-}" == "--review-unconfirmed" ]]; then
   if [[ -e "$INFLIGHT_FILE" || -L "$INFLIGHT_FILE" ]]; then
     printf '投递结果未知，需对账；不会自动重发\n' >&2
     exit 1
   fi
-  printf 'health alert review: unconfirmed delivery none; classifying scheduled audit\n'
+  audit_status="$("$PYTHON" "$HELPER" scheduled-audit --json "$HEALTH_JSON")"
+  if [[ "$audit_status" != "fresh" && "$audit_status" != "not_due" ]]; then
+    printf 'scheduled audit missing; no reclassification and no send\n' >&2
+    exit 2
+  fi
+  printf 'health alert review: reconciled only; no reclassification and no send\n'
+  exit 0
 fi
 
 STATUS="unknown"; CODES="none"; GENERATED_AT="unknown"; STALE="yes"; REASON="helper_unavailable"; UNIT_STATE="$(unit_state)"; ALERT="unknown"

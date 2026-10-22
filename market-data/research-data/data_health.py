@@ -1255,8 +1255,49 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
     # license to hide tampering or a future date, but calendar advance and
     # missed collection while frozen are known limitations, not new incidents.
     accepted_freeze = business_mode == "FROZEN"
-    # FROZEN is a mode marker only. It does not downgrade an active contract's
-    # missing rows, and it is not evidence that those rows were restored.
+    if accepted_freeze:
+        full_state = {row["tradeDate"]: row.get("snapshotState", "missing") for row in ledger}
+        core_state = {row["tradeDate"]: row.get("coreState", "missing") for row in core_ledger}
+
+        def freeze_split(item, states):
+            dates = [day for day in item.get("dates") or [] if isinstance(day, str)]
+            missing = [day for day in dates if states.get(day, "missing") == "missing"]
+            damaged = [day for day in dates if states.get(day, "missing") != "missing"]
+            out = []
+            if missing:
+                kept = dict(item)
+                kept["dates"] = missing
+                kept["severity"] = "information"
+                kept["acceptedFreeze"] = True
+                kept["reason"] = "expected_absence_while_frozen"
+                out.append(kept)
+            if damaged:
+                kept = dict(item)
+                kept["dates"] = damaged
+                kept["severity"] = "critical" if len(damaged) >= 2 else "warning"
+                kept.pop("acceptedFreeze", None)
+                out.append(kept)
+            return out
+
+        rewritten = []
+        for item in issues:
+            code = item.get("code")
+            if code in ("unresolved_trading_day_gaps", "unresolved_core_market_gaps"):
+                states = full_state if code == "unresolved_trading_day_gaps" else core_state
+                rewritten.extend(freeze_split(item, states))
+            elif code == "qlib_not_current_for_expected_trading_day":
+                kept = dict(item)
+                kept["acceptedFreeze"] = True
+                kept["severityReason"] = "expected_staleness_while_frozen"
+                rewritten.append(kept)
+            elif code in ("scheduled_snapshot_missing", "scheduled_core_market_missing"):
+                kept = dict(item)
+                kept["acceptedFreeze"] = True
+                kept["severityReason"] = "expected_absence_while_frozen"
+                rewritten.append(kept)
+            else:
+                rewritten.append(item)
+        issues = rewritten
     return {"schemaVersion": 1, "generatedAt": now.isoformat(), "readOnly": True,
             "acceptedFreeze": accepted_freeze,
             "supplyFreshness": supply_freshness,
@@ -1308,7 +1349,7 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
             "limitations": ["No independent exchange calendar or release API lookup.",
                             "Valid market stage alone cannot reconstruct historical observed_at sources.",
                             "Stored rows receive strict JSON/date/error checks, not a full market revalidation."]
-                           + (["FROZEN business mode is recorded; it does not waive active collection gaps or stale prices."]
+                           + (["Accepted FROZEN: only expected absence or staleness is a known limitation; damaged, mismatched or invalid stored rows stay reported."]
                               if accepted_freeze else [])}
 
 

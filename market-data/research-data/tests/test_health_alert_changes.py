@@ -133,7 +133,9 @@ class ChangeDecisionTests(Base):
     def test_real_recovery_notifies(self):
         previous = self.day1_state()
         # 09-22 row genuinely appears valid: gap set shrinks.
-        info = self.info(audit("2026-09-26T22:45:00+08:00", gaps=list(BASE8)), DAY2)
+        payload = audit("2026-09-26T22:45:00+08:00", gaps=list(BASE8))
+        payload["ledger"] = [{"tradeDate": "2026-09-22", "snapshotState": "valid"}]
+        info = self.info(payload, DAY2)
         decision = alert.decide(info, "inactive", previous, DAY2)
         self.assertTrue(decision["notify"])
         self.assertEqual(decision["kind"], "recovered")
@@ -142,7 +144,10 @@ class ChangeDecisionTests(Base):
 
     def test_full_recovery_to_warning_notifies_then_goes_quiet(self):
         previous = self.day1_state()
-        info = self.info(audit("2026-09-26T22:45:00+08:00", gaps=[]), DAY2)
+        payload = audit("2026-09-26T22:45:00+08:00", gaps=[])
+        payload["ledger"] = [{"tradeDate": day, "snapshotState": "valid"}
+                             for day in BASE8 + ["2026-09-22"]]
+        info = self.info(payload, DAY2)
         first = alert.decide(info, "inactive", previous, DAY2)
         self.assertTrue(first["notify"])
         self.assertEqual(first["current"], [])
@@ -375,7 +380,10 @@ class LegacyStateMigrationTests(Base):
         blind = alert.describe(self.dir / "absent.json", now=DAY2,
                                retained_path=REPO / "config/health-alert-retained.json")
         state = alert.decide(blind, "inactive", legacy, DAY2)["state"]
-        resolved = self.info(audit("2026-09-27T22:45:00.000000+08:00", gaps=[]), DAY3)
+        payload = audit("2026-09-27T22:45:00.000000+08:00", gaps=[])
+        payload["ledger"] = [{"tradeDate": day, "snapshotState": "valid"}
+                             for day in BASE8 + ["2026-09-22"]]
+        resolved = self.info(payload, DAY3)
         decision = alert.decide(resolved, "inactive", state, DAY3)
         self.assertTrue(decision["notify"], decision)
         self.assertIn("unresolved_trading_day_gaps|2026-09-22", decision["recovered"])

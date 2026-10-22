@@ -32,23 +32,57 @@ class DescribeTests(unittest.TestCase):
         self.path.write_text(json.dumps(payload))
         return self.path
 
-    def test_accepted_freeze_does_not_page_on_stale_or_gap_growth(self):
+    def test_accepted_freeze_absence_does_not_page_but_damage_does(self):
         path = self.write(artifact(
             acceptedFreeze=True,
-            issues=[{"code": "unresolved_trading_day_gaps", "severity": "critical",
-                     "dates": ["2026-10-21"]},
+            issues=[{"code": "accepted_freeze_absence", "severity": "information",
+                     "acceptedFreeze": True, "dates": ["2026-09-02"]},
+                    {"code": "qlib_not_current_for_expected_trading_day", "severity": "information",
+                     "acceptedFreeze": True},
                     {"code": "historical_rows_changed_or_missing", "severity": "critical",
-                     "dates": ["2026-08-28"]}],
+                     "dates": ["2026-08-28"]},
+                    {"code": "unresolved_trading_day_gaps", "severity": "critical",
+                     "dates": ["2026-09-04"]}],
             supplyFreshness={"schema": "research.supply-freshness.v1", "source": "qlib",
                              "status": "stale", "dueDate": "2026-10-21",
                              "expectedTargetDate": "2026-10-21", "actualTargetDate": "2026-10-20",
                              "snapshotRequired": False}))
         info = alert.describe(path, now=NOW)
         atoms = alert.alert_atoms(info, "inactive", now=NOW)
-        self.assertTrue(info["acceptedFreeze"])
         self.assertIn("historical_rows_changed_or_missing|2026-08-28", atoms)
-        self.assertIn("unresolved_trading_day_gaps|2026-10-21", atoms)
-        self.assertIn("qlib_supply_stale|2026-10-21", atoms)
+        self.assertIn("unresolved_trading_day_gaps|2026-09-04", atoms)
+        self.assertNotIn("unresolved_trading_day_gaps|2026-09-02", atoms)
+        self.assertFalse(any(atom.startswith("qlib_supply_stale|") for atom in atoms))
+
+    def _state(self, atoms):
+        return {"schemaVersion": alert.STATE_SCHEMA_VERSION, "atoms": atoms,
+                "businessAtoms": atoms, "fingerprint": alert.fingerprint(atoms)}
+
+    def test_policy_reclassification_is_not_recovery(self):
+        info = {"status": "warning", "stale": False, "acceptedFreeze": True,
+                "freezeAbsenceDates": ["2026-09-02"], "freezeStalenessAccepted": True,
+                "freezeLimitationCodes": ["accepted_freeze_absence"],
+                "validFullDates": [], "generatedAt": NOW.isoformat(),
+                "criticalAtoms": [], "dueRunAtoms": [],
+                "supplyFreshness": {"status": "stale", "expectedTargetDate": "2026-10-21",
+                                    "actualTargetDate": "2026-10-08", "dueDate": "2026-10-21"}}
+        decision = alert.decide(info, "inactive", self._state(
+            ["unresolved_trading_day_gaps|2026-09-02", "qlib_supply_stale|2026-10-20"]), now=NOW)
+        self.assertEqual(decision["recovered"], [])
+        self.assertFalse(decision["notify"])
+        self.assertEqual(decision["kind"], "policy_reclassified")
+        self.assertIn("unresolved_trading_day_gaps|2026-09-02", decision["reclassified"])
+        self.assertNotIn("unresolved_trading_day_gaps|2026-09-02", decision["state"]["atoms"])
+
+    def test_valid_row_is_still_evidence_backed_recovery(self):
+        info = {"status": "ok", "stale": False, "acceptedFreeze": True,
+                "freezeAbsenceDates": [], "validFullDates": ["2026-09-02"],
+                "generatedAt": NOW.isoformat(), "criticalAtoms": [], "dueRunAtoms": []}
+        decision = alert.decide(info, "inactive", self._state(
+            ["unresolved_trading_day_gaps|2026-09-02"]), now=NOW)
+        self.assertEqual(decision["recovered"], ["unresolved_trading_day_gaps|2026-09-02"])
+        self.assertTrue(decision["notify"])
+        self.assertEqual(decision["kind"], "recovered")
 
     def test_missing_and_invalid_artifacts_alert(self):
         info = alert.describe(self.path, now=NOW)

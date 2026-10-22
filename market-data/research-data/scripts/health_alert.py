@@ -115,7 +115,7 @@ def _due_run_atoms(data):
     atoms = set()
     if isinstance(data, dict):
         for issue in data.get("issues") or []:
-            if not isinstance(issue, dict):
+            if not isinstance(issue, dict) or issue.get("acceptedFreeze") is True:
                 continue
             if issue.get("code") not in DUE_RUN_CODES + CORE_OPERATIONAL_CODES:
                 continue
@@ -134,7 +134,8 @@ def _critical_atoms(data):
     atoms = set()
     if isinstance(data, dict):
         for issue in data.get("issues") or []:
-            if not isinstance(issue, dict) or issue.get("severity") != "critical":
+            if (not isinstance(issue, dict) or issue.get("severity") != "critical"
+                    or issue.get("acceptedFreeze") is True):
                 continue
             code = issue.get("code")
             code = code if isinstance(code, str) and CODE_RE.fullmatch(code) else "unrecognized_issue_code"
@@ -380,6 +381,15 @@ def describe(path, now=None, max_age_hours=6.0, retained_path=None):
     result["validCoreDates"] = sorted({
         row.get("tradeDate") for row in ((data.get("coreMarket") or {}).get("ledger") or [])
         if isinstance(row, dict) and row.get("coreState") == "valid" and isinstance(row.get("tradeDate"), str)})
+    freeze_issues = [issue for issue in data.get("issues") or []
+                     if isinstance(issue, dict) and issue.get("acceptedFreeze") is True]
+    result["freezeAbsenceDates"] = sorted({
+        day for issue in freeze_issues for day in (issue.get("dates") or [])
+        if isinstance(day, str)})
+    result["freezeLimitationCodes"] = sorted({
+        issue.get("code") for issue in freeze_issues if isinstance(issue.get("code"), str)})
+    result["freezeStalenessAccepted"] = any(
+        issue.get("code") == "qlib_not_current_for_expected_trading_day" for issue in freeze_issues)
     result["codes"] = _codes(data)
     result["criticalAtoms"] = _critical_atoms(data)
     result["dueRunAtoms"] = _due_run_atoms(data)
@@ -447,7 +457,8 @@ def alert_atoms(info, unit_state, now=None):
         fresh = info.get("supplyFreshness")
         # Accepted freeze already explains a stale price library. A new expected
         # date must not become a new_failure every trading day.
-        if isinstance(fresh, dict) and fresh.get("status") == "stale":
+        if (isinstance(fresh, dict) and fresh.get("status") == "stale"
+                and not info.get("freezeStalenessAccepted")):
             atoms.add(f"qlib_supply_stale|{fresh['expectedTargetDate']}")
         elif isinstance(fresh, dict) and fresh.get("status") == "unknown":
             atoms.add(f"qlib_supply_freshness_unknown|{fresh.get('dueDate') or day}")
@@ -511,7 +522,7 @@ def _removed_faults(info, previous, current):
     No state/receipt normalization is done here; old pending receipts retain
     their exact state hash and are applied by the unchanged delivery protocol.
     """
-    recovered, advanced, unconfirmed = [], [], []
+    recovered, advanced, unconfirmed, reclassified = [], [], [], []
     for atom in sorted(previous - current):
         code, day = atom.split("|", 1)
         if code in ("active_run_fail", "active_run_insufficient"):
@@ -530,6 +541,15 @@ def _removed_faults(info, previous, current):
             else:
                 # Missing/unknown/pending/holiday evidence is not recovery.
                 unconfirmed.append(atom)
+        elif code == "qlib_supply_stale" and info.get("freezeStalenessAccepted"):
+            fresh = info.get("supplyFreshness") if isinstance(info.get("supplyFreshness"), dict) else {}
+            actual = fresh.get("actualTargetDate")
+            if _iso_day(day) and _iso_day(actual) and actual >= day:
+                recovered.append(atom)
+            else:
+                # The price date was not reached. Dropping the atom is the freeze
+                # policy, not evidence that the old target was filled.
+                reclassified.append(atom)
         elif code == "qlib_supply_stale":
             fresh = info.get("supplyFreshness")
             expected = fresh.get("expectedTargetDate") if isinstance(fresh, dict) else None
@@ -563,8 +583,14 @@ def _removed_faults(info, previous, current):
             evidence = info.get("validFullDates") if code == "unresolved_trading_day_gaps" else info.get("validCoreDates")
             if _iso_day(day) and day in set(evidence or []):
                 recovered.append(atom)
+            elif info.get("acceptedFreeze") and day in set(info.get("freezeAbsenceDates") or []):
+                reclassified.append(atom)
             else:
+                # A missing or unproven row is not recovery. A valid ledger row
+                # above is the evidence. Policy absence is reclassified above.
                 unconfirmed.append(atom)
+        elif info.get("acceptedFreeze") and code in set(info.get("freezeLimitationCodes") or []):
+            reclassified.append(atom)
         elif (_iso_day(day) and (_is_observability(atom)
                                 or code in DUE_RUN_CODES + CORE_OPERATIONAL_CODES)
               and any(_split_code(other) == code and _iso_day(other.split("|", 1)[1])
@@ -573,7 +599,7 @@ def _removed_faults(info, previous, current):
             advanced.append(atom)
         else:
             recovered.append(atom)
-    return recovered, advanced, unconfirmed
+    return recovered, advanced, unconfirmed, reclassified
 
 
 def decide(info, unit_state, previous=None, now=None):
@@ -602,11 +628,11 @@ def decide(info, unit_state, previous=None, now=None):
         effective |= prev_business
     advanced, unconfirmed = [], []
     if prev_atoms is None:
-        added, recovered = sorted(effective), []
+        added, recovered, reclassified = sorted(effective), [], []
         kind = "first_observation" if effective else "no_fault"
     else:
         added = sorted(effective - prev_atoms)
-        recovered, advanced, unconfirmed = _removed_faults(info, prev_atoms, effective)
+        recovered, advanced, unconfirmed, reclassified = _removed_faults(info, prev_atoms, effective)
         effective.update(unconfirmed)
         kind = "unchanged"
     prev_codes = {_split_code(a) for a in (prev_atoms or set())}
@@ -625,6 +651,8 @@ def decide(info, unit_state, previous=None, now=None):
             kind = "recovered"
         elif advanced:
             kind = "scope_advanced"
+        elif reclassified:
+            kind = "policy_reclassified"
     notify = bool(added or recovered or advanced)
     business = sorted(a for a in effective if not _is_observability(a))
     state = {"schemaVersion": STATE_SCHEMA_VERSION, "atoms": sorted(effective),
@@ -634,10 +662,12 @@ def decide(info, unit_state, previous=None, now=None):
              "auditStatus": info.get("status") if info.get("status") in STATUS_VALUES else "unknown",
              # Evidence reference only; never part of the fingerprint.
              "evidence": {"auditGeneratedAt": info.get("generatedAt") if _instant(info.get("generatedAt")) else None,
-                          "unitState": unit_state if unit_state in UNIT_STATES else "unknown"},
+                          "unitState": unit_state if unit_state in UNIT_STATES else "unknown",
+                          "policyReclassified": reclassified},
              "decision": kind, "decidedAt": now.isoformat()}
     return {"notify": notify, "kind": kind, "new": new_failure, "worsened": worsened,
-            "recovered": recovered, "rolledForward": advanced, "recoveryUnconfirmed": unconfirmed,
+            "recovered": recovered, "reclassified": reclassified,
+            "rolledForward": advanced, "recoveryUnconfirmed": unconfirmed,
             "current": list(current), "fingerprint": state["fingerprint"],
             "previousFingerprint": previous.get("fingerprint") if isinstance(previous, dict) else None,
             "state": state}
@@ -690,6 +720,7 @@ CHANGE_LABELS = {"first_observation": "首次记录（无已提交基线）", "n
                  "worsened": "恶化（受影响集合扩大）", "recovered": "恢复",
                  "scope_advanced": "运行/目标日期推进（不代表旧故障恢复）",
                  "should_run_but_did_not": "应运行但未产生当次结果", "unchanged": "无变化",
+                 "policy_reclassified": "政策重分类为已知限制（不是数据恢复）",
                  "no_fault": "无告警级问题"}
 
 
@@ -784,7 +815,12 @@ def should_alert(info, unit_state, previous=None, now=None):
 
 
 def parse_receipt(raw, exit_code):
-    """Return {'delivered': bool, 'reason': code, 'receipt': allowlisted}."""
+    """Return {'delivered': bool, 'reason': code, 'receipt': allowlisted}.
+
+    delivered here means this Hermes JSON says success, is not skipped, and has a
+    non-empty message_id. It does not prove the platform, the expected chat, or
+    that the recipient binding matches the prepared body.
+    """
     receipt = {"schemaVersion": RECEIPT_SCHEMA_VERSION, "hermesExitCode": int(exit_code)}
     if not isinstance(raw, (bytes, bytearray)):
         return {"delivered": False, "reason": "receipt_unreadable", "receipt": receipt}
@@ -1050,6 +1086,24 @@ def _record_receipt(args):
     return 0 if result["delivered"] and stored == "yes" else 1
 
 
+
+def scheduled_audit_status(path, now=None):
+    """Whether today's 22:45 audit artifact exists. Does not classify faults."""
+    now = (now or dt.datetime.now(CST)).astimezone(CST)
+    due = dt.datetime.combine(now.date(), dt.time(22, 45), tzinfo=CST)
+    if now < due:
+        return "not_due"
+    try:
+        raw = Path(path).read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except (OSError, ValueError, UnicodeError):
+        return "missing"
+    generated = _instant(data.get("generatedAt")) if isinstance(data, dict) else None
+    if generated is None or generated.astimezone(CST) < due:
+        return "missing"
+    return "fresh"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1086,6 +1140,8 @@ def main(argv=None):
     recover_parser.add_argument("--state-file", required=True)
     recover_parser.add_argument("--inflight-file", default=None)
     prepare_parser = sub.add_parser("prepare")
+    audit_parser = sub.add_parser("scheduled-audit")
+    audit_parser.add_argument("--json", dest="path", required=True)
     prepare_parser.add_argument("--json", dest="path", required=True)
     prepare_parser.add_argument("--state-file", required=True)
     prepare_parser.add_argument("--pending-file", required=True)
@@ -1097,6 +1153,9 @@ def main(argv=None):
     prepare_parser.add_argument("--entry-reason", default="scheduled_audit")
     args = parser.parse_args(argv)
 
+    if args.command == "scheduled-audit":
+        print(scheduled_audit_status(args.path))
+        return 0
     if args.command == "begin-delivery":
         try:
             begin_delivery(args.pending_file, args.state_file, args.inflight_file)

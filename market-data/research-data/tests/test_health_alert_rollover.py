@@ -170,6 +170,7 @@ class DateRolloverTests(unittest.TestCase):
         self.assertIn("scheduled_core_market_missing|2026-10-19", event["new"])
         # A fresh audit explicitly removing a gap remains a separate recovery.
         value = info(core_dates=CORE_DATES[1:])
+        value["validCoreDates"] = ["2026-10-12"]
         event = decision(value, prior)
         self.assertEqual(event["recovered"], ["unresolved_core_market_gaps|2026-10-12"])
 
