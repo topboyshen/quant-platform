@@ -115,7 +115,9 @@ def _due_run_atoms(data):
     atoms = set()
     if isinstance(data, dict):
         for issue in data.get("issues") or []:
-            if not isinstance(issue, dict) or issue.get("code") not in DUE_RUN_CODES + CORE_OPERATIONAL_CODES:
+            if not isinstance(issue, dict) or issue.get("acceptedFreeze") is True:
+                continue
+            if issue.get("code") not in DUE_RUN_CODES + CORE_OPERATIONAL_CODES:
                 continue
             code = issue["code"]
             due = issue.get("dueDate")
@@ -132,7 +134,8 @@ def _critical_atoms(data):
     atoms = set()
     if isinstance(data, dict):
         for issue in data.get("issues") or []:
-            if not isinstance(issue, dict) or issue.get("severity") != "critical":
+            if (not isinstance(issue, dict) or issue.get("severity") != "critical"
+                    or issue.get("acceptedFreeze") is True):
                 continue
             code = issue.get("code")
             code = code if isinstance(code, str) and CODE_RE.fullmatch(code) else "unrecognized_issue_code"
@@ -371,6 +374,7 @@ def describe(path, now=None, max_age_hours=6.0, retained_path=None):
         result.update(status="unknown", reason="health_status_invalid")
     else:
         result["status"] = status
+    result["acceptedFreeze"] = data.get("acceptedFreeze") is True
     result["codes"] = _codes(data)
     result["criticalAtoms"] = _critical_atoms(data)
     result["dueRunAtoms"] = _due_run_atoms(data)
@@ -436,7 +440,9 @@ def alert_atoms(info, unit_state, now=None):
         # Keyed by the expected target, not the audit day: one stale price
         # library over a multi-day holiday is one fault, not one per night.
         fresh = info.get("supplyFreshness")
-        if isinstance(fresh, dict) and fresh.get("status") == "stale":
+        # Accepted freeze already explains a stale price library. A new expected
+        # date must not become a new_failure every trading day.
+        if isinstance(fresh, dict) and fresh.get("status") == "stale" and not info.get("acceptedFreeze"):
             atoms.add(f"qlib_supply_stale|{fresh['expectedTargetDate']}")
         elif isinstance(fresh, dict) and fresh.get("status") == "unknown":
             atoms.add(f"qlib_supply_freshness_unknown|{fresh.get('dueDate') or day}")
@@ -469,12 +475,16 @@ def read_state(path):
         data = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError, UnicodeError):
         return None
+    return data if _valid_state(data) else None
+
+
+def _valid_state(data):
     atoms = data.get("atoms") if isinstance(data, dict) else None
     if (not isinstance(data, dict) or data.get("schemaVersion") != STATE_SCHEMA_VERSION
             or not isinstance(atoms, list) or not all(isinstance(a, str) and "|" in a for a in atoms)
             or data.get("fingerprint") != fingerprint(atoms)):
-        return None
-    return data
+        return False
+    return True
 
 
 def _split_code(atom):
@@ -840,6 +850,195 @@ def _shell_lines(info, unit_state, decision=None):
     return lines
 
 
+def prepare(path, state_file, pending_file, message_file, *, max_age_hours=6.0,
+            unit_state="unknown", hostname="unknown", entry_reason="scheduled_audit",
+            retained_path=None, now=None):
+    """Bind the decision, pending state and message to one observed snapshot.
+
+    The caller holds the notification-state lock through confirmed delivery and
+    commit. Preparation never commits the notification state. Any preparation
+    failure must abort delivery; the wrapper owns and removes the unique staging
+    directory, including any partially prepared files.
+    """
+    paths = [Path(value).absolute() for value in (state_file, pending_file, message_file)]
+    if len(set(paths)) != len(paths):
+        raise ValueError("prepare_paths_not_distinct")
+    now = now or dt.datetime.now(CST)
+    info = describe(path, now=now, max_age_hours=max_age_hours, retained_path=retained_path)
+    previous = read_state(state_file)
+    decision = decide(info, unit_state, previous, now=now)
+    text = message(info, hostname=hostname, unit_state=unit_state, now=now,
+                   entry_reason=entry_reason, decision=decision)
+    write_state(pending_file, decision["state"])
+    # Exclusive creation is safe inside the wrapper's unique private directory;
+    # it also refuses an unexpected pre-existing file or symlink.
+    with Path(message_file).open("x", encoding="utf-8") as stream:
+        stream.write(text + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    return _shell_lines(info, unit_state, decision)
+
+
+def _state_sha(state):
+    if state is None:
+        return None
+    return hashlib.sha256(json.dumps(state, ensure_ascii=False, sort_keys=True,
+                                     separators=(",", ":")).encode()).hexdigest()
+
+
+def _bound_delivery(path):
+    """Read only a confirmed receipt bound to the exact prepared state."""
+    if not path or not Path(path).exists():
+        return None
+    file = Path(path)
+    if file.is_symlink() or not file.is_file() or file.stat().st_size > MAX_STATE_BYTES + MAX_RECEIPT_BYTES:
+        raise ValueError("delivery_receipt_not_regular_or_bounded")
+    data = json.loads(file.read_text(encoding="utf-8"))
+    # Legacy and explicitly failed receipts have no recovery authority.
+    if not isinstance(data, dict) or "deliveryState" not in data or data.get("delivered") is not True:
+        return None
+    if (data.get("hermesExitCode") != 0 or data.get("success") is not True
+            or data.get("skipped") is not False or data.get("reason") != "delivered"
+            or not isinstance(data.get("messageId"), str) or not data["messageId"].strip()
+            or type(data.get("stateApplied")) is not bool or not _valid_state(data["deliveryState"])
+            or data.get("deliveryStateSha256") != _state_sha(data["deliveryState"])
+            or "previousStateSha256" not in data):
+        raise ValueError("delivery_receipt_binding_invalid")
+    return data
+
+
+def _inflight_delivery(path):
+    if not path:
+        return None
+    file = Path(path)
+    if not file.exists() and not file.is_symlink():
+        return None
+    if file.is_symlink() or not file.is_file() or file.stat().st_size > MAX_STATE_BYTES + MAX_RECEIPT_BYTES:
+        raise ValueError("inflight_not_regular_or_bounded")
+    data = json.loads(file.read_text(encoding="utf-8"))
+    if (not isinstance(data, dict) or data.get("kind") != "health-alert.delivery-inflight.v1"
+            or not _valid_state(data.get("deliveryState"))
+            or data.get("deliveryStateSha256") != _state_sha(data["deliveryState"])
+            or "previousStateSha256" not in data):
+        raise ValueError("inflight_binding_invalid")
+    return data
+
+
+def _sync_directory(path):
+    descriptor = os.open(str(Path(path).parent), os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def begin_delivery(pending_file, state_file, inflight_file):
+    """Persist local intent before starting a possibly side-effecting sender."""
+    if Path(inflight_file).exists() or Path(inflight_file).is_symlink():
+        raise ValueError("inflight_already_exists")
+    state = read_state(pending_file)
+    if state is None:
+        raise ValueError("inflight_pending_state_invalid")
+    marker = {"schemaVersion": 1, "kind": "health-alert.delivery-inflight.v1",
+              "deliveryState": state, "deliveryStateSha256": _state_sha(state),
+              "previousStateSha256": _state_sha(read_state(state_file)),
+              "startedAt": dt.datetime.now(CST).isoformat()}
+    write_receipt(inflight_file, marker)
+    _sync_directory(inflight_file)
+
+
+def _clear_inflight(path, target_sha):
+    marker = _inflight_delivery(path)
+    if marker is None:
+        return
+    if marker["deliveryStateSha256"] != target_sha:
+        raise ValueError("inflight_delivery_mismatch")
+    Path(path).unlink()
+    _sync_directory(path)
+
+
+def _mark_delivery_applied(receipt_file, state):
+    receipt = _bound_delivery(receipt_file)
+    if receipt is None or receipt["stateApplied"]:
+        return
+    if receipt["deliveryStateSha256"] != _state_sha(state):
+        raise ValueError("delivery_receipt_state_mismatch")
+    receipt["stateApplied"] = True
+    write_receipt(receipt_file, receipt)
+
+
+def recover_delivery(receipt_file, state_file, inflight_file=None):
+    """Apply an already confirmed local delivery before any later send decision.
+
+    This recovers only receipts successfully written locally. Remote success
+    followed by a missing local receipt remains unknown, not server idempotency.
+    """
+    marker = _inflight_delivery(inflight_file)
+    receipt = _bound_delivery(receipt_file)
+    if marker and (receipt is None or marker["deliveryStateSha256"] != receipt["deliveryStateSha256"]
+                   or marker["previousStateSha256"] != receipt["previousStateSha256"]):
+        raise ValueError("delivery_outcome_unknown")
+    if receipt is None:
+        return False
+    current_sha = _state_sha(read_state(state_file))
+    target_sha = receipt["deliveryStateSha256"]
+    if receipt["stateApplied"]:
+        if marker:
+            if current_sha != target_sha:
+                raise ValueError("delivery_recovery_state_changed")
+            _clear_inflight(inflight_file, target_sha)
+            return True
+        return False
+    if current_sha not in (receipt["previousStateSha256"], target_sha):
+        raise ValueError("delivery_recovery_state_changed")
+    if current_sha != target_sha:
+        write_state(state_file, receipt["deliveryState"])
+    _mark_delivery_applied(receipt_file, receipt["deliveryState"])
+    _clear_inflight(inflight_file, target_sha)
+    return True
+
+
+def _record_receipt(args):
+    try:
+        raw = Path(args.json_file).read_bytes()
+    except OSError:
+        raw = b""
+    result = parse_receipt(raw, args.exit_code)
+    receipt = {**result["receipt"], "delivered": result["delivered"], "reason": result["reason"],
+               "checkedAt": dt.datetime.now(CST).isoformat()}
+    marker = None
+    try:
+        if args.inflight_file:
+            marker = _inflight_delivery(args.inflight_file)
+            if marker is None:
+                raise ValueError("delivery_inflight_missing")
+        if result["delivered"] and args.pending_file:
+            state = read_state(args.pending_file)
+            if state is None or not args.previous_state_file:
+                raise ValueError("delivery_pending_state_invalid")
+            receipt.update(deliveryState=state, deliveryStateSha256=_state_sha(state),
+                           previousStateSha256=_state_sha(read_state(args.previous_state_file)), stateApplied=False)
+            if marker and (marker["deliveryStateSha256"] != receipt["deliveryStateSha256"]
+                           or marker["previousStateSha256"] != receipt["previousStateSha256"]):
+                raise ValueError("delivery_receipt_inflight_mismatch")
+        write_receipt(args.state_file, receipt)
+        if args.inflight_file:
+            _sync_directory(args.state_file)
+            # Explicit skip proves this invocation did not send. All other
+            # unconfirmed outcomes retain the marker for reconciliation.
+            if result["reason"] == "receipt_skipped":
+                _clear_inflight(args.inflight_file, marker["deliveryStateSha256"])
+        stored = "yes"
+    except (OSError, ValueError):
+        stored = "no"
+    print(f"DELIVERED={'yes' if result['delivered'] else 'no'}")
+    print(f"RECEIPT_REASON={result['reason']}")
+    print(f"RECEIPT_STORED={stored}")
+    if args.inflight_file and not (result["delivered"] and stored == "yes"):
+        print("DELIVERY_OUTCOME=" + ("not_sent" if result["reason"] == "receipt_skipped" and stored == "yes" else "unknown"))
+    return 0 if result["delivered"] and stored == "yes" else 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -858,12 +1057,61 @@ def main(argv=None):
     commit_parser = sub.add_parser("commit-state")
     commit_parser.add_argument("--pending-file", required=True)
     commit_parser.add_argument("--state-file", required=True)
+    commit_parser.add_argument("--receipt-file", default=None)
+    commit_parser.add_argument("--inflight-file", default=None)
     receipt_parser = sub.add_parser("receipt")
     receipt_parser.add_argument("--json-file", required=True)
     receipt_parser.add_argument("--exit-code", type=int, required=True)
     receipt_parser.add_argument("--state-file", required=True)
+    receipt_parser.add_argument("--pending-file", default=None)
+    receipt_parser.add_argument("--previous-state-file", default=None)
+    receipt_parser.add_argument("--inflight-file", default=None)
+    begin_parser = sub.add_parser("begin-delivery")
+    begin_parser.add_argument("--pending-file", required=True)
+    begin_parser.add_argument("--state-file", required=True)
+    begin_parser.add_argument("--inflight-file", required=True)
+    recover_parser = sub.add_parser("recover-delivery")
+    recover_parser.add_argument("--receipt-file", required=True)
+    recover_parser.add_argument("--state-file", required=True)
+    recover_parser.add_argument("--inflight-file", default=None)
+    prepare_parser = sub.add_parser("prepare")
+    prepare_parser.add_argument("--json", dest="path", required=True)
+    prepare_parser.add_argument("--state-file", required=True)
+    prepare_parser.add_argument("--pending-file", required=True)
+    prepare_parser.add_argument("--message-file", required=True)
+    prepare_parser.add_argument("--max-age-hours", type=float, default=6.0)
+    prepare_parser.add_argument("--unit-state", default="unknown")
+    prepare_parser.add_argument("--retained", default=None)
+    prepare_parser.add_argument("--host", default="unknown")
+    prepare_parser.add_argument("--entry-reason", default="scheduled_audit")
     args = parser.parse_args(argv)
 
+    if args.command == "begin-delivery":
+        try:
+            begin_delivery(args.pending_file, args.state_file, args.inflight_file)
+        except (OSError, ValueError):
+            print("DELIVERY_STARTED=no")
+            return 1
+        print("DELIVERY_STARTED=prepared")
+        return 0
+    if args.command == "recover-delivery":
+        try:
+            recovered = recover_delivery(args.receipt_file, args.state_file, args.inflight_file)
+        except (OSError, ValueError, UnicodeError):
+            print("DELIVERY_RECOVERED=no (failed)")
+            return 1
+        print(f"DELIVERY_RECOVERED={'yes' if recovered else 'not_needed'}")
+        return 0
+    if args.command == "prepare":
+        try:
+            lines = prepare(args.path, args.state_file, args.pending_file, args.message_file,
+                            max_age_hours=args.max_age_hours, unit_state=args.unit_state,
+                            hostname=args.host, entry_reason=args.entry_reason, retained_path=args.retained)
+        except (OSError, ValueError):
+            print("PREPARED=no")
+            return 1
+        print("PREPARED=yes\n" + "\n".join(lines))
+        return 0
     if args.command in ("describe", "message"):
         info = describe(args.path, max_age_hours=args.max_age_hours, retained_path=args.retained)
         decision = decide(info, args.unit_state, read_state(args.state_file))
@@ -885,28 +1133,15 @@ def main(argv=None):
             return 1
         try:
             write_state(args.state_file, state)
+            _mark_delivery_applied(args.receipt_file, state)
+            _clear_inflight(args.inflight_file, _state_sha(state))
         except (OSError, ValueError):
             print("STATE_COMMITTED=no")
             return 1
         Path(args.pending_file).unlink(missing_ok=True)
         print("STATE_COMMITTED=yes")
         return 0
-    try:
-        raw = Path(args.json_file).read_bytes()
-    except OSError:
-        raw = b""
-    result = parse_receipt(raw, args.exit_code)
-    receipt = {**result["receipt"], "delivered": result["delivered"], "reason": result["reason"],
-               "checkedAt": dt.datetime.now(CST).isoformat()}
-    try:
-        write_receipt(args.state_file, receipt)
-        stored = "yes"
-    except (OSError, ValueError):
-        stored = "no"
-    print(f"DELIVERED={'yes' if result['delivered'] else 'no'}")
-    print(f"RECEIPT_REASON={result['reason']}")
-    print(f"RECEIPT_STORED={stored}")
-    return 0 if result["delivered"] and stored == "yes" else 1
+    return _record_receipt(args)
 
 
 if __name__ == "__main__":

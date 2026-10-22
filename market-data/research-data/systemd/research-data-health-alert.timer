@@ -1,11 +1,11 @@
 [Unit]
-Description=Independent daily check of expected research audit evidence
+Description=Reconcile an unconfirmed research-data health delivery; do not send a new alert
 
 [Timer]
 OnCalendar=*-*-* 23:00:00 Asia/Shanghai
 Persistent=false
 AccuracySec=1s
-Unit=research-data-health-alert.service
+Unit=research-data-health-alert-review.service
 
 [Install]
 WantedBy=timers.target

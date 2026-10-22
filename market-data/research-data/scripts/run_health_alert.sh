@@ -15,12 +15,12 @@ readonly PYTHON="${RESEARCH_DATA_PYTHON:-/home/ubuntu/research-data/.venv/bin/py
 readonly HERMES_PYTHON="${HERMES_PYTHON:-/home/ubuntu/.hermes/hermes-agent/venv/bin/python}"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly HELPER="${SCRIPT_DIR}/health_alert.py"
-readonly STATE_DIR="${HOME}/.local/state/research-data"
+readonly STATE_DIR="${RESEARCH_DATA_ALERT_STATE_DIR:-${HOME}/.local/state/research-data}"
 readonly RECEIPT_FILE="${STATE_DIR}/health-alert-receipt.json"
 # Last committed fault set (fingerprint excludes runId/audit timestamps). It is
 # committed only after a confirmed delivery, or when nothing needed sending.
 readonly ALERT_STATE_FILE="${STATE_DIR}/health-alert-state.json"
-readonly PENDING_STATE_FILE="${STATE_DIR}/.health-alert-state.pending.json"
+readonly INFLIGHT_FILE="${STATE_DIR}/.health-alert-inflight.json"
 readonly MAX_AGE_HOURS="${RESEARCH_DATA_HEALTH_MAX_AGE_HOURS:-6}"
 readonly AUDIT_UNIT="research-data-health.service"
 
@@ -47,18 +47,28 @@ send_telegram() {
   fi
   local out rc receipt_lines
   out="$(mktemp "${TMPDIR:-/tmp}/health-alert.XXXXXX")"
+  if ! "$PYTHON" "$HELPER" begin-delivery --pending-file "$PENDING_STATE_FILE" \
+      --state-file "$ALERT_STATE_FILE" --inflight-file "$INFLIGHT_FILE"; then
+    rm -f -- "$out"
+    printf 'health alert delivery intent not persisted; Hermes not called\n' >&2
+    return 1
+  fi
   set +e
   printf '%s\n' "$message" | timeout 60 "$HERMES_PYTHON" -m hermes_cli.main send --to telegram --file - --json >"$out" 2>/dev/null
   rc=$?
   set -e
   set +e
-  receipt_lines="$("$PYTHON" "$HELPER" receipt --json-file "$out" --exit-code "$rc" --state-file "$RECEIPT_FILE")"
+  receipt_lines="$("$PYTHON" "$HELPER" receipt --json-file "$out" --exit-code "$rc" --state-file "$RECEIPT_FILE" \
+    --pending-file "$PENDING_STATE_FILE" --previous-state-file "$ALERT_STATE_FILE" --inflight-file "$INFLIGHT_FILE")"
   local receipt_rc=$?
   set -e
   rm -f "$out"
   if [[ "$receipt_rc" -ne 0 ]]; then
     printf '%s\n' "$receipt_lines" >&2
-    printf 'alert not delivered: receipt validation failed (exit=%s)\n' "$rc" >&2
+    printf 'alert delivery not confirmed: receipt validation failed (exit=%s)\n' "$rc" >&2
+    if [[ -f "$INFLIGHT_FILE" ]]; then
+      printf '投递结果未知，需对账；不会自动重发\n' >&2
+    fi
     return 1
   fi
   printf '%s\n' "$receipt_lines"
@@ -70,18 +80,70 @@ if [[ "${1:-}" == "--dry-run-notify" ]]; then
   exit $?
 fi
 
-# Fail toward alerting: any helper/audit problem leaves ALERT=yes.
-STATUS="unknown"; CODES="none"; GENERATED_AT="unknown"; STALE="yes"; REASON="helper_unavailable"; UNIT_STATE="unknown"; ALERT="yes"
+# systemd serializes its own triggers; also serialize direct wrapper invocations
+# through the same prepare -> confirmed delivery -> state commit interval.
+if [[ -L "$STATE_DIR" ]]; then
+  printf 'health alert state directory is a symlink\n' >&2
+  exit 1
+fi
+mkdir -p -- "$STATE_DIR"
+exec 9>"${STATE_DIR}/.health-alert.lock"
+if ! flock -w 65 9; then
+  printf 'health alert state lock unavailable; no delivery or commit\n' >&2
+  exit 1
+fi
+readonly RUN_DIR="$(mktemp -d "${STATE_DIR}/.health-alert-run.XXXXXX")"
+readonly PENDING_STATE_FILE="${RUN_DIR}/pending.json"
+readonly MESSAGE_FILE="${RUN_DIR}/message.txt"
+cleanup_preparation() {
+  rm -f -- "$PENDING_STATE_FILE" "$MESSAGE_FILE"
+  rmdir -- "$RUN_DIR"
+}
+trap cleanup_preparation EXIT
+
+if [[ "${ALERT_DRY_RUN:-0}" != "1" ]]; then
+  if ! "$PYTHON" "$HELPER" recover-delivery --receipt-file "$RECEIPT_FILE" --state-file "$ALERT_STATE_FILE" \
+      --inflight-file "$INFLIGHT_FILE"; then
+    printf 'health alert confirmed-delivery recovery failed; no new delivery\n' >&2
+    printf '投递结果未知，需对账；不会自动重发\n' >&2
+    exit 1
+  fi
+fi
+
+# 23:00 review reconciles an unconfirmed local delivery. It must not classify
+# the audit again or call Hermes.
+if [[ "${1:-}" == "--review-unconfirmed" ]]; then
+  if [[ -e "$INFLIGHT_FILE" || -L "$INFLIGHT_FILE" ]]; then
+    printf '投递结果未知，需对账；不会自动重发\n' >&2
+    exit 1
+  fi
+  printf 'health alert review: unconfirmed delivery none\n'
+  exit 0
+fi
+
+STATUS="unknown"; CODES="none"; GENERATED_AT="unknown"; STALE="yes"; REASON="helper_unavailable"; UNIT_STATE="$(unit_state)"; ALERT="unknown"
 DECISION="helper_unavailable"; NEW_COUNT="?"; WORSENED_COUNT="?"; RECOVERED_COUNT="?"; UNCONFIRMED_DAYS="?"
-rm -f -- "$PENDING_STATE_FILE"
+PREPARED="no"
+entry_reason="scheduled_audit"
+if [[ "$UNIT_STATE" == "failed" ]]; then
+  entry_reason="audit_failed"
+fi
+if ! preparation="$("$PYTHON" "$HELPER" prepare --json "$HEALTH_JSON" --max-age-hours "$MAX_AGE_HOURS" \
+    --unit-state "$UNIT_STATE" --state-file "$ALERT_STATE_FILE" --pending-file "$PENDING_STATE_FILE" \
+    --message-file "$MESSAGE_FILE" --host "$(hostname)" --entry-reason "$entry_reason")"; then
+  printf 'health alert preparation failed; no delivery or commit\n' >&2
+  exit 1
+fi
 while IFS='=' read -r key value; do
   case "$key" in
-    STATUS|CODES|GENERATED_AT|STALE|REASON|UNIT_STATE|ALERT|DECISION|NEW_COUNT|WORSENED_COUNT|RECOVERED_COUNT|UNCONFIRMED_DAYS)
+    PREPARED|STATUS|CODES|GENERATED_AT|STALE|REASON|UNIT_STATE|ALERT|DECISION|NEW_COUNT|WORSENED_COUNT|RECOVERED_COUNT|UNCONFIRMED_DAYS)
       declare "$key=$value" ;;
   esac
-done < <("$PYTHON" "$HELPER" describe --json "$HEALTH_JSON" --max-age-hours "$MAX_AGE_HOURS" \
-           --unit-state "$(unit_state)" --state-file "$ALERT_STATE_FILE" \
-           --pending-file "$PENDING_STATE_FILE" 2>/dev/null || true)
+done <<< "$preparation"
+if [[ "$PREPARED" != "yes" || ( "$ALERT" != "yes" && "$ALERT" != "no" ) ]]; then
+  printf 'health alert preparation invalid; no delivery or commit\n' >&2
+  exit 1
+fi
 
 commit_state() {
   if [[ "${ALERT_DRY_RUN:-0}" == "1" ]]; then
@@ -93,7 +155,8 @@ commit_state() {
     printf 'STATE_COMMITTED=no (no pending state)\n' >&2
     return 1
   fi
-  "$PYTHON" "$HELPER" commit-state --pending-file "$PENDING_STATE_FILE" --state-file "$ALERT_STATE_FILE"
+  "$PYTHON" "$HELPER" commit-state --pending-file "$PENDING_STATE_FILE" --state-file "$ALERT_STATE_FILE" \
+    --receipt-file "$RECEIPT_FILE" --inflight-file "$INFLIGHT_FILE"
 }
 
 if [[ "$ALERT" != "yes" ]]; then
@@ -103,21 +166,16 @@ if [[ "$ALERT" != "yes" ]]; then
   exit 0
 fi
 
-entry_reason="scheduled_audit"
-if [[ "$UNIT_STATE" == "failed" ]]; then
-  entry_reason="audit_failed"
-fi
-message="$("$PYTHON" "$HELPER" message --json "$HEALTH_JSON" --max-age-hours "$MAX_AGE_HOURS" \
-           --unit-state "$UNIT_STATE" --host "$(hostname)" --entry-reason "$entry_reason" \
-           --state-file "$ALERT_STATE_FILE")"
+message="$(<"$MESSAGE_FILE")"
 printf 'health alert status=%s unit=%s stale=%s reason=%s decision=%s new=%s worsened=%s recovered=%s\n' \
   "$STATUS" "$UNIT_STATE" "$STALE" "$REASON" "$DECISION" "$NEW_COUNT" "$WORSENED_COUNT" "$RECOVERED_COUNT" >&2
 if ! send_telegram "$message"; then
-  # Not delivered: keep the previous committed state so the change is retried.
+  # Keep the previous committed fault state. If Hermes started, the persistent
+  # inflight marker blocks automatic resend until its outcome is reconciled.
   rm -f -- "$PENDING_STATE_FILE"
   exit 1
 fi
 if ! commit_state; then
-  printf 'alert delivered but state not committed; the same change may be re-sent once\n' >&2
+  printf 'alert delivered but state not committed; bound receipt retained for next-run recovery\n' >&2
   exit 1
 fi

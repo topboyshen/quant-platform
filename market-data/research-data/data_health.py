@@ -1251,7 +1251,25 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
         "calendarStatus": expected_calendar["status"] if expected_calendar else None,
         # None while today's snapshot verdict is still pending/insufficient.
         "snapshotRequired": {"not_required": False, "pass": True, "fail": True}.get(decision["verification"]["status"])}
+    # FROZEN has been the accepted business mode since 2026-08-22. It is not a
+    # license to hide tampering or a future date, but calendar advance and
+    # missed collection while frozen are known limitations, not new incidents.
+    accepted_freeze = business_mode == "FROZEN"
+    freeze_expected = {
+        "unresolved_trading_day_gaps", "unresolved_core_market_gaps",
+        "qlib_not_current_for_expected_trading_day", "scheduled_snapshot_missing",
+        "scheduled_core_market_missing", "last_snapshot_not_successful",
+        "last_core_market_not_successful",
+    }
+    if accepted_freeze:
+        for item in issues:
+            if item.get("code") in freeze_expected:
+                item["acceptedFreeze"] = True
+                if item.get("severity") == "critical":
+                    item["severity"] = "information"
+                    item["severityReason"] = "accepted_frozen_business_mode"
     return {"schemaVersion": 1, "generatedAt": now.isoformat(), "readOnly": True,
+            "acceptedFreeze": accepted_freeze,
             "supplyFreshness": supply_freshness,
             "activeContract": _core_contract.SCHEMA if core_active else _core_contract.LEGACY_SCHEMA,
             "effectiveTradeDate": effective, "contractPolicy": policy,
@@ -1300,7 +1318,10 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
             "automaticRecoveryAuthorized": False,
             "limitations": ["No independent exchange calendar or release API lookup.",
                             "Valid market stage alone cannot reconstruct historical observed_at sources.",
-                            "Stored rows receive strict JSON/date/error checks, not a full market revalidation."]}
+                            "Stored rows receive strict JSON/date/error checks, not a full market revalidation."]
+                           + (["Accepted FROZEN business mode: collection is not expected to advance; "
+                               "freeze-caused gaps and staleness are known limitations, not new incidents."]
+                              if accepted_freeze else [])}
 
 
 def write_audit_output(path, payload):

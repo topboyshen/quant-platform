@@ -32,6 +32,24 @@ class DescribeTests(unittest.TestCase):
         self.path.write_text(json.dumps(payload))
         return self.path
 
+    def test_accepted_freeze_does_not_page_on_stale_or_gap_growth(self):
+        path = self.write(artifact(
+            acceptedFreeze=True,
+            issues=[{"code": "unresolved_trading_day_gaps", "severity": "information",
+                     "acceptedFreeze": True, "dates": ["2026-10-21"]},
+                    {"code": "historical_rows_changed_or_missing", "severity": "critical",
+                     "dates": ["2026-08-28"]}],
+            supplyFreshness={"schema": "research.supply-freshness.v1", "source": "qlib",
+                             "status": "stale", "dueDate": "2026-10-21",
+                             "expectedTargetDate": "2026-10-21", "actualTargetDate": "2026-10-20",
+                             "snapshotRequired": False}))
+        info = alert.describe(path, now=NOW)
+        atoms = alert.alert_atoms(info, "inactive", now=NOW)
+        self.assertTrue(info["acceptedFreeze"])
+        self.assertIn("historical_rows_changed_or_missing|2026-08-28", atoms)
+        self.assertFalse(any(atom.startswith("unresolved_trading_day_gaps|") for atom in atoms))
+        self.assertFalse(any(atom.startswith("qlib_supply_stale|") for atom in atoms))
+
     def test_missing_and_invalid_artifacts_alert(self):
         info = alert.describe(self.path, now=NOW)
         self.assertEqual((info["status"], info["reason"]), ("missing", "health_json_missing"))
