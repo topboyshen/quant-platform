@@ -115,6 +115,22 @@ class HistoricalCalendarGapTests(unittest.TestCase):
                 with self.assertRaisesRegex(health.EvidenceError, "historical_calendar_evidence_unavailable_or_invalid"):
                     self.audit()
 
+    def test_missing_publication_record_does_not_erase_hash_bound_calendar(self):
+        path = self.project / "work/report-archives/2026-10-14"
+        (path / "published.json").unlink()
+        result = self.audit()
+        self.assertIn("2026-10-14", result["historicalCalendarEvidence"]["openDays"])
+        self.assertEqual(result["historicalCalendarEvidence"]["proofs"]["2026-10-14"]["inputSha256"],
+                         hashlib.sha256((path / "input.json").read_bytes()).hexdigest())
+        self.assertIn("2026-10-14", self.gaps(result)["dates"])
+
+    def test_hash_mismatch_without_publication_is_still_invalid(self):
+        path = self.project / "work/report-archives/2026-10-14"
+        (path / "published.json").unlink()
+        (path / "input.sha256").write_text("0" * 64 + "\n")
+        with self.assertRaisesRegex(health.EvidenceError, "historical_calendar_evidence_unavailable_or_invalid"):
+            self.audit()
+
     def test_old_run_record_cannot_replace_missing_sealed_archive(self):
         path = self.project / "work/report-archives/2026-10-12"
         for file in path.iterdir():

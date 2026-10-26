@@ -53,6 +53,14 @@ def validate_calendar_evidence(evidence, now):
                 or not re.fullmatch(r"[0-9a-f]{64}", binding["inputSha256"])):
             raise ValueError("invalid calendar archive binding")
         bound_date, cutoff = binding["archiveDate"], instant(binding["cutoffInstant"])
+    elif set(binding) == {"kind", "archiveDate", "inputSha256", "cutoffInstant"}:
+        # A missing publication record is not a contradictory seal. The hash-bound
+        # frozen input can prove the trading day; it must not claim sealed.
+        if (binding.get("kind") != "archived_input_publication_absent"
+                or not isinstance(binding.get("inputSha256"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", binding["inputSha256"])):
+            raise ValueError("invalid unpublished archive binding")
+        bound_date, cutoff = binding["archiveDate"], instant(binding["cutoffInstant"])
     elif set(binding) == {"kind", "targetDate", "contextSha256", "lastRunSha256", "stateSha256", "completedAt"}:
         if (binding["kind"] != "validated_non_trading_skip" or doc["status"] != "closed"
                 or any(not isinstance(binding[k], str) or not re.fullmatch(r"[0-9a-f]{64}", binding[k])

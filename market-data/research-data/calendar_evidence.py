@@ -223,12 +223,21 @@ def _load_current_evidence(path, now):
             return evidence
         raw = read("input.json", 16 * 1024 * 1024)
         frozen = strict_json(raw)
-        published = strict_json(read("published.json", 8192))
         actual = hashlib.sha256(raw).hexdigest()
-        if (read("input.sha256", 256).decode().strip() != actual
-                or published.get("status") != "sealed" or published.get("inputSha256") != actual
-                or frozen["targetDate"] != path.name):
-            raise ValueError("calendar archive identity mismatch")
+        publication = path / "published.json"
+        if publication.is_symlink():
+            raise ValueError("invalid calendar publication record")
+        publication_absent = not publication.exists()
+        if publication_absent:
+            if (read("input.sha256", 256).decode().strip() != actual
+                    or frozen.get("targetDate") != path.name):
+                raise ValueError("calendar archive identity mismatch")
+        else:
+            published = strict_json(read("published.json", 8192))
+            if (read("input.sha256", 256).decode().strip() != actual
+                    or published.get("status") != "sealed" or published.get("inputSha256") != actual
+                    or frozen.get("targetDate") != path.name):
+                raise ValueError("calendar archive identity mismatch")
         calendar = frozen["compilerContext"]["data"]["tradingCalendar"]
         if calendar != frozen["rawContext"]["data"]["tradingCalendar"] or calendar["targetDate"] != path.name:
             raise ValueError("frozen calendar contexts disagree")
@@ -237,10 +246,19 @@ def _load_current_evidence(path, now):
                     "previousTradingDate": calendar["previousTradingDate"], "nextTradingDate": calendar["nextTradingDate"],
                     "sourceIds": calendar["sourceIds"], "observedAt": calendar["dataAsOf"],
                     "validUntil": path.name + "T23:59:59.999999+08:00"}
-        evidence = {"document": document, "binding": {"archiveDate": path.name, "inputSha256": actual,
-                    "cutoffInstant": frozen["cutoffInstant"], "publishedStatus": "sealed"}}
+        binding = ({"kind": "archived_input_publication_absent", "archiveDate": path.name,
+                    "inputSha256": actual, "cutoffInstant": frozen["cutoffInstant"]}
+                   if publication_absent else
+                   {"archiveDate": path.name, "inputSha256": actual,
+                    "cutoffInstant": frozen["cutoffInstant"], "publishedStatus": "sealed"})
+        evidence = {"document": document, "binding": binding}
         evidence["sha256"] = digest(evidence)
         validate_calendar_evidence(evidence, now)
+        if (read("input.json", 16 * 1024 * 1024) != raw
+                or read("input.sha256", 256).decode().strip() != actual
+                or publication.is_symlink()
+                or publication.exists() == publication_absent):
+            raise ValueError("calendar archive changed during read")
         return evidence
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         raise ValueError("independent trading calendar evidence invalid or stale") from None
