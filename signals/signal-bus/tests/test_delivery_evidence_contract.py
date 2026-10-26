@@ -13,7 +13,11 @@ from unittest.mock import patch
 
 SIGNAL = Path(__file__).resolve().parents[1]
 CONTRACT = SIGNAL / "scripts/delivery_evidence.py"
-DASHBOARD = Path(os.environ.get("DASHBOARD_TEST_ROOT", str(SIGNAL.parent / "dashboard")))
+_DASHBOARD_CANDIDATES = (SIGNAL.parent / "ops" / "dashboard", SIGNAL.parent / "dashboard")
+DASHBOARD = Path(os.environ.get(
+    "DASHBOARD_TEST_ROOT",
+    next((str(path) for path in _DASHBOARD_CANDIDATES if path.is_dir()), str(_DASHBOARD_CANDIDATES[0])),
+))
 sys.path.insert(0, str(DASHBOARD / "exporter"))
 
 

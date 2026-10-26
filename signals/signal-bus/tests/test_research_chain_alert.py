@@ -366,8 +366,13 @@ class IncidentTests(unittest.TestCase):
             state, sender = Path(tmp), SenderFake()
             rca.process(first, state, PRE, date=DATE, sender=sender)
             summary = rca.process(later, state, PRE, date=DATE, sender=sender)
-            self.assertEqual(len(sender.sent), 2)
-            self.assertEqual(summary["notified"], 1)
+            # 同一天同一事故：relay 的 timestamp_invalid 是"当日无新研究"的下游后果，
+            # 只更新记录与日志，不再发第二条（恢复按天一次的约定）。
+            self.assertEqual(len(sender.sent), 1)
+            self.assertEqual(summary["notified"], 0)
+            self.assertEqual(summary["skipped"], 1)
+            saved = json.loads((state / f"research-chain-alert-{DATE}.json").read_text())
+            self.assertIn("relay_blocked", " ".join(saved["businessAtoms"]))
 
     def test_recovery_requires_seal_and_matching_receipt(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -574,6 +579,25 @@ class StateSafetyTests(unittest.TestCase):
         events = [json.loads(line)["event"] for line in log_lines]
         self.assertEqual(events.count("send"), 3)
         self.assertIn("recovered", events)
+
+    def test_downstream_relay_hold_after_generation_failure_is_not_renotified(self):
+        state = Path(self.tmp.name) / "state_consequence"
+        sender = SenderFake()
+        rca.process(rca.classify(facts(occurrence=occurrence("failed", 1))), state, PRE, date=DATE, sender=sender)
+        self.assertEqual(len(sender.sent), 1)
+        relay = rca.classify(facts(occurrence=occurrence(), last_run=last_run(), report_exists=True,
+                                   report_sha256=REPORT_SHA, seal=seal(),
+                                   delivery=receipt(status="held", reason="timestamp_invalid"),
+                                   now=POST, data_date="2026-09-19", telegram_state="confirmed"))
+        self.assertEqual(codes(relay), ["relay_blocked"])
+        summary = rca.process(relay, state, POST, date=DATE, sender=sender)
+        self.assertEqual(len(sender.sent), 1, "下游拦截不得重复推送同一天")
+        self.assertEqual(summary["skipped"], 1)
+        saved = json.loads((state / f"research-chain-alert-{DATE}.json").read_text())
+        self.assertIn("relay_blocked", " ".join(saved["businessAtoms"]))
+        events = [json.loads(line)["event"]
+                  for line in (state / "research-chain-alert.log").read_text().splitlines()]
+        self.assertIn("same_day_suppressed", events)
 
     def test_missing_attempts_or_null_causes_pause_instead_of_raising(self):
         for broken in ({"incident": {"key": f"{DATE}:research_chain"}},

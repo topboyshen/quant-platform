@@ -69,6 +69,19 @@ MAX_NOT_STARTED_ATTEMPTS = 6
 _LEGACY_NOT_STARTED_DETAILS = frozenset(("expected_chat_not_configured", "not_configured"))
 
 BENIGN_REASONS = {"delivery_busy", "already_confirmed"}
+
+# 生成失败之后，relay 因"当日没有可用研究"而持有的原因是下游后果，
+# 不再单独推送第二条告警，只更新当日事故记录。
+_CONSEQUENCE_REASONS = {"timestamp_invalid", "research_seal_missing"}
+
+
+def _downstream_of_generation(atom: str, active: set) -> bool:
+    parts = atom.split("|")
+    return (len(parts) == 3 and parts[1] == "relay_blocked"
+            and parts[2] in _CONSEQUENCE_REASONS
+            and any(item.split("|")[1:2] == ["generation_failed"] for item in active))
+
+
 HASH_RE = re.compile(r"[a-f0-9]{64}\Z")
 
 
@@ -667,6 +680,7 @@ def process(incidents: list[dict], state_dir: Path, now: datetime, *, date: str,
                 attempt.update(outcome="failed", notStarted=True, reclassifiedFrom="uncertain",
                                detail=f"not_started:{detail}")
                 reclassified = True
+        notified_today = any(attempt.get("outcome") == "confirmed" for attempt in all_attempts)
         possibly_sent = any(attempt.get("outcome") in ("sending", "uncertain") for attempt in all_attempts)
         if (reclassified and state.get("uncertainSend") and not possibly_sent
                 and not state.get("uncertainLedger")):
@@ -719,6 +733,14 @@ def process(incidents: list[dict], state_dir: Path, now: datetime, *, date: str,
             summary["skipped"] = int(bool(active))
             _save_state(path, state)
             return summary
+        if notified_today and state.get("incident") is not None and added:
+            consequential = {atom for atom in added if _downstream_of_generation(atom, active)}
+            if added == consequential:
+                summary["skipped"] = 1
+                _save_state(path, state)
+                _append_log(state_dir, {"at": now.isoformat(), "event": "same_day_suppressed",
+                                        "fingerprint": event["fingerprint"], "added": sorted(added)})
+                return summary
         attempts = event["attempts"]
         started = [attempt for attempt in attempts if not attempt.get("notStarted")]
         not_started = len(attempts) - len(started)
