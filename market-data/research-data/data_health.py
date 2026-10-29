@@ -138,6 +138,26 @@ QLIB_TAIL_GAP_EXCEPTIONS = {
         "officialEvidenceSha256": ("eb93005104bd94d8896c4c4fcb27ecbd4478ba6d7c4b3a03b134a586aadc50d6", "cef3ef06550bf6e942a29ee39bf4f11b91dc8b6b8e228ba3c5cb0b91285e4aae"),
         "meaning": "exchange_announced_full_day_suspension_source_absent_nan_slots_no_prices_fabricated",
     },
+    # SZ002731 suspended 2026-09-01..2026-10-20 (cninfo 1225539050, failure to
+    # disclose periodic reports), delisting decision 2026-10-16, resumed in the
+    # delisting arrangement period on 2026-10-23 (cninfo 1225616283).
+    "qlib-tail-gap-SZ002731-20260901-v1": {
+        "symbol": "SZ002731",
+        "recordSha256": "bddd338b6bf08de2ff0a4b30f46300818f923404c0987879727ff6af61ce8049",
+        "lastStoredDate": "2026-08-31",
+        "resumeDate": "2026-10-23",
+        "gapDates": (
+            "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-07", "2026-09-08",
+            "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-14", "2026-09-15", "2026-09-16",
+            "2026-09-17", "2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24",
+            "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-08", "2026-10-09", "2026-10-12",
+            "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-19", "2026-10-20",
+        ),
+        "resumeRowSha256": "2b9fb98169407361c3544844a681bd333ce5713927a7e5b19a236a71c24abdfd",
+        "lastStoredRowSha256": "038e81b1b885152b38ae62fd8baaea9088d468e5d9852e546009bccd6cc36eb0",
+        "officialEvidenceSha256": ("f9890ae00af1769880f17f60953257384ceb3b629cf1b46ba69d528ec880a608", "d528d65b080de3c0867a0f08aa1572b5141922d154eebe53722b0956f0e201c9"),
+        "meaning": "exchange_announced_full_day_suspension_source_absent_nan_slots_no_prices_fabricated",
+    },
 }
 
 
