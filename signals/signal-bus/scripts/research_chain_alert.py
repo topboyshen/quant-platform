@@ -525,6 +525,66 @@ def _state_path(state_dir: Path, date: str) -> Path:
     return state_dir / f"research-chain-alert-{date}.json"
 
 
+def _confirmation_basis(event: dict | None, incident: dict | None,
+                        prior: set[str], date: str) -> dict | None:
+    """Keep the actual confirmed predecessor separate from an unsent change."""
+    if (incident is None or incident.get("key") != f"{date}:research_chain"
+            or incident.get("date", date) != date):
+        return None
+    if event is not None:
+        for attempt in reversed(event["attempts"]):
+            if attempt.get("outcome") == "confirmed":
+                return {"kind": "transition", "fingerprint": event["fingerprint"],
+                        "date": event.get("date"), "atoms": event.get("after", []),
+                        "attempt": dict(attempt)}
+        # A second downstream consequence must retain the original ack, even
+        # though the intervening suppressed transition has no send attempts.
+        return (event.get("suppression") or {}).get("confirmed")
+    for attempt in reversed(incident.get("attempts", [])):
+        if attempt.get("outcome") == "confirmed":
+            return {"kind": "legacy_incident", "key": incident["key"],
+                    "date": date, "atoms": sorted(prior), "attempt": dict(attempt)}
+    return None
+
+
+def _valid_suppression(event: dict, value: dict) -> bool:
+    """An invalid suppression record pauses; it must never turn into a retry."""
+    disposition = event.get("suppression")
+    if not isinstance(disposition, dict) or disposition.get("reason") != "generation_downstream":
+        return False
+    basis = disposition.get("confirmed")
+    if not isinstance(basis, dict) or basis.get("date") != event.get("date"):
+        return False
+    attempt = basis.get("attempt")
+    if not isinstance(attempt, dict) or attempt.get("outcome") != "confirmed":
+        return False
+    if basis.get("kind") == "transition":
+        if (not isinstance(basis.get("fingerprint"), str) or not HASH_RE.fullmatch(basis["fingerprint"])
+                or basis["fingerprint"] == event["fingerprint"]):
+            return False
+    elif basis.get("kind") == "legacy_incident":
+        if basis.get("key") != f"{event.get('date')}:research_chain":
+            return False
+    else:
+        return False
+    for field in ("before", "after", "added"):
+        if not isinstance(event.get(field), list) or any(not isinstance(atom, str)
+                                                       for atom in event[field]):
+            return False
+    atoms = basis.get("atoms")
+    if not isinstance(atoms, list) or any(not isinstance(atom, str) for atom in atoms):
+        return False
+    before, after, added = (set(event[field]) for field in ("before", "after", "added"))
+    generation = f"{event.get('date')}|generation_failed|"
+    return bool(added and generation in before and generation in atoms and set(atoms) <= before
+                and (value.get("incident") or {}).get("key") == f"{event.get('date')}:research_chain"
+                and basis.get("date") == (value.get("incident") or {}).get("date")
+                and not event["attempts"] and event.get("recovered") == []
+                and after == before | added and added.isdisjoint(before)
+                and after == set(value.get("businessAtoms", []))
+                and all(_downstream_of_generation(atom, after) for atom in added))
+
+
 def _load_state(path: Path) -> tuple[dict, str | None]:
     if not path.exists():
         return {"version": 2, "incident": None}, None
@@ -568,6 +628,8 @@ def _load_state(path: Path) -> tuple[dict, str | None]:
             if any(not isinstance(attempt, dict) or attempt.get("outcome") not in (
                     "sending", "confirmed", "failed", "uncertain") for attempt in event["attempts"]):
                 raise ValueError("transition attempts")
+            if "suppression" in event and not _valid_suppression(event, value):
+                raise ValueError("suppression")
         return value, None
     except (OSError, ValueError, RecursionError):
         return {"version": 2, "incident": None}, "state_corrupt"
@@ -680,7 +742,7 @@ def process(incidents: list[dict], state_dir: Path, now: datetime, *, date: str,
                 attempt.update(outcome="failed", notStarted=True, reclassifiedFrom="uncertain",
                                detail=f"not_started:{detail}")
                 reclassified = True
-        notified_today = any(attempt.get("outcome") == "confirmed" for attempt in all_attempts)
+        confirmation = _confirmation_basis(event, prior_incident, prior, date)
         possibly_sent = any(attempt.get("outcome") in ("sending", "uncertain") for attempt in all_attempts)
         if (reclassified and state.get("uncertainSend") and not possibly_sent
                 and not state.get("uncertainLedger")):
@@ -733,14 +795,19 @@ def process(incidents: list[dict], state_dir: Path, now: datetime, *, date: str,
             summary["skipped"] = int(bool(active))
             _save_state(path, state)
             return summary
-        if notified_today and state.get("incident") is not None and added:
+        if (confirmation and confirmation.get("date") == date and prior_incident is not None
+                and f"{date}|generation_failed|" in confirmation.get("atoms", [])
+                and state.get("incident") is not None and added and not recovered):
             consequential = {atom for atom in added if _downstream_of_generation(atom, active)}
             if added == consequential:
-                summary["skipped"] = 1
-                _save_state(path, state)
-                _append_log(state_dir, {"at": now.isoformat(), "event": "same_day_suppressed",
-                                        "fingerprint": event["fingerprint"], "added": sorted(added)})
-                return summary
+                event["suppression"] = {"reason": "generation_downstream",
+                                        "confirmed": confirmation, "at": now.isoformat()}
+        if event.get("suppression"):
+            summary["skipped"] = 1
+            _save_state(path, state)
+            _append_log(state_dir, {"at": now.isoformat(), "event": "same_day_suppressed",
+                                    "fingerprint": event["fingerprint"], "added": event["added"]})
+            return summary
         attempts = event["attempts"]
         started = [attempt for attempt in attempts if not attempt.get("notStarted")]
         not_started = len(attempts) - len(started)
