@@ -50,6 +50,18 @@ EVIDENCE_ROLES = {"上涨占优", "下跌占优", "成交额", "单日行情", "
 INFERENCE_LIMIT = "未提供结构化反证来源；此限制只约束本条推断，不否定已核验事实。"
 LEGACY_RISK_LIMIT = "未提供结构化反证来源，不升级为事实结论。"
 CALENDAR_SOURCE_ID = "akshare:sina:trade-calendar"
+# Exact unreferenced observations emitted by the paired baseline compiler.
+# They describe bounded material availability, not externally sourced claims.
+# Unknown unreferenced text must not acquire legitimacy from unrelated facts.
+BASELINE_OBSERVATIONS = frozenset({
+    "[事实] 当前数据包中无可引用的窗口内公告条目，仅代表本次有限查询范围。",
+    "[事实] 股票池官方公告查询未完成或结果不适用于截止，不判断窗口内有无新增披露。",
+    "财务增量：缺少已核验的历史比较基准，不判断是否更新。",
+    "[事实] 本次无新增可核验事项；关键数字见第 4 节。",
+    "本次仅列示已核验字段，不作新增事项结论。",
+    "沪深两市成交额：单位或来源不可核验。",
+    "市场宽度：家数或来源不可核验。",
+})
 
 
 class Held(Exception):
@@ -587,12 +599,41 @@ def extract_summary_from_digest(digest, target_date, data_status, semantic_revie
     if chosen is None:
         chosen = next((item for item in items if isinstance(item, dict)), None)
     if chosen is None:
-        lines = [str(line).strip() for line in (digest.get("conclusionLines") or []) if str(line).strip()]
-        if not lines:
+        if items:
+            hold("digest_items_invalid")
+        lines, facts = digest.get("conclusionLines"), digest.get("facts")
+        if not isinstance(lines, list) or not lines:
             hold("digest_conclusion_missing")
-        conclusion = "\n".join(lines)
-        facts = [str(line).strip() for line in (digest.get("facts") or []) if str(line).strip()]
-        evidence = [line for line in [*lines, *facts] if re.search(r"\[来源 \d+\]", line)]
+        if not isinstance(facts, list):
+            hold("digest_baseline_facts_invalid")
+        cited_facts = []
+        for line in [*lines, *facts]:
+            if not isinstance(line, str) or not line.strip() or "\n" in line or "\r" in line:
+                hold("digest_baseline_fact_invalid")
+            text = re.sub(r"^-\s*", "", line.strip())
+            if text in BASELINE_OBSERVATIONS:
+                observation = re.sub(r"^\[事实\]\s*", "", text)
+                limitation = "材料范围说明（不是外部事实的支持证据）：" + observation
+                if limitation not in limitations:
+                    limitations.append(limitation)
+                continue
+            refs = references_in(text)
+            if not refs or not re.match(r"^\[事实\]\s*\S", text):
+                hold("digest_baseline_fact_unreferenced")
+            # A known material observation with grafted references is not a
+            # sourced fact either. The compiler emits these exact lines bare.
+            if any(text.startswith(observation) for observation in BASELINE_OBSERVATIONS):
+                hold("digest_baseline_observation_reference_invalid")
+            if any(int(number) not in index for number in refs):
+                hold("source_reference_missing")
+            if text not in cited_facts:
+                cited_facts.append(text)
+        if not cited_facts:
+            hold("digest_baseline_facts_missing")
+        # The existing receiver accepts a list of self-cited facts as its fact
+        # conclusion. It does not need an invented supporting relationship.
+        conclusion = "\n".join(cited_facts)
+        evidence = []
         counter = []
         limitations.append("基础版：封存摘要没有结构化推断条目；仅保留事实结论与限制，不生成因果判断。")
     else:
@@ -648,7 +689,7 @@ def extract_summary_from_digest(digest, target_date, data_status, semantic_revie
                              "evidence_roles": evidence_roles, "period_note": period,
                              "inference_limit": limitation}
     limitations.extend(value for value in declared if value not in limitations)
-    if not re.search(r"\[来源 \d+\]", conclusion):
+    if chosen is not None and not re.search(r"\[来源 \d+\]", conclusion):
         numbers = [int(number) for line in evidence for number in re.findall(r"\[来源 (\d+)\]", line)]
         if not numbers:
             hold("conclusion_reference_missing")
@@ -660,7 +701,7 @@ def extract_summary_from_digest(digest, target_date, data_status, semantic_revie
         limitations.append("研究语义未通过人工审核；结构、来源和时效门禁通过不代表投资结论已经验证。")
     limitations.append("仅供研究整理，不是交易指令；封存草稿仍需人工批准，不发布 XHS 内容。")
     retained = "\n".join([conclusion, *evidence, *counter, *risks])
-    referenced = sorted({int(value) for value in re.findall(r"\[来源 (\d+)\]", retained)})
+    referenced = sorted({int(value) for value in references_in(retained)})
     if not referenced:
         hold("conclusion_reference_missing")
     if any(number not in index for number in referenced):
@@ -1415,6 +1456,8 @@ structured_digest_binding_invalid structured_digest_generated_at_mismatch
 structured_digest_hash_invalid structured_digest_hash_mismatch structured_digest_missing
 structured_digest_path_invalid digest_conclusion_missing digest_data_date_invalid
 digest_inference_invalid digest_items_invalid digest_limitations_missing
+digest_baseline_facts_invalid digest_baseline_fact_invalid digest_baseline_fact_unreferenced
+digest_baseline_observation_reference_invalid digest_baseline_facts_missing
 digest_reference_invalid digest_source_index_invalid post_config_invalid
 post_security_config_invalid post_tls_pin_missing_or_invalid record_endpoint_invalid
 required_artifact_or_config_invalid accepted http_accepted_storage_unconfirmed
