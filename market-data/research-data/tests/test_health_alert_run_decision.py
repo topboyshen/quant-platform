@@ -54,8 +54,11 @@ class ActiveRunAlertTests(unittest.TestCase):
     def test_old_success_current_insufficient_is_critical_when_not_frozen(self):
         prior = self.decide()["state"]
         self.old_success()
+        # RUNNING also pages as business_mode_not_frozen; the active-run atom
+        # below remains the property this test pins down.
         self.producer.f.mode.write_text("RUNNING\n")
         info = self.describe(self.producer.audit())
+        self.assertIn("business_mode_not_frozen", info["codes"])
         self.assertFalse(info["acceptedFreeze"])
         self.assertEqual(info["status"], "critical")
         event = alert.decide(info, "inactive", prior, self.f.now)

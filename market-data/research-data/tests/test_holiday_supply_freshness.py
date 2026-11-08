@@ -69,10 +69,13 @@ class HolidaySupplyFreshnessTests(unittest.TestCase):
         self.assertIn("快照：休市无需运行", text)
 
     def test_non_frozen_stale_qlib_on_closed_day_pages(self):
+        # RUNNING also pages as business_mode_not_frozen and fails the current
+        # run; the qlib_supply_stale atom below is the property under test.
         self.f.mode.write_text("RUNNING\n")
         payload = self.holiday("2026-09-06", "2026-09-05")
         self.assertEqual(payload["supplyFreshness"]["status"], "stale")
         info = self.describe(payload)
+        self.assertIn("business_mode_not_frozen", info["codes"])
         self.assertFalse(info["freezeStalenessAccepted"])
         event = alert.decide(info, "inactive", self.prior, self.f.now)
         self.assertTrue(event["notify"])

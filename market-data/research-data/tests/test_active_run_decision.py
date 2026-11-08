@@ -72,9 +72,13 @@ class ActiveRunDecisionTests(unittest.TestCase):
         self.assertEqual(decision["run"]["startedAt"], self.full_run["startedAt"])
 
     def test_non_frozen_historical_gaps_stay_critical(self):
+        # RUNNING is not a neutral mode: any non-FROZEN value is itself a
+        # critical business_mode_not_frozen integrity issue and fails the
+        # current run. The gap assertions below are the property under test.
         self.f.mode.write_text("RUNNING\n")
         self.f.sql("DELETE FROM snapshot WHERE date IN ('2026-09-02','2026-09-03')")
         result = self.audit()
+        self.assertIn("business_mode_not_frozen", {item["code"] for item in result["issues"]})
         self.assertFalse(result["acceptedFreeze"])
         self.assertEqual(result["status"], "critical")
         gap = next(item for item in result["issues"] if item["code"] == "unresolved_trading_day_gaps")

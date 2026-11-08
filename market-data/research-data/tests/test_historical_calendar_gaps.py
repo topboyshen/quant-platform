@@ -95,9 +95,12 @@ class HistoricalCalendarGapTests(unittest.TestCase):
         self.assertTrue(self.core_db.exists())
 
     def test_stalled_qlib_gaps_stay_critical_when_not_frozen(self):
+        # RUNNING is itself a critical integrity issue (business_mode_not_frozen);
+        # the core-gap severity below is the property under test.
         self.f.mode.write_text("RUNNING\n")
         before = self.f.fingerprint()
         result = self.audit()
+        self.assertIn("business_mode_not_frozen", {i["code"] for i in result["issues"]})
         gap = self.gaps(result)
         self.assertEqual(gap["dates"], ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"])
         self.assertEqual(gap["severity"], "critical")
@@ -222,7 +225,8 @@ class HistoricalCalendarGapTests(unittest.TestCase):
 
     def test_invalid_history_uses_unknown_audit_and_retains_business_faults(self):
         # Non-frozen mode keeps the core gaps as business faults, so the test
-        # still proves that an unknown audit cannot silently drop them.
+        # still proves that an unknown audit cannot silently drop them. RUNNING
+        # itself also contributes a business_mode_not_frozen atom.
         self.f.mode.write_text("RUNNING\n")
         payload = self.audit()
         report = self.f.root / "audit.json"

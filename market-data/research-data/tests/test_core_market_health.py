@@ -84,9 +84,12 @@ class CoreHealthTests(unittest.TestCase):
         self.assertEqual(result["status"], "warning")
 
     def test_historical_missing_stays_critical_when_not_frozen(self):
+        # RUNNING is itself a critical integrity issue (business_mode_not_frozen);
+        # the gap severity below is the property under test.
         self.f.mode.write_text("RUNNING\n")
         self.f.sql("DELETE FROM snapshot WHERE date IN ('2026-09-01','2026-09-02')")
         result = self.audit()
+        self.assertIn("business_mode_not_frozen", {x["code"] for x in result["issues"]})
         gap = next(x for x in result["issues"] if x["code"] == "unresolved_trading_day_gaps")
         self.assertEqual(gap["severity"], "critical")
         self.assertNotIn("acceptedFreeze", gap)
