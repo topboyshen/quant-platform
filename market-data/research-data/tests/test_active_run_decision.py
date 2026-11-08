@@ -49,11 +49,18 @@ class ActiveRunDecisionTests(unittest.TestCase):
         with mock.patch.object(health._calendar_evidence, "load_calendar_evidence", **calendar_opts):
             return self.f.run_audit(calendar_project=self.f.root / "calendar", **opts)
 
-    def test_full_current_pass_preserves_critical_historical_gaps(self):
+    def test_full_current_pass_keeps_frozen_historical_gaps_visible(self):
         self.f.sql("DELETE FROM snapshot WHERE date IN ('2026-09-02','2026-09-03')")
         result = self.audit()
         decision = result["activeRunDecision"]
-        self.assertEqual(result["status"], "critical")
+        # Accepted FROZEN (the mode since 2026-08-22) keeps the gaps visible as
+        # limitations but no longer pages on them; the current run still passes.
+        self.assertTrue(result["acceptedFreeze"])
+        self.assertEqual(result["status"], "warning")
+        gap = next(item for item in result["issues"] if item["code"] == "unresolved_trading_day_gaps")
+        self.assertEqual(gap["severity"], "information")
+        self.assertTrue(gap["acceptedFreeze"])
+        self.assertEqual(gap["dates"], ["2026-09-02", "2026-09-03"])
         self.assertEqual(decision["verification"]["status"], "pass")
         self.assertEqual(decision["schema"], "research.active-run-decision.v1")
         self.assertTrue(decision["fullSnapshot"])
@@ -63,6 +70,18 @@ class ActiveRunDecisionTests(unittest.TestCase):
         self.assertNotIn("unresolved_trading_day_gaps", decision["verification"]["currentIssueCodes"])
         self.assertEqual(decision["scheduledDate"], DAY)
         self.assertEqual(decision["run"]["startedAt"], self.full_run["startedAt"])
+
+    def test_non_frozen_historical_gaps_stay_critical(self):
+        self.f.mode.write_text("RUNNING\n")
+        self.f.sql("DELETE FROM snapshot WHERE date IN ('2026-09-02','2026-09-03')")
+        result = self.audit()
+        self.assertFalse(result["acceptedFreeze"])
+        self.assertEqual(result["status"], "critical")
+        gap = next(item for item in result["issues"] if item["code"] == "unresolved_trading_day_gaps")
+        self.assertEqual(gap["severity"], "critical")
+        self.assertNotIn("acceptedFreeze", gap)
+        self.assertIn("unresolved_trading_day_gaps",
+                      result["activeRunDecision"]["verification"]["historicalIssueCodes"])
 
     def test_core_current_pass_declares_summary_and_its_bound_quality(self):
         self.activate_core()

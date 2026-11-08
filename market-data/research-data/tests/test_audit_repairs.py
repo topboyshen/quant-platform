@@ -167,9 +167,14 @@ class WatchdogTests(unittest.TestCase):
     def test_watchdog_reuses_original_sender_and_state_machine(self):
         root = Path(__file__).parents[1]
         timer = (root / "systemd/research-data-health-alert.timer").read_text()
-        self.assertIn("Unit=research-data-health-alert.service", timer)
+        # The 23:00 watchdog only reconciles an unconfirmed delivery; a new
+        # alert starts from the audit's success/failure follow-up units.
+        self.assertIn("Unit=research-data-health-alert-review.service", timer)
         self.assertIn("23:00:00 Asia/Shanghai", timer)
         self.assertNotIn("Persistent=true", timer)
+        self.assertIn("do not send a new alert", timer)
+        on_failure = (root / "systemd/research-data-health-alert-on-failure.service").read_text()
+        self.assertIn("ExecStart=/home/ubuntu/research-data/scripts/run_health_alert.sh", on_failure)
         wrapper = (root / "scripts/run_daily_snapshot_with_alert.sh").read_text()
         self.assertNotIn('send_telegram "$msg"', wrapper[wrapper.index('set +e'):])
         effective = (root / "systemd/research-data-health.service.d/output.conf").read_text()

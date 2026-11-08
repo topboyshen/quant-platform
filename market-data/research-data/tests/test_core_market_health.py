@@ -72,12 +72,24 @@ class CoreHealthTests(unittest.TestCase):
         self.assertEqual(result["coreMarket"]["quality"]["eligible"], 5567)
         self.assertEqual(result["coreMarket"]["quality"]["priceStatus"], "partial")
 
-    def test_historical_missing_stays_missing_with_same_severity(self):
+    def test_historical_missing_stays_visible_while_frozen(self):
         self.f.sql("DELETE FROM snapshot WHERE date IN ('2026-09-01','2026-09-02')")
         result = self.audit()
         gap = next(x for x in result["issues"] if x["code"] == "unresolved_trading_day_gaps")
         self.assertEqual(gap["dates"], ["2026-09-01", "2026-09-02"])
+        # Accepted FROZEN demotes expected absence to a visible limitation.
+        self.assertEqual(gap["severity"], "information")
+        self.assertTrue(gap["acceptedFreeze"])
+        self.assertEqual(gap["reason"], "expected_absence_while_frozen")
+        self.assertEqual(result["status"], "warning")
+
+    def test_historical_missing_stays_critical_when_not_frozen(self):
+        self.f.mode.write_text("RUNNING\n")
+        self.f.sql("DELETE FROM snapshot WHERE date IN ('2026-09-01','2026-09-02')")
+        result = self.audit()
+        gap = next(x for x in result["issues"] if x["code"] == "unresolved_trading_day_gaps")
         self.assertEqual(gap["severity"], "critical")
+        self.assertNotIn("acceptedFreeze", gap)
         self.assertEqual(result["status"], "critical")
 
     def test_core_missing_alarms_and_cannot_use_old_full_row(self):

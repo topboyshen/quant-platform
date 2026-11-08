@@ -56,13 +56,27 @@ class HolidaySupplyFreshnessTests(unittest.TestCase):
         self.assertEqual(fresh["expectedTargetDate"], "2026-09-05")
         self.assertEqual(fresh["actualTargetDate"], "2026-09-04")
         self.assertFalse(fresh["snapshotRequired"])
-        event = self.decide(payload, self.prior)
-        self.assertTrue(event["notify"])
-        self.assertIn("qlib_supply_stale|2026-09-05", event["new"])
+        info = self.describe(payload)
+        # Accepted FROZEN explains the stale price library, so it stays visible
+        # in the message but does not page as a new incident.
+        self.assertTrue(info["freezeStalenessAccepted"])
+        event = alert.decide(info, "inactive", self.prior, self.f.now)
+        self.assertFalse(event["notify"])
+        self.assertNotIn("qlib_supply_stale|2026-09-05", event["current"])
         self.assertFalse(any(a.startswith("active_run_") for a in event["current"]))
-        text = alert.message(self.describe(payload), decision=event, now=self.f.now)
+        text = alert.message(info, decision=event, now=self.f.now)
         self.assertIn("供应链新鲜度：滞后", text)
         self.assertIn("快照：休市无需运行", text)
+
+    def test_non_frozen_stale_qlib_on_closed_day_pages(self):
+        self.f.mode.write_text("RUNNING\n")
+        payload = self.holiday("2026-09-06", "2026-09-05")
+        self.assertEqual(payload["supplyFreshness"]["status"], "stale")
+        info = self.describe(payload)
+        self.assertFalse(info["freezeStalenessAccepted"])
+        event = alert.decide(info, "inactive", self.prior, self.f.now)
+        self.assertTrue(event["notify"])
+        self.assertIn("qlib_supply_stale|2026-09-05", event["new"])
 
     def test_same_stale_target_on_next_holiday_night_is_unchanged(self):
         first = self.decide(self.holiday("2026-09-06", "2026-09-05"), self.prior)
@@ -71,6 +85,9 @@ class HolidaySupplyFreshnessTests(unittest.TestCase):
         self.assertEqual(second["kind"], "unchanged")
 
     def test_lowering_expected_day_does_not_prove_old_price_target_recovered(self):
+        # Recovery semantics are only observable when the stale atom exists;
+        # accepted FROZEN deliberately suppresses it (covered separately).
+        self.f.mode.write_text("RUNNING\n")
         stale = self.decide(self.holiday("2026-09-06", "2026-09-05"), self.prior)
         # This was previously called "catching up", although no fixture price
         # advanced: only the independent expected date moved backwards.
@@ -82,6 +99,7 @@ class HolidaySupplyFreshnessTests(unittest.TestCase):
         self.assertIn("qlib_supply_stale|2026-09-05", current["recoveryUnconfirmed"])
 
     def test_qlib_catching_up_is_reported_as_recovery(self):
+        self.f.mode.write_text("RUNNING\n")
         stale = self.decide(self.holiday("2026-09-06", "2026-09-05"), self.prior)
         days = self.f.days + ["2026-09-05"]
         (self.f.qlib / "calendars/day.txt").write_text("\n".join(days) + "\n")
@@ -103,6 +121,9 @@ class HolidaySupplyFreshnessTests(unittest.TestCase):
         self.assertFalse(self.decide(payload, self.prior)["notify"])
 
     def test_legacy_payload_without_field_derives_from_issue(self):
+        # Legacy artifacts predate the FROZEN staleness policy; keep the
+        # derivation check on the non-frozen path where the atom is emitted.
+        self.f.mode.write_text("RUNNING\n")
         payload = self.holiday("2026-09-06", "2026-09-05")
         del payload["supplyFreshness"]
         info = self.describe(payload)

@@ -40,11 +40,27 @@ class ActiveRunAlertTests(unittest.TestCase):
         info = self.describe(payload)
         self.assertEqual(payload["activeLastRun"]["status"], "inserted")
         self.assertEqual(info["activeRunDecision"]["status"], "insufficient")
-        self.assertEqual(info["status"], "critical")
+        # Accepted FROZEN keeps the historical gaps as visible limitations, so
+        # the artifact is warning-level; the current run still pages on its own.
+        self.assertTrue(info["acceptedFreeze"])
+        self.assertEqual(info["status"], "warning")
+        self.assertIn("2026-09-02", info["freezeAbsenceDates"])
+        self.assertIn("2026-09-03", info["freezeAbsenceDates"])
         event = alert.decide(info, "inactive", prior, self.f.now)
         self.assertTrue(event["notify"])
         self.assertIn("active_run_insufficient|2026-09-04", event["new"])
         self.assertEqual(event["recovered"], [])
+
+    def test_old_success_current_insufficient_is_critical_when_not_frozen(self):
+        prior = self.decide()["state"]
+        self.old_success()
+        self.producer.f.mode.write_text("RUNNING\n")
+        info = self.describe(self.producer.audit())
+        self.assertFalse(info["acceptedFreeze"])
+        self.assertEqual(info["status"], "critical")
+        event = alert.decide(info, "inactive", prior, self.f.now)
+        self.assertTrue(event["notify"])
+        self.assertIn("active_run_insufficient|2026-09-04", event["new"])
 
     def test_same_scheduled_date_deduplicates_and_new_date_is_new_occurrence(self):
         self.old_success()

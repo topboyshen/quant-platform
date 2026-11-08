@@ -82,14 +82,27 @@ class HistoricalCalendarGapTests(unittest.TestCase):
     def gaps(self, result):
         return next(i for i in result["issues"] if i["code"] == "unresolved_core_market_gaps")
 
-    def test_stalled_qlib_preserves_all_sealed_open_day_gaps_without_writes(self):
+    def test_stalled_qlib_keeps_frozen_open_day_gaps_visible_without_writes(self):
         before = self.f.fingerprint()
         result = self.audit()
-        self.assertEqual(self.gaps(result)["dates"], ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"])
-        self.assertEqual(self.gaps(result)["severity"], "critical")
+        gap = self.gaps(result)
+        self.assertEqual(gap["dates"], ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"])
+        # Accepted FROZEN keeps all sealed open-day gaps visible as limitations.
+        self.assertEqual(gap["severity"], "information")
+        self.assertTrue(gap["acceptedFreeze"])
         self.assertEqual(result["historicalCalendarEvidence"]["openDays"], ["2026-10-12", "2026-10-13", "2026-10-14"])
         self.assertEqual(before, self.f.fingerprint())
         self.assertTrue(self.core_db.exists())
+
+    def test_stalled_qlib_gaps_stay_critical_when_not_frozen(self):
+        self.f.mode.write_text("RUNNING\n")
+        before = self.f.fingerprint()
+        result = self.audit()
+        gap = self.gaps(result)
+        self.assertEqual(gap["dates"], ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"])
+        self.assertEqual(gap["severity"], "critical")
+        self.assertEqual(result["status"], "critical")
+        self.assertEqual(before, self.f.fingerprint())
 
     def test_invalid_archives_never_establish_open_days(self):
         for defect in ("sidecar", "unsealed", "wrong_day", "context_disagrees", "forged_source"):
@@ -208,6 +221,9 @@ class HistoricalCalendarGapTests(unittest.TestCase):
             self.audit()
 
     def test_invalid_history_uses_unknown_audit_and_retains_business_faults(self):
+        # Non-frozen mode keeps the core gaps as business faults, so the test
+        # still proves that an unknown audit cannot silently drop them.
+        self.f.mode.write_text("RUNNING\n")
         payload = self.audit()
         report = self.f.root / "audit.json"
         report.write_text(json.dumps(payload))
