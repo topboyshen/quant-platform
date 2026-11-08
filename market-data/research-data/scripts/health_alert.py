@@ -323,6 +323,7 @@ def _retained_counts(data, retained=None):
     if not isinstance(data, dict):
         return counts
     unconfirmed, later_dates = set(), set()
+    observed_by_code = {code: set() for code in RETAINED_CODES}
     for issue in data.get("issues") or []:
         if not isinstance(issue, dict) or issue.get("code") not in RETAINED_CODES:
             continue
@@ -330,7 +331,12 @@ def _retained_counts(data, retained=None):
         dates = issue.get("dates")
         if not isinstance(dates, list):
             dates = issue.get("affectedDates")
-        observed = {d for d in dates if isinstance(d, str) and DATE_RE.fullmatch(d)} if isinstance(dates, list) else set()
+        if isinstance(dates, list):
+            observed_by_code[code].update(
+                d for d in dates if isinstance(d, str) and DATE_RE.fullmatch(d))
+    # A freeze audit may split one code into expected absence and damaged rows.
+    # Count the union once, regardless of issue order or repeated dates.
+    for code, observed in observed_by_code.items():
         if retained is None:
             unconfirmed |= observed
             continue
@@ -347,6 +353,49 @@ def _retained_counts(data, retained=None):
     counts["unconfirmedDates"] = sorted(unconfirmed)
     counts["unconfirmedDays"] = len(unconfirmed)
     return counts
+
+
+def _recovery_evidence(data):
+    """Validate optional ledgers before deriving any recovery/policy evidence.
+
+    Older artifacts may omit the ledgers. A present malformed ledger is not an
+    empty ledger: the caller must retain the last known business faults.
+    """
+    core = data.get("coreMarket", {})
+    if not isinstance(core, dict):
+        raise ValueError("health_ledger_invalid")
+    valid = []
+    for rows, state_key in ((data.get("ledger", []), "snapshotState"),
+                            (core.get("ledger", []), "coreState")):
+        if not isinstance(rows, list):
+            raise ValueError("health_ledger_invalid")
+        dates, seen = set(), set()
+        for row in rows:
+            if (not isinstance(row, dict) or not _iso_day(row.get("tradeDate"))
+                    or row.get(state_key) not in ("valid", "missing", "invalid")
+                    or row["tradeDate"] in seen):
+                raise ValueError("health_ledger_invalid")
+            seen.add(row["tradeDate"])
+            if row[state_key] == "valid":
+                dates.add(row["tradeDate"])
+        valid.append(sorted(dates))
+    issues = data.get("issues", [])
+    if not isinstance(issues, list) or any(not isinstance(issue, dict) for issue in issues):
+        raise ValueError("health_issues_invalid")
+    freeze_issues = [issue for issue in issues if issue.get("acceptedFreeze") is True]
+    absence_dates = set()
+    for issue in freeze_issues:
+        dates = issue.get("dates", [])
+        if not isinstance(dates, list) or any(not _iso_day(day) for day in dates):
+            raise ValueError("health_issues_invalid")
+        absence_dates.update(dates)
+    return {"validFullDates": valid[0], "validCoreDates": valid[1],
+            "freezeAbsenceDates": sorted(absence_dates),
+            "freezeLimitationCodes": sorted({issue["code"] for issue in freeze_issues
+                                             if isinstance(issue.get("code"), str)}),
+            "freezeStalenessAccepted": any(
+                issue.get("code") == "qlib_not_current_for_expected_trading_day"
+                for issue in freeze_issues)}
 
 
 def describe(path, now=None, max_age_hours=6.0, retained_path=None):
@@ -369,27 +418,18 @@ def describe(path, now=None, max_age_hours=6.0, retained_path=None):
     if not isinstance(data, dict):
         result.update(status="unknown", reason="health_json_not_object")
         return result
+    try:
+        evidence = _recovery_evidence(data)
+    except ValueError as exc:
+        result.update(status="unknown", reason=str(exc))
+        return result
     status = data.get("status")
     if not isinstance(status, str) or status not in STATUS_VALUES:
         result.update(status="unknown", reason="health_status_invalid")
     else:
         result["status"] = status
     result["acceptedFreeze"] = data.get("acceptedFreeze") is True
-    result["validFullDates"] = sorted({
-        row.get("tradeDate") for row in data.get("ledger") or []
-        if isinstance(row, dict) and row.get("snapshotState") == "valid" and isinstance(row.get("tradeDate"), str)})
-    result["validCoreDates"] = sorted({
-        row.get("tradeDate") for row in ((data.get("coreMarket") or {}).get("ledger") or [])
-        if isinstance(row, dict) and row.get("coreState") == "valid" and isinstance(row.get("tradeDate"), str)})
-    freeze_issues = [issue for issue in data.get("issues") or []
-                     if isinstance(issue, dict) and issue.get("acceptedFreeze") is True]
-    result["freezeAbsenceDates"] = sorted({
-        day for issue in freeze_issues for day in (issue.get("dates") or [])
-        if isinstance(day, str)})
-    result["freezeLimitationCodes"] = sorted({
-        issue.get("code") for issue in freeze_issues if isinstance(issue.get("code"), str)})
-    result["freezeStalenessAccepted"] = any(
-        issue.get("code") == "qlib_not_current_for_expected_trading_day" for issue in freeze_issues)
+    result.update(evidence)
     result["codes"] = _codes(data)
     result["criticalAtoms"] = _critical_atoms(data)
     result["dueRunAtoms"] = _due_run_atoms(data)
@@ -1099,7 +1139,7 @@ def scheduled_audit_status(path, now=None):
     except (OSError, ValueError, UnicodeError):
         return "missing"
     generated = _instant(data.get("generatedAt")) if isinstance(data, dict) else None
-    if generated is None or generated.astimezone(CST) < due:
+    if generated is None or not due <= generated.astimezone(CST) <= now:
         return "missing"
     return "fresh"
 
