@@ -2,3 +2,5 @@ releases/
 evidence-*/
 *.log
 refresh.lock
+__pycache__/
+*.pyc
