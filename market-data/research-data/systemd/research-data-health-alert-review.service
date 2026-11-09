@@ -1,5 +1,5 @@
 [Unit]
-Description=Reconcile an unconfirmed research-data health delivery without sending
+Description=Reconcile an unconfirmed research-data health delivery, then classify; never resend an unknown delivery
 
 [Service]
 Type=oneshot

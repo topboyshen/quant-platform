@@ -57,12 +57,15 @@ class HolidaySupplyFreshnessTests(unittest.TestCase):
         self.assertEqual(fresh["actualTargetDate"], "2026-09-04")
         self.assertFalse(fresh["snapshotRequired"])
         info = self.describe(payload)
-        # Accepted FROZEN explains the stale price library, so it stays visible
-        # in the message but does not page as a new incident.
-        self.assertTrue(info["freezeStalenessAccepted"])
+        # Accepted FROZEN explains the stale price library but does not make it
+        # current: it stays a critical, paging supply fault keyed by the
+        # expected target date (not by the audit night).
+        self.assertFalse(info["freezeStalenessAccepted"])
         event = alert.decide(info, "inactive", self.prior, self.f.now)
-        self.assertFalse(event["notify"])
-        self.assertNotIn("qlib_supply_stale|2026-09-05", event["current"])
+        self.assertTrue(event["notify"])
+        self.assertIn("qlib_supply_stale|2026-09-05", event["current"])
+        self.assertIn("qlib_supply_stale|2026-09-05", event["new"])
+        self.assertIn("qlib_not_current_for_expected_trading_day|2026-09-05", event["current"])
         self.assertFalse(any(a.startswith("active_run_") for a in event["current"]))
         text = alert.message(info, decision=event, now=self.f.now)
         self.assertIn("供应链新鲜度：滞后", text)
@@ -88,8 +91,8 @@ class HolidaySupplyFreshnessTests(unittest.TestCase):
         self.assertEqual(second["kind"], "unchanged")
 
     def test_lowering_expected_day_does_not_prove_old_price_target_recovered(self):
-        # Recovery semantics are only observable when the stale atom exists;
-        # accepted FROZEN deliberately suppresses it (covered separately).
+        # A backwards target move is not price recovery; the old atom must stay
+        # in the visible set until a bound actual date reaches it.
         self.f.mode.write_text("RUNNING\n")
         stale = self.decide(self.holiday("2026-09-06", "2026-09-05"), self.prior)
         # This was previously called "catching up", although no fixture price

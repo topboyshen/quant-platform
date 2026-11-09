@@ -167,12 +167,13 @@ class WatchdogTests(unittest.TestCase):
     def test_watchdog_reuses_original_sender_and_state_machine(self):
         root = Path(__file__).parents[1]
         timer = (root / "systemd/research-data-health-alert.timer").read_text()
-        # The 23:00 watchdog only reconciles an unconfirmed delivery; a new
-        # alert starts from the audit's success/failure follow-up units.
+        # The 23:00 watchdog reconciles first and then runs the same classifier.
+        # It must never resend an unknown delivery, but an unchanged fault set
+        # stays silent and a missed 22:45 audit is still reported once.
         self.assertIn("Unit=research-data-health-alert-review.service", timer)
         self.assertIn("23:00:00 Asia/Shanghai", timer)
         self.assertNotIn("Persistent=true", timer)
-        self.assertIn("do not send a new alert", timer)
+        self.assertIn("never resend an unknown delivery", timer)
         on_failure = (root / "systemd/research-data-health-alert-on-failure.service").read_text()
         self.assertIn("ExecStart=/home/ubuntu/research-data/scripts/run_health_alert.sh", on_failure)
         wrapper = (root / "scripts/run_daily_snapshot_with_alert.sh").read_text()
@@ -194,6 +195,12 @@ class WatchdogTests(unittest.TestCase):
             result = fixture.run_audit(now=now, calendar_project=fixture.root)
         self.assertEqual(result["independentExpectedMarketDate"], "2026-09-07")
         self.assertIn("qlib_not_current_for_expected_trading_day", fixture.codes(result))
+        stale = next(issue for issue in result["issues"]
+                     if issue["code"] == "qlib_not_current_for_expected_trading_day")
+        # FROZEN does not make the price library current for the report day.
+        self.assertEqual(stale["severity"], "critical")
+        self.assertNotIn("acceptedFreeze", stale)
+        self.assertEqual(result["status"], "critical")
         gaps = next(issue for issue in result["issues"] if issue["code"] == "unresolved_trading_day_gaps")
         self.assertEqual(gaps["dates"], ["2026-09-07"])
         self.assertEqual(before, fixture.fingerprint())

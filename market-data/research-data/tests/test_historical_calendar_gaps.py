@@ -82,14 +82,17 @@ class HistoricalCalendarGapTests(unittest.TestCase):
     def gaps(self, result):
         return next(i for i in result["issues"] if i["code"] == "unresolved_core_market_gaps")
 
-    def test_stalled_qlib_keeps_frozen_open_day_gaps_visible_without_writes(self):
+    def test_stalled_qlib_keeps_frozen_open_day_gaps_critical_without_writes(self):
         before = self.f.fingerprint()
         result = self.audit()
         gap = self.gaps(result)
         self.assertEqual(gap["dates"], ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"])
-        # Accepted FROZEN keeps all sealed open-day gaps visible as limitations.
-        self.assertEqual(gap["severity"], "information")
-        self.assertTrue(gap["acceptedFreeze"])
+        # Every one of these dates is on the active core contract (cutover
+        # 2026-10-08). Accepted FROZEN explains the cause; it does not downgrade
+        # the missing rows or hide them from the alert-worthy set.
+        self.assertEqual(gap["severity"], "critical")
+        self.assertNotIn("acceptedFreeze", gap)
+        self.assertEqual(result["status"], "critical")
         self.assertEqual(result["historicalCalendarEvidence"]["openDays"], ["2026-10-12", "2026-10-13", "2026-10-14"])
         self.assertEqual(before, self.f.fingerprint())
         self.assertTrue(self.core_db.exists())
@@ -106,6 +109,21 @@ class HistoricalCalendarGapTests(unittest.TestCase):
         self.assertEqual(gap["severity"], "critical")
         self.assertEqual(result["status"], "critical")
         self.assertEqual(before, self.f.fingerprint())
+
+    def test_frozen_core_gaps_and_stale_qlib_enter_the_alert_set(self):
+        result = self.audit()
+        path = self.f.root / "health.json"
+        path.write_text(json.dumps(result))
+        info = alert.describe(path, now=self.f.now)
+        atoms = alert.alert_atoms(info, "inactive", now=self.f.now)
+        self.assertEqual(info["status"], "critical")
+        self.assertIn("unresolved_core_market_gaps|2026-10-12", atoms)
+        self.assertIn("unresolved_core_market_gaps|2026-10-15", atoms)
+        self.assertIn("qlib_not_current_for_expected_trading_day|2026-10-15", atoms)
+        self.assertTrue(any(atom.startswith("qlib_supply_stale|") for atom in atoms))
+        # The accepted-freeze limitation marker is not attached to these live
+        # faults; only the legacy full-snapshot gap remains a limitation.
+        self.assertFalse(info["freezeStalenessAccepted"])
 
     def test_invalid_archives_never_establish_open_days(self):
         for defect in ("sidecar", "unsealed", "wrong_day", "context_disagrees", "forged_source"):

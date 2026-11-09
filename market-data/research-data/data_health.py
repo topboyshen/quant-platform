@@ -1125,7 +1125,11 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
                 issue("independent_expected_day_unavailable", dueDate=due_date.isoformat())
         else:
             if now >= deadline and complete != expected:
-                issue("qlib_not_current_for_expected_trading_day", dueDate=due_date.isoformat(),
+                # FROZEN explains why the price library stopped advancing; it
+                # does not make the report's trading day current. This is a
+                # live supply fault and always pages.
+                issue("qlib_not_current_for_expected_trading_day", "critical",
+                      dueDate=due_date.isoformat(), alertDates=[expected],
                       expectedTarget=expected, actualTarget=complete,
                       calendarEvidenceSha256=expected_evidence["sha256"])
     full_run_due = full_expected_on(due_date.isoformat())
@@ -1233,7 +1237,10 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
                         or claimed.get("payloadSha256") != core_last["payloadSha256"]):
                     issue("core_market_run_missing_or_mismatched", "critical", tradeDate=core_last.get("target"))
         if core_gaps:
-            issue("unresolved_core_market_gaps", "critical" if len(core_gaps) >= 2 else "warning", dates=core_gaps)
+            # Every date here is at/after the active core-market cutover, so a
+            # missing or invalid row is a current-contract fault regardless of
+            # how many days are affected. Severity is not count-dependent.
+            issue("unresolved_core_market_gaps", "critical", dates=core_gaps)
         wrong_contract = sorted(d for d in core_rows if full_expected_on(d))
         if wrong_contract:
             issue("core_rows_outside_contract_interval", "critical", dates=wrong_contract)
@@ -1271,13 +1278,14 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
         "calendarStatus": expected_calendar["status"] if expected_calendar else None,
         # None while today's snapshot verdict is still pending/insufficient.
         "snapshotRequired": {"not_required": False, "pass": True, "fail": True}.get(decision["verification"]["status"])}
-    # FROZEN has been the accepted business mode since 2026-08-22. It is not a
-    # license to hide tampering or a future date, but calendar advance and
-    # missed collection while frozen are known limitations, not new incidents.
+    # FROZEN has been the accepted business mode since 2026-08-22. It explains
+    # why the legacy full-snapshot calendar stopped advancing, but it is not a
+    # license to hide tampering, a future date, an active-contract fault, or a
+    # stale price library. Only legacy full-snapshot absence is downgraded to a
+    # visible limitation; it is never reported as recovery.
     accepted_freeze = business_mode == "FROZEN"
     if accepted_freeze:
         full_state = {row["tradeDate"]: row.get("snapshotState", "missing") for row in ledger}
-        core_state = {row["tradeDate"]: row.get("coreState", "missing") for row in core_ledger}
 
         def freeze_split(item, states):
             dates = [day for day in item.get("dates") or [] if isinstance(day, str)]
@@ -1302,14 +1310,8 @@ def audit(db, qlib, stages, last_run, mode, since, monitor_since, now, baseline=
         rewritten = []
         for item in issues:
             code = item.get("code")
-            if code in ("unresolved_trading_day_gaps", "unresolved_core_market_gaps"):
-                states = full_state if code == "unresolved_trading_day_gaps" else core_state
-                rewritten.extend(freeze_split(item, states))
-            elif code == "qlib_not_current_for_expected_trading_day":
-                kept = dict(item)
-                kept["acceptedFreeze"] = True
-                kept["severityReason"] = "expected_staleness_while_frozen"
-                rewritten.append(kept)
+            if code == "unresolved_trading_day_gaps":
+                rewritten.extend(freeze_split(item, full_state))
             elif code in ("scheduled_snapshot_missing", "scheduled_core_market_missing"):
                 kept = dict(item)
                 kept["acceptedFreeze"] = True

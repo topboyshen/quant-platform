@@ -92,7 +92,18 @@ def _codes(data):
 
 
 def _issue_dates(issue):
-    """Sorted affected dates of one issue; '*' when the issue names no date."""
+    """Sorted affected dates of one issue; '*' when the issue names no date.
+
+    ``alertDates`` is the producer's explicit alert key and wins over the
+    scheduling fields: a stale price library is keyed by the expected target
+    date, not by the audit night that observed it, so a holiday weekend with an
+    unchanged target cannot page once per night.
+    """
+    explicit = issue.get("alertDates")
+    if isinstance(explicit, list):
+        found = {d for d in explicit if isinstance(d, str) and DATE_RE.fullmatch(d)}
+        if found:
+            return sorted(found)
     found = set()
     for key in LIST_DATE_KEYS:
         values = issue.get(key)
@@ -120,7 +131,10 @@ def _due_run_atoms(data):
             if issue.get("code") not in DUE_RUN_CODES + CORE_OPERATIONAL_CODES:
                 continue
             code = issue["code"]
-            due = issue.get("dueDate")
+            explicit = issue.get("alertDates")
+            due = (explicit[0] if isinstance(explicit, list) and len(explicit) == 1
+                   and isinstance(explicit[0], str) and DATE_RE.fullmatch(explicit[0])
+                   else issue.get("dueDate"))
             atoms.add(f"{code}|{due if isinstance(due, str) and DATE_RE.fullmatch(due) else '*'}")
     return sorted(atoms)
 
@@ -129,13 +143,15 @@ def _critical_atoms(data):
     """Alert-worthy fault atoms "code|date" from critical-severity issues only.
 
     warning/information issues stay in the audit (and on the dashboard) but, as
-    before this change, do not page on their own.
+    before this change, do not page on their own. Severity is the producer's
+    verdict: an accepted-freeze marker may explain a *downgraded* issue, but it
+    must never suppress one the producer still calls critical (core-contract
+    gaps and a stale price library stay paging faults while FROZEN).
     """
     atoms = set()
     if isinstance(data, dict):
         for issue in data.get("issues") or []:
-            if (not isinstance(issue, dict) or issue.get("severity") != "critical"
-                    or issue.get("acceptedFreeze") is True):
+            if not isinstance(issue, dict) or issue.get("severity") != "critical":
                 continue
             code = issue.get("code")
             code = code if isinstance(code, str) and CODE_RE.fullmatch(code) else "unrecognized_issue_code"
@@ -628,6 +644,21 @@ def _removed_faults(info, previous, current):
             else:
                 # A missing or unproven row is not recovery. A valid ledger row
                 # above is the evidence. Policy absence is reclassified above.
+                unconfirmed.append(atom)
+        elif code == "qlib_not_current_for_expected_trading_day":
+            fresh = info.get("supplyFreshness")
+            actual = fresh.get("actualTargetDate") if isinstance(fresh, dict) else None
+            newer = any(_split_code(other) == code and _iso_day(other.split("|", 1)[1])
+                        and other.split("|", 1)[1] > day for other in current)
+            if (isinstance(fresh, dict) and fresh.get("status") == "current"
+                    and _iso_day(day) and _iso_day(actual) and actual >= day):
+                recovered.append(atom)
+            elif newer:
+                # A further expected trading day supersedes the old target.
+                advanced.append(atom)
+            else:
+                # Stale/unknown/not-evaluated is not evidence that the old
+                # expected target was reached; keep the fault in the set.
                 unconfirmed.append(atom)
         elif info.get("acceptedFreeze") and code in set(info.get("freezeLimitationCodes") or []):
             reclassified.append(atom)

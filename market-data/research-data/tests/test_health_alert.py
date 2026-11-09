@@ -54,6 +54,20 @@ class DescribeTests(unittest.TestCase):
         self.assertNotIn("unresolved_trading_day_gaps|2026-09-02", atoms)
         self.assertFalse(any(atom.startswith("qlib_supply_stale|") for atom in atoms))
 
+    def test_critical_issue_pages_even_when_marked_accepted_freeze(self):
+        # A producer must never be able to hide a still-critical issue behind
+        # the freeze marker: the core contract and Qlib freshness stay paging.
+        path = self.write(artifact(
+            acceptedFreeze=True,
+            issues=[{"code": "unresolved_core_market_gaps", "severity": "critical",
+                     "acceptedFreeze": True, "dates": ["2026-10-12"]},
+                    {"code": "qlib_not_current_for_expected_trading_day", "severity": "critical",
+                     "acceptedFreeze": True, "dueDate": "2026-10-21"}]))
+        info = alert.describe(path, now=NOW)
+        atoms = alert.alert_atoms(info, "inactive", now=NOW)
+        self.assertIn("unresolved_core_market_gaps|2026-10-12", atoms)
+        self.assertIn("qlib_not_current_for_expected_trading_day|2026-10-21", atoms)
+
     def _state(self, atoms):
         return {"schemaVersion": alert.STATE_SCHEMA_VERSION, "atoms": atoms,
                 "businessAtoms": atoms, "fingerprint": alert.fingerprint(atoms)}

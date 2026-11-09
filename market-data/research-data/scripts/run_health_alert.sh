@@ -110,28 +110,29 @@ if [[ "${ALERT_DRY_RUN:-0}" != "1" ]]; then
   fi
 fi
 
-# 23:00 is reconciliation plus a missed-run check. It is not read-only:
+# 23:00 review: reconciliation first, then the SAME classifier as 22:45.
 # recover-delivery above may apply an already confirmed local receipt
-# (stateApplied / clear the matching inflight). It does not rewrite old
-# receipts, reclassify business faults, or call Hermes.
+# (stateApplied / clear the matching inflight). It never rewrites old receipts.
+# If an inflight marker still exists the outcome is unknown: report it and do not
+# send. Otherwise prepare/decide runs unchanged, so a missing or stale 22:45
+# audit is recorded as "should run but did not" (one atom per scheduled day) and
+# an unchanged fault set stays silent.
+REVIEW=no
 if [[ "${1:-}" == "--review-unconfirmed" ]]; then
+  REVIEW=yes
   if [[ -e "$INFLIGHT_FILE" || -L "$INFLIGHT_FILE" ]]; then
     printf '投递结果未知，需对账；不会自动重发\n' >&2
     exit 1
   fi
-  audit_status="$("$PYTHON" "$HELPER" scheduled-audit --json "$HEALTH_JSON")"
-  if [[ "$audit_status" != "fresh" && "$audit_status" != "not_due" ]]; then
-    printf 'scheduled audit missing; no reclassification and no send\n' >&2
-    exit 2
-  fi
-  printf 'health alert review: reconciled only; no reclassification and no send\n'
-  exit 0
 fi
 
 STATUS="unknown"; CODES="none"; GENERATED_AT="unknown"; STALE="yes"; REASON="helper_unavailable"; UNIT_STATE="$(unit_state)"; ALERT="unknown"
 DECISION="helper_unavailable"; NEW_COUNT="?"; WORSENED_COUNT="?"; RECOVERED_COUNT="?"; UNCONFIRMED_DAYS="?"
 PREPARED="no"
 entry_reason="scheduled_audit"
+if [[ "$REVIEW" == "yes" ]]; then
+  entry_reason="scheduled_review"
+fi
 if [[ "$UNIT_STATE" == "failed" ]]; then
   entry_reason="audit_failed"
 fi
@@ -169,6 +170,9 @@ commit_state() {
 if [[ "$ALERT" != "yes" ]]; then
   printf 'health alert not sent: fault set unchanged decision=%s status=%s unit=%s stale=%s unconfirmed_days=%s\n' \
     "$DECISION" "$STATUS" "$UNIT_STATE" "$STALE" "$UNCONFIRMED_DAYS"
+  if [[ "$REVIEW" == "yes" ]]; then
+    printf 'health alert review: reconciled; same classifier ran; no new event\n'
+  fi
   commit_state || printf 'warning: alert state not committed; next run re-decides\n' >&2
   exit 0
 fi
@@ -176,6 +180,9 @@ fi
 message="$(<"$MESSAGE_FILE")"
 printf 'health alert status=%s unit=%s stale=%s reason=%s decision=%s new=%s worsened=%s recovered=%s\n' \
   "$STATUS" "$UNIT_STATE" "$STALE" "$REASON" "$DECISION" "$NEW_COUNT" "$WORSENED_COUNT" "$RECOVERED_COUNT" >&2
+if [[ "$REVIEW" == "yes" ]]; then
+  printf 'health alert review: reconciled; classifier found a new event; sending once\n' >&2
+fi
 if ! send_telegram "$message"; then
   # Keep the previous committed fault state. If Hermes started, the persistent
   # inflight marker blocks automatic resend until its outcome is reconciled.

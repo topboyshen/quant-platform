@@ -1,5 +1,5 @@
 [Unit]
-Description=Reconcile an unconfirmed research-data health delivery; do not send a new alert
+Description=Reconcile an unconfirmed research-data health delivery, then run the same classifier; never resend an unknown delivery
 
 [Timer]
 OnCalendar=*-*-* 23:00:00 Asia/Shanghai
