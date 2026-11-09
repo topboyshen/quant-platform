@@ -62,6 +62,20 @@ UNITS = (
     ("research-data-health-alert.service", "system", "service"),
     ("research-ledger.service", "system", "service"),
     ("research-system-phase2.service", "system", "service"),
+    # Infrastructure observation (2026-11-09): the dashboard previously showed
+    # only the research chain. Missing units are 'unknown', never a silent pass.
+    ("hermes-telegram-watchdog.service", "user", "service"),
+    ("nng8-dashboard-refresh.timer", "system", "timer"),
+    ("nng8-dashboard-refresh.service", "system", "service"),
+    ("hermes-fd-monitor.timer", "system", "timer"),
+    ("hermes-fd-monitor.service", "system", "service"),
+    ("hermes-fd-alert.timer", "system", "timer"),
+    ("hermes-fd-alert.service", "system", "service"),
+    ("nginx.service", "system", "service"),
+    ("mihomo.service", "system", "service"),
+    ("nng8-operations.service", "system", "service"),
+    ("jie-pi-worker.service", "system", "service"),
+    ("hermes-gateway.service", "user", "service"),
 )
 # Explicit property lists only: these carry state and timestamps, never secrets.
 SERVICE_PROPERTIES = ("Id", "LoadState", "Type", "ActiveState", "SubState", "Result",

@@ -78,6 +78,12 @@ KNOWN_UNITS = (
     "research-data-health.timer", "research-data-health.service",
     "research-data-health-alert.service", "research-ledger.service",
     "research-system-phase2.service",
+    "hermes-telegram-watchdog.service",
+    "nng8-dashboard-refresh.timer", "nng8-dashboard-refresh.service",
+    "hermes-fd-monitor.timer", "hermes-fd-monitor.service",
+    "hermes-fd-alert.timer", "hermes-fd-alert.service",
+    "nginx.service", "mihomo.service", "nng8-operations.service",
+    "jie-pi-worker.service", "hermes-gateway.service",
 )
 OK_SEVERITIES = ("critical", "warning", "information", "info")
 # Original user-confirmed 8+10 scope. The 2026-09-19 22:45 audit was read on
