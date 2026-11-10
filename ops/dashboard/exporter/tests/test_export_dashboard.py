@@ -1070,6 +1070,23 @@ class ExporterTests(unittest.TestCase):
         self.assertEqual(by_date["2026-09-17"]["stage"], "valid")
         self.assertIsNone(by_date["2026-09-10"]["gap"])
 
+    def test_qlib_coverage_prefers_the_latest_daily_row(self):
+        """A multi-day recovery must report the newest day, not the first."""
+        self.fixture = build_fixture(self.root, health_payload={
+            "status": "critical", "generatedAt": f"{DATE}T00:40:00+08:00",
+            "issues": [],
+            "snapshot": {"rowCount": 7, "latestValidDate": PREVIOUS},
+            "qlib": {"incremental": {"dailyCoverage": [
+                {"coverage": 0.90, "eligible": 100, "valid": 90,
+                 "target_date": PREVIOUS, "status": "partial"},
+                {"coverage": 0.95, "eligible": 100, "valid": 95,
+                 "target_date": DATE, "status": "partial"}]}}})
+        self.export()
+        coverage = self.page("progress")["coverage"]["qlibCoverage"]
+        self.assertEqual(coverage["targetDate"], DATE)
+        self.assertEqual(coverage["valid"], 95)
+        self.assertEqual(coverage["ratio"], 0.95)
+
     def test_row_hash_alone_is_never_counted_as_valid(self):
         """Production shape: the ledger keeps a hash and still says invalid.
 

@@ -817,7 +817,13 @@ def build_coverage(health: dict, snapshot: dict, issues: list, issues_available:
     raw_incremental = qlib.get("incremental")
     incremental = raw_incremental if isinstance(raw_incremental, dict) else {}
     raw_daily = incremental.get("dailyCoverage")
-    daily = (raw_daily[0] if isinstance(raw_daily, list) and raw_daily
+    # dailyCoverage follows calendarAdded order. A recovery import can add
+    # several days at once, so the newest day is the last row, not the first.
+    dated = ([row for row in raw_daily if isinstance(row, dict)
+              and is_iso_date(row.get("target_date"))]
+             if isinstance(raw_daily, list) else [])
+    daily = (max(dated, key=lambda row: row["target_date"]) if dated
+             else raw_daily[0] if isinstance(raw_daily, list) and raw_daily
              and isinstance(raw_daily[0], dict) else {})
     gap_codes = {issue["code"]: issue["dates"] for issue in issues
                  if isinstance(issue, dict) and issue.get("code")
