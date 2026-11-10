@@ -10,3 +10,9 @@ __pycache__/
 /core-market.db
 /core-market.db-wal
 /core-market.db-shm
+
+# Local market reconstruction artifacts (plan A, 2026-11-10)
+/core-market-reconstruction.db
+/core-market-reconstruction.db-wal
+/core-market-reconstruction.db-shm
+/work/
