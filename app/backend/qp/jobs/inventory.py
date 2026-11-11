@@ -20,6 +20,10 @@ from qp.models.ops import Alert, HealthCheck, Inventory, LegacyUnit
 
 INBOX = Path(os.getenv("QP_INBOX_FILE", "/var/lib/qp-inbox/legacy.json"))
 STALE_MIN = 30
+CERT_WARN_HOURS = 48
+DISK_FREE_MIN_GB = 5.0
+HOST_MEM_MIN_MB = 600
+LOG_ERROR_MIN = 50
 OS_UNIT = re.compile(r"^(apt|apport|dpkg|e2scrub|fstrim|fwupd|logrotate|man-db|motd|snap|systemd-|ua-|update-notifier|"
                      r"esm-|ubuntu-|sysstat|launchpadlib|plymouth|cloud-|getty|user@|dbus|polkit|ssh|cron|rsyslog|"
                      r"unattended|multipathd|lvm2|grub|kmod|keyboard|console|networkd|netplan|tat_agent|YunJing|"
@@ -111,7 +115,7 @@ def evaluate(snap: dict, unit_rows: list[dict], age_min: float) -> list[tuple[st
         h = ct.get("hours_left")
         if not ct.get("ok"):
             f.append((f"cert:{ct['target']}", "warning", f"cert check failed on :{ct['target']}", {}))
-        elif h is not None and h < 48:
+        elif h is not None and h < CERT_WARN_HOURS:
             f.append((f"cert:{ct['target']}", "critical" if h < 24 else "warning",
                       f"TLS cert on :{ct['target']} expires in {h:.0f} h", {"not_after": ct.get("not_after")}))
     for e in snap.get("egress") or []:
@@ -119,34 +123,92 @@ def evaluate(snap: dict, unit_rows: list[dict], age_min: float) -> list[tuple[st
             f.append((f"egress:{e['target']}", "warning", f"egress {e['target']} unreachable via proxy", {}))
     hostd = snap.get("host") or {}
     free = (hostd.get("disk_root") or {}).get("free_gb")
-    if free is not None and free < 5:
+    if free is not None and free < DISK_FREE_MIN_GB:
         f.append(("host:disk", "critical" if free < 2 else "warning", f"root disk free {free} GB", {}))
     avail = (hostd.get("mem_mb") or {}).get("MemAvailable")
-    if avail is not None and avail < 600:
+    if avail is not None and avail < HOST_MEM_MIN_MB:
         f.append(("host:mem", "warning", f"MemAvailable {avail} MB", {}))
     for scope, lg in (snap.get("logs") or {}).items():
         for unit, n in (lg.get("counts") or {}).items():
-            if n >= 50:
+            if n >= LOG_ERROR_MIN:
                 f.append((f"logs:{scope}:{unit}", "warning", f"{n} error-level log lines in {lg.get('window_min')} min from {unit}", {}))
     return f
 
 
+def recovery_evidence(snap: dict, unit_rows: list[dict], age_min: float, open_keys: set[str]) -> set[str]:
+    """Return open-alert keys this snapshot positively observed as healthy.
+
+    Only an explicit healthy observation counts.  A failed collector section, a missing
+    unit/container/cert/egress record, or any key this snapshot does not cover stays out
+    of the result, so apply_alerts keeps the old alert firing instead of treating
+    absence as recovery.
+    """
+    units = {f"unit:{r['scope']}:{r['name']}": r for r in unit_rows}
+    containers = {f"container:{c.get('name')}": c for c in snap.get("containers") or [] if c.get("name")}
+    certs = {f"cert:{c.get('target')}": c for c in snap.get("certs") or [] if c.get("target") is not None}
+    egress = {f"egress:{e.get('target')}": e for e in snap.get("egress") or [] if e.get("target")}
+    logs = snap.get("logs") or {}
+    host = snap.get("host") or {}
+    recovered: set[str] = set()
+    for key in open_keys:
+        if key == "collector:stale":
+            if age_min <= STALE_MIN:
+                recovered.add(key)
+        elif key.startswith("unit:"):
+            r = units.get(key)
+            if (r and r["kind"] == "service" and r["category"] != "os" and r["load_state"] != "not-found"
+                    and r["active_state"] != "failed"
+                    and (r["result"] in (None, "success") or r["active_state"] == "activating")):
+                recovered.add(key)
+        elif key.startswith("container:"):
+            c = containers.get(key)
+            if c and c.get("name") == "radar-mihomo":
+                recovered.add(key)  # explicitly retired: an old alert is obsolete, not a recovery claim
+            elif c and c.get("state") == "running" and c.get("health") in (None, "healthy"):
+                recovered.add(key)
+        elif key.startswith("cert:"):
+            c = certs.get(key)
+            if c and c.get("ok"):
+                left = c.get("hours_left")
+                if left is None or left >= CERT_WARN_HOURS:
+                    recovered.add(key)
+        elif key.startswith("egress:"):
+            e = egress.get(key)
+            if e and not (e.get("via_proxy") and not e.get("ok")):
+                recovered.add(key)
+        elif key == "host:disk":
+            free = (host.get("disk_root") or {}).get("free_gb")
+            if free is not None and free >= DISK_FREE_MIN_GB:
+                recovered.add(key)
+        elif key == "host:mem":
+            avail = (host.get("mem_mb") or {}).get("MemAvailable")
+            if avail is not None and avail >= HOST_MEM_MIN_MB:
+                recovered.add(key)
+        elif key.startswith("logs:"):
+            parts = key.split(":", 2)
+            lg = (logs.get(parts[1]) or {}) if len(parts) == 3 and isinstance(logs, dict) else {}
+            counts = lg.get("counts") if isinstance(lg, dict) else None
+            if (isinstance(lg, dict) and lg.get("ok") is not False and isinstance(counts, dict)
+                    and counts.get(parts[2], 0) < LOG_ERROR_MIN):
+                recovered.add(key)
+    return recovered
+
+
 def apply_alerts(s: Session, firing: list[tuple[str, str, str, dict]], run_id: int,
                  owns=lambda key: not key.startswith("market:"),
-                 keep_open: set[str] | None = None,
-                 only_resolve: set[str] | None = None) -> dict:
+                 keep_open: set[str] | None = None, *,
+                 only_resolve: set[str]) -> dict:
     """Upsert firing alerts. Close an owned open alert only with valid recovery evidence.
 
     - firing: keys known to be in fault this run.
     - keep_open: keys whose evidence is unknown/insufficient; never auto-resolved.
-    - only_resolve: if given, a leftover open alert is resolved only when its key is in
-      this set (explicit ok/match). Owned keys absent from this run stay firing.
-    - If only_resolve is omitted (ops.inventory), owned open alerts not in firing and not
-      in keep_open are resolved, preserving the previous inventory behaviour.
+    - only_resolve: required set of keys with explicit recovery evidence for this run.
+      An owned open alert is resolved only when its key is in this set; keys absent from
+      this run, unknown, insufficient, or not collected stay firing.
     """
     now = utcnow()
     keep = set(keep_open or ())
-    recover = set(only_resolve) if only_resolve is not None else None
+    recover = set(only_resolve)
     open_alerts = {a.key: a for a in s.execute(select(Alert).where(Alert.state == "firing")).scalars() if owns(a.key)}
     new = 0
     for key, sev, summary, detail in firing:
@@ -161,7 +223,7 @@ def apply_alerts(s: Session, firing: list[tuple[str, str, str, dict]], run_id: i
     resolved = 0
     kept = 0
     for a in open_alerts.values():
-        if a.key in keep or (recover is not None and a.key not in recover):
+        if a.key in keep or a.key not in recover:
             kept += 1
             continue
         a.state, a.resolved_at = "resolved", now
@@ -204,7 +266,10 @@ def inventory(ctx: JobContext) -> dict:
         for name, val in metrics:
             s.add(HealthCheck(check=f"inv:{name}", ok=val is not None, value=val, detail={}, job_run_id=ctx.run_id))
         firing = evaluate(snap, units, age_min)
-        res = apply_alerts(s, firing, ctx.run_id)
+        open_keys = {a.key for a in s.execute(select(Alert).where(Alert.state == "firing")).scalars()
+                     if not a.key.startswith("market:")}
+        recover = recovery_evidence(snap, units, age_min, open_keys)
+        res = apply_alerts(s, firing, ctx.run_id, only_resolve=recover)
         # retention: keep 30 days of health rows
         s.execute(delete(HealthCheck).where(HealthCheck.at < utcnow() - dt.timedelta(days=30)))
         s.commit()

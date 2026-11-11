@@ -151,11 +151,14 @@ def test_import_compare_health(engine, market_env):
     assert r.status == "succeeded", r.error
     with Session(engine) as s:
         hs = {h.check: h.status for h in s.execute(select(HealthResult)).scalars()}
-        assert hs["legacy.data_health"] == "critical" and hs["sources.reachable"] == "warning"
+        assert hs["collector.market_reader"] == "ok" and hs["sources.reachable"] == "warning"
+        assert "legacy.data_health" not in hs and "snapshot.legacy_core_current" not in hs
+        assert hs["compare.latest"] == "warning", hs  # bound to the latest successful compare run
         # inventory alerts must not resolve market alerts
     from qp.jobs.inventory import apply_alerts
     with Session(engine) as s:
-        apply_alerts(s, [], 0)
+        # even an explicit recovery key must not let the inventory owner touch a market alert
+        apply_alerts(s, [], 0, only_resolve={"market:compare:index_close.legacy_vs_qp"})
         s.commit()
         assert s.execute(select(Alert).where(Alert.key == "market:compare:index_close.legacy_vs_qp")).scalar_one().state == "firing"
 

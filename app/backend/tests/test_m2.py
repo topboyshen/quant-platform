@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 PW = "m2 password"
@@ -116,6 +116,59 @@ def test_inventory_stale_and_missing(engine, inbox):
     assert run_job(engine, "ops.inventory").status == "succeeded"
     with Session(engine) as s:
         assert s.execute(select(Alert).where(Alert.key == "collector:stale", Alert.state == "firing")).first()
+
+
+def _seed_alerts(engine, keys):
+    from qp.models.ops import Alert
+    with Session(engine) as s:
+        s.execute(delete(Alert).where(Alert.key.in_(keys)))
+        for key in keys:
+            s.add(Alert(key=key, severity="warning", state="firing", summary="old fault",
+                        last_seen_at=datetime.now(timezone.utc)))
+        s.commit()
+
+
+def _alert_states(engine, keys):
+    from qp.models.ops import Alert
+    with Session(engine) as s:
+        return {a.key: a.state for a in s.execute(select(Alert).where(Alert.key.in_(keys))).scalars()}
+
+
+def test_inventory_missing_collection_keeps_old_alerts(engine, inbox):
+    """A failed unit collector or a missing snapshot section is not recovery evidence."""
+    from qp.jobs import run_job
+    keys = ["unit:system:qd-redacted-log-root-health.service", "container:radar-grafana", "cert:443"]
+    _seed_alerts(engine, keys)
+    data = snap()
+    data["systemd_system"] = {"ok": False, "units": [], "timers": []}
+    data["containers"] = []
+    data["certs"] = []
+    inbox.write_text(json.dumps(data))
+    r = run_job(engine, "ops.inventory", trigger="test")
+    assert r.status == "succeeded", r.error
+    assert _alert_states(engine, keys) == {k: "firing" for k in keys}
+
+
+def test_inventory_healthy_evidence_resolves_old_alerts(engine, inbox):
+    """Only positive healthy observations close the matching old alerts."""
+    from qp.jobs import run_job
+    keys = ["unit:system:stock-radar-swing-eod.service", "cert:8443", "egress:telegram_api", "host:disk"]
+    _seed_alerts(engine, keys)
+    inbox.write_text(json.dumps(snap()))
+    r = run_job(engine, "ops.inventory", trigger="test")
+    assert r.status == "succeeded", r.error
+    assert _alert_states(engine, keys) == {k: "resolved" for k in keys}
+
+
+def test_inventory_absent_records_keep_old_alerts(engine, inbox):
+    """A record missing from an otherwise healthy snapshot stays unknown, not resolved."""
+    from qp.jobs import run_job
+    keys = ["unit:system:removed.service", "container:ghost"]
+    _seed_alerts(engine, keys)
+    inbox.write_text(json.dumps(snap()))
+    r = run_job(engine, "ops.inventory", trigger="test")
+    assert r.status == "succeeded", r.error
+    assert _alert_states(engine, keys) == {k: "firing" for k in keys}
 
 
 @pytest.fixture()

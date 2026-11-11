@@ -22,11 +22,15 @@ from qp.market.http import FetchError
 from qp.models.base import utcnow
 from qp.models.market import (AnnouncementCount, CompareResult, HealthResult, ImportLog, IndexClose, IndexMember,
                               Instrument, LegacySnapshot, MarketSummary, QlibStatus, SourceStatus, TradingDay)
+from qp.models.ops import JobRun
 
 CST = ZoneInfo("Asia/Shanghai")
 MARKET_INBOX = Path(os.getenv("QP_MARKET_INBOX_FILE", "/var/lib/qp-inbox/market-legacy.json"))
 MIN_MEM_MB = int(os.getenv("QP_MIN_MEM_MB", "600"))
 RETAIN_DAYS = 90
+SOURCE_MAX_AGE_H = 26
+DOLT_CAL_SOURCE = "dolt.ts_trade_day_calendar"
+CAL_FALLBACK_ORIGINS = ("qlib", "legacy")  # legacy wins where both have the same day
 
 
 class LowMemory(RuntimeError):
@@ -139,21 +143,54 @@ def calendar_job(ctx: JobContext) -> dict:
     mem_guard()
     today = now_cst().date()
     with Session(ctx.engine) as s:
-        have = s.scalar(select(func.count()).select_from(TradingDay).where(TradingDay.origin == "qp")) or 0
+        have = s.scalar(select(func.count()).select_from(TradingDay)
+                        .where(TradingDay.origin == "qp", TradingDay.source == DOLT_CAL_SOURCE)) or 0
     start = dt.date(2020, 1, 1) if have < 1000 else today - dt.timedelta(days=60)
-    rows = src.dolt_calendar(start, dt.date(today.year + 1, 12, 31))
-    if not rows:
-        return {"ok": False, "error": "empty"}
+    dolt_error = None
+    try:
+        rows = src.dolt_calendar(start, dt.date(today.year + 1, 12, 31))
+    except (FetchError, ValueError, TypeError, KeyError) as e:
+        rows, dolt_error = [], str(e) or type(e).__name__
+    if rows:
+        with Session(ctx.engine) as s:
+            # Dolt is authoritative once it succeeds.  Drop rows that only exist
+            # because an earlier run mirrored the legacy/qlib calendar.
+            s.execute(delete(TradingDay).where(TradingDay.origin == "qp",
+                                               TradingDay.source.like("fallback:%")))
+            stmt = insert(TradingDay).values([{"origin": "qp", "date": x, "is_open": o, "source": DOLT_CAL_SOURCE}
+                                              for x, o in rows])
+            s.execute(stmt.on_conflict_do_update(index_elements=["origin", "date"],
+                                                 set_={"is_open": stmt.excluded.is_open, "source": stmt.excluded.source,
+                                                       "updated_at": func.now()}))
+            s.commit()
+            opened = [x for x, o in rows if o]
+        ahead = (opened[-1] - today).days if opened else None
+        return {"ok": True, "rows": len(rows), "source": DOLT_CAL_SOURCE, "dolt_error": dolt_error,
+                "range": [rows[0][0].isoformat(), rows[-1][0].isoformat()],
+                "max_open": opened[-1].isoformat() if opened else None, "days_ahead": ahead,
+                "initial": have < 1000}
+    # Dolt unavailable: keep the platform calendar usable from the already-mirrored
+    # legacy/qlib calendars.  This is an explicit, labelled fallback, not a Dolt claim.
     with Session(ctx.engine) as s:
-        stmt = insert(TradingDay).values([{"origin": "qp", "date": x, "is_open": o, "source": "dolt.ts_trade_day_calendar"}
-                                          for x, o in rows])
-        s.execute(stmt.on_conflict_do_update(index_elements=["origin", "date"],
-                                             set_={"is_open": stmt.excluded.is_open, "source": stmt.excluded.source,
-                                                   "updated_at": func.now()}))
+        fb: dict[dt.date, str] = {}
+        for origin in CAL_FALLBACK_ORIGINS:
+            for day in s.execute(select(TradingDay.date).where(TradingDay.origin == origin,
+                                                               TradingDay.is_open)).scalars():
+                fb[day] = f"fallback:{origin}"
+        if not fb:
+            return {"ok": False, "error": "dolt_empty_and_no_calendar_fallback", "dolt_error": dolt_error or "empty"}
+        stmt = insert(TradingDay).values([{"origin": "qp", "date": x, "is_open": True, "source": source}
+                                          for x, source in sorted(fb.items())])
+        s.execute(stmt.on_conflict_do_nothing(index_elements=["origin", "date"]))
         s.commit()
-        opened = [x for x, o in rows if o]
+        opened = list(s.execute(select(TradingDay.date).where(TradingDay.origin == "qp", TradingDay.is_open)
+                                .order_by(TradingDay.date)).scalars())
+        sources = dict(s.execute(select(TradingDay.source, func.count()).where(TradingDay.origin == "qp")
+                                 .group_by(TradingDay.source)).all())
     ahead = (opened[-1] - today).days if opened else None
-    return {"rows": len(rows), "range": [rows[0][0].isoformat(), rows[-1][0].isoformat()],
+    return {"ok": True, "rows": len(fb), "source": "fallback", "fallback_sources": sorted(set(fb.values())),
+            "dolt_error": dolt_error or "empty", "sources": sources,
+            "range": [min(fb).isoformat(), max(fb).isoformat()] if fb else None,
             "max_open": opened[-1].isoformat() if opened else None, "days_ahead": ahead, "initial": have < 1000}
 
 
@@ -264,10 +301,16 @@ def qlib_check_job(ctx: JobContext) -> dict:
         out["github_release_tag"] = src.github_release_tag()
     except FetchError as e:
         out["github_error"] = str(e)
+    if out.get("dolt_latest_eod"):
+        out["latest_eod"], out["latest_eod_source"] = out["dolt_latest_eod"], "dolt"
+    elif out.get("github_release_tag"):
+        # DoltHub SQL API is frequently 504/timeout; the GitHub release tag is the
+        # same upstream EOD date and is the documented release fallback.
+        out["latest_eod"], out["latest_eod_source"] = out["github_release_tag"], "github_release"
     with Session(ctx.engine) as s:
         s.add(QlibStatus(kind="source", data=out))
         s.commit()
-    out["ok"] = "dolt_latest_eod" in out or "github_release_tag" in out
+    out["ok"] = "latest_eod" in out
     return out
 
 
@@ -406,6 +449,17 @@ def ingest_job(ctx: JobContext) -> dict:
 
 
 # ---------------------------------------------------------------- compare (new vs legacy) + health
+REQUIRED_COMPARE_ITEMS = (
+    "calendar.legacy_vs_qp",
+    "calendar.qlib_vs_qp",
+    "index_close.legacy_vs_qp",
+    "snapshot.core_vs_qp",
+    "instruments.qlib_active_vs_names",
+)
+COMPARE_MAX_AGE_H = 26  # compare runs 07:00/17:15/23:45 CST; max natural gap is 7h15m
+COMPARE_RUN_SKEW = dt.timedelta(seconds=30)  # run_at is captured immediately after the job row insert
+
+
 def _cov(expected: int, compared: int, missing: int, diffs: int, **extra: Any) -> dict:
     return {"expected": expected, "compared": compared, "missing": missing, "diffs": diffs, **extra}
 
@@ -535,20 +589,122 @@ def compare_job(ctx: JobContext) -> dict:
             "skipped": [r[0] for r in res if r[1] == "skipped"], "alerts": al}
 
 
+def compare_latest(s: Session, now: dt.datetime) -> tuple[str, str, dict]:
+    """Judge the latest compare run with a fixed required-item set and run identity.
+
+    The denominator is REQUIRED_COMPARE_ITEMS, never the number of rows that happen to
+    exist.  Results are accepted only when the latest market.compare job run succeeded,
+    the rows fall inside that run's time window, and run_at is fresh.  A required item
+    with no row at all counts as missing (unknown), not as a smaller denominator.
+    """
+    required = REQUIRED_COMPARE_ITEMS
+    expected = len(required)
+    now_utc = now.astimezone(dt.timezone.utc)
+    jr = s.execute(select(JobRun).where(JobRun.job_name == "market.compare")
+                   .order_by(JobRun.started_at.desc(), JobRun.id.desc()).limit(1)).scalar_one_or_none()
+    base = {"expected": expected, "compared": 0, "missing": expected, "diffs": 0,
+            "required": list(required), "absent": list(required), "insufficient": [], "skipped": [],
+            "mismatch": [], "extra": {}, "job_run_id": None, "job_status": None, "run_at": None,
+            "job_started_at": None, "job_finished_at": None}
+    if jr is None:
+        return ("unknown", "尚无 market.compare 运行记录；" + _cov_summary(expected, 0, expected, 0),
+                {**base, "reason": "no_job_run"})
+    base.update(job_run_id=jr.id, job_status=jr.status, job_started_at=jr.started_at.isoformat(),
+                job_finished_at=jr.finished_at.isoformat() if jr.finished_at else None)
+    if jr.status != "succeeded" or jr.finished_at is None:
+        return ("unknown", f"最近一次 market.compare 状态为 {jr.status}；" + _cov_summary(expected, 0, expected, 0),
+                {**base, "reason": "job_not_succeeded"})
+    run_at = s.scalar(select(func.max(CompareResult.run_at)).where(
+        CompareResult.run_at >= jr.started_at - COMPARE_RUN_SKEW,
+        CompareResult.run_at <= jr.finished_at + COMPARE_RUN_SKEW))
+    if run_at is None:
+        return ("unknown", "最近一次 market.compare 没有对应结果；" + _cov_summary(expected, 0, expected, 0),
+                {**base, "reason": "no_results_for_run"})
+    rows = s.execute(select(CompareResult).where(CompareResult.run_at == run_at)
+                     .order_by(CompareResult.id)).scalars().all()
+    by_item = {r.item: r for r in rows if r.item in required}
+    absent = [i for i in required if i not in by_item]
+    mismatch = [i for i in required if i in by_item and by_item[i].status == "mismatch"]
+    insufficient = [i for i in required if i in by_item and by_item[i].status == "insufficient"]
+    skipped = [i for i in required if i in by_item and by_item[i].status == "skipped"]
+    compared = sum(1 for i in required if i in by_item and by_item[i].status in ("match", "mismatch"))
+    missing = expected - compared
+    diffs = len(mismatch)
+    age_h = (now_utc - run_at).total_seconds() / 3600
+    detail = {**base, "run_at": run_at.isoformat(), "compared": compared, "missing": missing, "diffs": diffs,
+              "absent": absent, "insufficient": insufficient, "skipped": skipped, "mismatch": mismatch,
+              "extra": {r.item: r.status for r in rows if r.item not in required},
+              "age_hours": round(age_h, 2)}
+    summary = _cov_summary(expected, compared, missing, diffs)
+    if age_h > COMPARE_MAX_AGE_H:
+        return "unknown", f"最近比较结果 {age_h:.1f}h 前，超过 {COMPARE_MAX_AGE_H}h；" + summary, {**detail, "reason": "stale"}
+    if age_h < -0.1:
+        return "unknown", "最近比较结果时间在未来；" + summary, {**detail, "reason": "future"}
+    if diffs:
+        return "warning", summary, detail
+    if missing:
+        return "unknown", summary, detail
+    return "ok", summary, detail
+
+
+SOURCE_FALLBACKS = {
+    "dolt": ("github_release",),
+    "github_release": ("dolt",),
+    "tencent": ("sina",),
+    "sina": ("tencent",),
+}
+SOURCE_OPTIONAL = {"akshare_sina_calendar", "baostock"}
+# Replaced checks.  The old alert keys are resolved once so a retired check does not
+# stay firing forever; the replacement evidence is snapshot.qp_current and
+# collector.market_reader (the legacy status itself remains on the read-only card).
+RETIRED_HEALTH_CHECKS = {
+    "snapshot.legacy_core_current": "replaced by snapshot.qp_current",
+    "legacy.data_health": "legacy status is shown on the read-only card; qp health uses collector.market_reader",
+}
+
+
+def source_verdict(latest: dict, *, calendar_covered: bool) -> tuple[list[str], dict[str, list[str]]]:
+    """Return required failures and the fallback path used for degraded sources.
+
+    A source failure is not blocking when its peer source is reachable (Tencent/Sina,
+    Dolt/GitHub release).  Dolt's calendar capability is also covered when a calendar
+    mirror already reaches today, so that fallback is passed in explicitly.
+    """
+    ok = {name: bool(row.ok) for name, row in latest.items()}
+    covered: dict[str, list[str]] = {}
+    for name in latest:
+        if ok[name]:
+            covered[name] = []
+            continue
+        alts = [a for a in SOURCE_FALLBACKS.get(name, ()) if ok.get(a)]
+        if name == "dolt" and calendar_covered:
+            alts.append("calendar_mirror")
+        covered[name] = alts
+    bad = sorted(name for name in latest
+                 if not ok[name] and not covered[name] and name not in SOURCE_OPTIONAL)
+    return bad, covered
+
+
 def health(s: Session, now: dt.datetime | None = None) -> list[tuple[str, str, str, dict]]:
     now = now or now_cst()
     out = []
     days, cal_meta = calendar_for_expectation(s, now.date())
     qp_open = open_days(s, "qp")
     upd = s.scalar(select(func.max(TradingDay.updated_at)).where(TradingDay.origin == "qp"))
+    cal_sources = dict(s.execute(select(TradingDay.source, func.count()).where(TradingDay.origin == "qp")
+                                 .group_by(TradingDay.source)).all())
     if not qp_open:
-        out.append(("calendar.qp", "warning", "qp calendar empty (Dolt not fetched yet)", {}))
+        out.append(("calendar.qp", "warning", "qp calendar empty (Dolt not fetched yet)",
+                    {"sources": cal_sources}))
     else:
         ahead = (qp_open[-1] - now.date()).days
         age_d = (utcnow() - upd).total_seconds() / 86400 if upd else 999
         st = "ok" if ahead >= 30 and age_d <= 8 else "warning"
-        out.append(("calendar.qp", st, f"max open {qp_open[-1]} ({ahead}d ahead), refreshed {age_d:.1f}d ago",
-                    {"max_open": qp_open[-1].isoformat(), "days_ahead": ahead, "age_days": round(age_d, 2)}))
+        src_txt = ", ".join(f"{k}({v})" for k, v in sorted(cal_sources.items()))
+        out.append(("calendar.qp", st,
+                    f"max open {qp_open[-1]} ({ahead}d ahead), refreshed {age_d:.1f}d ago; sources: {src_txt}",
+                    {"max_open": qp_open[-1].isoformat(), "days_ahead": ahead, "age_days": round(age_d, 2),
+                     "sources": cal_sources}))
 
     def want_at(cutoff: dt.time) -> dt.date | None:
         return expected_trade_date(days, now, cutoff) if days else None
@@ -589,73 +745,96 @@ def health(s: Session, now: dt.datetime | None = None) -> list[tuple[str, str, s
     else:
         out.append(("qlib.current", "unknown", "no qlib catalog yet", {}))
     srcq = s.execute(select(QlibStatus).where(QlibStatus.kind == "source").order_by(QlibStatus.id.desc()).limit(1)).scalar()
-    if srcq and srcq.data.get("dolt_latest_eod"):
-        eod = srcq.data["dolt_latest_eod"]
+    eod = eod_source = None
+    src_age_h = None
+    if srcq:
+        data = srcq.data or {}
+        eod = data.get("latest_eod") or data.get("dolt_latest_eod")
+        eod_source = data.get("latest_eod_source") or ("dolt" if data.get("dolt_latest_eod") else None)
+        if not eod and data.get("github_release_tag"):
+            eod, eod_source = data["github_release_tag"], "github_release"
+        src_age_h = (utcnow() - srcq.at).total_seconds() / 3600
+    eod_day = None
+    if eod:
+        try:
+            eod_day = d(eod)
+        except ValueError:
+            eod = eod_source = None
+    if not srcq:
+        out.append(("qlib.source_dolt", "unknown", "Dolt latest EOD unknown (no source check yet)", {}))
+    elif src_age_h is not None and src_age_h > SOURCE_MAX_AGE_H:
+        out.append(("qlib.source_dolt", "unknown",
+                    f"来源检查 {src_age_h:.1f}h 前，超过 {SOURCE_MAX_AGE_H}h；无法确认上游 EOD",
+                    {**(srcq.data or {}), "age_hours": round(src_age_h, 1)}))
+    elif eod and eod_day:
         if want_q is None:
-            st, summary, det = unknown_expect(eod, **srcq.data)
+            st, summary, det = unknown_expect(eod, **(srcq.data or {}), eod_source=eod_source,
+                                              observed_at=srcq.at.isoformat())
             out.append(("qlib.source_dolt", st, summary, det))
         else:
-            lag = trading_lag(days, d(eod), want_q)
-            out.append(("qlib.source_dolt", "ok" if lag == 0 else "warning",
-                        f"Dolt latest EOD {eod}, expected {want_q}, lag {lag}",
-                        {**srcq.data, "expected": want_q.isoformat(), "lag": lag}))
+            lag = trading_lag(days, eod_day, want_q)
+            if eod_source == "dolt":
+                summary = f"Dolt latest EOD {eod}, expected {want_q}, lag {lag}"
+            else:
+                why = (srcq.data or {}).get("dolt_error") or "不可达"
+                summary = f"上游最新 EOD {eod}（GitHub release；Dolt {why}），expected {want_q}, lag {lag}"
+            out.append(("qlib.source_dolt", "ok" if lag == 0 else "warning", summary,
+                        {**(srcq.data or {}), "expected": want_q.isoformat(), "lag": lag,
+                         "eod_source": eod_source, "observed_at": srcq.at.isoformat()}))
     else:
-        out.append(("qlib.source_dolt", "unknown", "Dolt latest EOD unknown", srcq.data if srcq else {}))
+        out.append(("qlib.source_dolt", "unknown", "Dolt latest EOD unknown",
+                    {**(srcq.data or {}), "age_hours": round(src_age_h, 1) if src_age_h is not None else None}))
+    qp_core = s.scalar(select(func.max(MarketSummary.trade_date)).where(MarketSummary.origin == "qp"))
     leg_core = s.scalar(select(func.max(MarketSummary.trade_date)).where(MarketSummary.origin == "legacy"))
     want_s = want_at(dt.time(23, 15))
     if want_s is None:
-        st, summary, det = unknown_expect(leg_core)
-        out.append(("snapshot.legacy_core_current", st, summary, det))
+        st, summary, det = unknown_expect(qp_core, legacy_latest=str(leg_core) if leg_core else None)
+        out.append(("snapshot.qp_current", st, summary, det))
     else:
-        lag = trading_lag(days, leg_core, want_s)
+        lag = trading_lag(days, qp_core, want_s)
         st = "ok" if lag == 0 else ("warning" if lag == 1 else "critical")
-        out.append(("snapshot.legacy_core_current", st,
-                    f"legacy core-market latest {leg_core}, expected {want_s}, lag {lag}",
-                    {"latest": str(leg_core) if leg_core else None, "expected": want_s.isoformat(), "lag": lag}))
+        out.append(("snapshot.qp_current", st,
+                    f"qp summary latest {qp_core}, expected {want_s}, lag {lag}"
+                    f"；legacy core latest {leg_core}（仅参考）",
+                    {"latest": str(qp_core) if qp_core else None, "expected": want_s.isoformat(), "lag": lag,
+                     "legacy_latest": str(leg_core) if leg_core else None,
+                     "legacy_lag": trading_lag(days, leg_core, want_s)}))
     from qp.models.ops import Inventory
     lh = s.get(Inventory, "market.legacy_health")
     if lh and lh.data and lh.data.get("ok"):
-        status = str(lh.data.get("status") or "unknown")
-        st = {"ok": "ok", "healthy": "ok", "warning": "warning", "critical": "critical"}.get(status, "warning")
-        out.append(("legacy.data_health", st, f"legacy research-data health={status}, mode={lh.data.get('businessMode')}, "
-                                              f"effective {lh.data.get('effectiveTradeDate')}",
-                    {"status": status, "generatedAt": lh.data.get("generatedAt"), "issues": lh.data.get("issues")}))
+        data = lh.data
         age_h = (utcnow() - lh.at).total_seconds() / 3600
-        out.append(("collector.market_reader", "ok" if age_h <= 26 else "warning", f"legacy market snapshot {age_h:.1f}h old",
-                    {"age_hours": round(age_h, 1)}))
+        out.append(("collector.market_reader", "ok" if age_h <= 26 else "warning",
+                    f"legacy market snapshot {age_h:.1f}h old",
+                    {"age_hours": round(age_h, 1), "legacy_status": data.get("status"),
+                     "legacy_mode": data.get("businessMode"),
+                     "legacy_effective": data.get("effectiveTradeDate"),
+                     "legacy_generated_at": data.get("generatedAt"),
+                     "legacy_issues": data.get("issues")}))
     else:
-        out.append(("legacy.data_health", "unknown", "legacy health not ingested yet", {}))
+        out.append(("collector.market_reader", "unknown", "legacy market snapshot not ingested yet", {}))
     latest = {}
     for r in s.execute(select(SourceStatus).where(SourceStatus.at > utcnow() - dt.timedelta(hours=26))
                        .order_by(SourceStatus.at)).scalars():
         latest[r.source] = r
     if latest:
-        bad = sorted(k for k, v in latest.items() if not v.ok)
-        out.append(("sources.reachable", "ok" if not bad else "warning", f"{len(latest) - len(bad)}/{len(latest)} reachable"
-                    + (f"; failing: {', '.join(bad)}" if bad else ""),
-                    {k: {"ok": v.ok, "ms": v.ms, "via_proxy": v.via_proxy, **(v.detail or {})} for k, v in latest.items()}))
+        calendar_covered = cal_meta.get("origin") is not None
+        bad, covered = source_verdict(latest, calendar_covered=calendar_covered)
+        degraded = sorted(f"{k}->{','.join(v)}" for k, v in covered.items() if v)
+        summary = f"{len(latest) - len(bad)}/{len(latest)} 数据源有路径可用"
+        if degraded:
+            summary += "；降级: " + ", ".join(degraded)
+        if bad:
+            summary += "；失败: " + ", ".join(bad)
+        out.append(("sources.reachable", "ok" if not bad else "warning", summary,
+                    {k: {"ok": v.ok, "ms": v.ms, "via_proxy": v.via_proxy,
+                         "covered_by": covered.get(k) or None,
+                         "optional": k in SOURCE_OPTIONAL,
+                         **(v.detail or {})} for k, v in latest.items()}))
     else:
         out.append(("sources.reachable", "unknown", "no probe in 26h", {}))
-    last_run = s.scalar(select(func.max(CompareResult.run_at)))
-    if last_run:
-        rows = s.execute(select(CompareResult).where(CompareResult.run_at == last_run)).scalars().all()
-        expected = len(rows)
-        mismatch = [r.item for r in rows if r.status == "mismatch"]
-        insufficient = [r.item for r in rows if r.status == "insufficient"]
-        skipped = [r.item for r in rows if r.status == "skipped"]
-        compared = sum(1 for r in rows if r.status in ("match", "mismatch"))
-        missing = len(insufficient) + len(skipped)
-        diffs = len(mismatch)
-        if diffs:
-            st = "warning"
-        elif missing:
-            st = "unknown"
-        else:
-            st = "ok"
-        out.append(("compare.latest", st, _cov_summary(expected, compared, missing, diffs),
-                    {"run_at": last_run.isoformat(), "expected": expected, "compared": compared,
-                     "missing": missing, "diffs": diffs, "mismatch": mismatch,
-                     "insufficient": insufficient, "skipped": skipped}))
+    c_status, c_summary, c_detail = compare_latest(s, now)
+    out.append(("compare.latest", c_status, c_summary, c_detail))
     return out
 
 
@@ -670,9 +849,13 @@ def health_job(ctx: JobContext) -> dict:
         firing = [(f"market:health:{c}", "critical" if st == "critical" else "warning", f"market {c}: {summary}", detail)
                   for c, st, summary, detail in res if st in ("warning", "critical")]
         only_resolve = {f"market:health:{c}" for c, st, _, _ in res if st == "ok"}
+        # Retire replaced checks once; their old keys must not stay firing forever just
+        # because the check no longer appears in the latest run.
+        retired = {f"market:health:{c}" for c in RETIRED_HEALTH_CHECKS}
+        only_resolve |= retired
         keep_open = {f"market:health:{c}" for c, st, _, _ in res if st == "unknown"}
         al = apply_alerts(s, firing, ctx.run_id, owns=lambda k: k.startswith("market:health:"),
                           keep_open=keep_open, only_resolve=only_resolve)
         s.execute(delete(HealthResult).where(HealthResult.run_at < run_at - dt.timedelta(days=RETAIN_DAYS)))
         s.commit()
-    return {"checks": {c: st for c, st, _, _ in res}, "alerts": al}
+    return {"checks": {c: st for c, st, _, _ in res}, "alerts": al, "retired": sorted(retired)}
