@@ -1,0 +1,12 @@
+*{box-sizing:border-box}html,body{margin:0;height:100%;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:#1f2933;background:#f4f6fa}
+.top{display:flex;align-items:center;gap:24px;height:52px;padding:0 20px;background:#18212f;color:#fff}
+.brand{color:#fff;font-weight:600;text-decoration:none;font-size:16px}
+#nav{display:flex;gap:4px;flex:1}#nav a{color:#c9d3e0;text-decoration:none;padding:6px 12px;border-radius:6px}
+#nav a:hover,#nav a.active{background:#2c3a4f;color:#fff}.build{color:#7b8aa0;font-size:12px}
+main{height:calc(100% - 52px)}.view{padding:24px 28px}.muted{color:#66768a}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-top:16px}
+.card{display:block;background:#fff;border:1px solid #e1e6ee;border-radius:10px;padding:16px 18px;color:inherit;text-decoration:none}
+.card:hover{border-color:#4c7bd9;box-shadow:0 2px 10px rgba(30,60,120,.08)}.card h2{margin:0 0 6px;font-size:16px}.card p{margin:0 0 10px;color:#4a5a6e}.card span{color:#2f63c8;font-size:13px}
+.card.todo{opacity:.65}.frame-view{padding:0;height:100%;display:flex;flex-direction:column}
+.frame-view[hidden]{display:none}.framebar{display:flex;justify-content:space-between;padding:6px 14px;background:#e9edf3;font-size:13px}
+.framebar a{color:#2f63c8}iframe{flex:1;width:100%;border:0;background:#fff}

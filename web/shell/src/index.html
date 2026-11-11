@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Quant Platform · nnG8</title>
+<link rel="stylesheet" href="/shell-assets/shell.css?v=__BUILD__">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#/home">Quant Platform</a>
+  <nav id="nav">
+    <a href="#/home" data-route="home">总览</a>
+    <a href="#/qd" data-route="qd">QuantDinger</a>
+    <a href="/workbench/" data-ext="1">研究工作台</a>
+    <a href="#/reports" data-route="reports">报告</a>
+    <a href="#/monitor" data-route="monitor">监控</a>
+    <a href="#/ops" data-route="ops">运维</a>
+  </nav>
+  <span class="build">build __BUILD__</span>
+</header>
+<main>
+  <section id="view-home" class="view">
+    <h1>统一入口</h1>
+    <p class="muted">nnG8 单一网站入口（P2 外壳）。登录将在 P3 统一为 QuantDinger 账号；当前外壳与研究工作台仍沿用原 basic auth。</p>
+    <div class="cards">
+      <a class="card" href="#/qd"><h2>QuantDinger</h2><p>策略、回测、个人研究、Radar ETF。使用 QuantDinger 账号登录。</p><span>打开 →</span></a>
+      <a class="card" href="/workbench/"><h2>研究工作台</h2><p>研究工作台、投递与验收、数据覆盖、服务与项目、报告记录（只读）。</p><span>打开 →</span></a>
+      <a class="card todo" href="#/reports"><h2>报告</h2><p>早报 / 日报统一视图（规划中）。</p><span>占位</span></a>
+      <a class="card todo" href="#/monitor"><h2>监控</h2><p>Grafana / Prometheus / Alertmanager（目前仅本机可达，规划中）。</p><span>占位</span></a>
+      <a class="card todo" href="#/ops"><h2>运维</h2><p>服务、定时器、代理、备份（规划中）。</p><span>占位</span></a>
+    </div>
+  </section>
+  <section id="view-qd" class="view frame-view" hidden>
+    <div class="framebar"><span>QuantDinger</span><a href="/qd/" target="_blank" rel="noopener">新标签打开</a></div>
+    <iframe id="qd-frame" title="QuantDinger" data-src="/qd/"></iframe>
+  </section>
+  <section id="view-placeholder" class="view" hidden>
+    <h1 id="ph-title">规划中</h1>
+    <p class="muted">该模块将在后续阶段（P4+）接入。</p>
+  </section>
+</main>
+<script src="/shell-assets/shell.js?v=__BUILD__"></script>
+</body>
+</html>

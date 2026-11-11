@@ -1,0 +1,139 @@
+# quant-platform P2 (2026-11-11): single entry on 443.
+#   =/ + /shell-assets/  -> unified shell (static, basic auth until P3)
+#   /qd/                 -> QuantDinger SPA (QD login; same exposure as former :8443)
+#   /api/                -> QuantDinger backend via frontend container (QD JWT)
+#   /workbench/ /data/ /assets/ -> nnG8 research workbench (basic auth)
+# Port 80 (ACME http-01 + redirect) unchanged.
+limit_req_zone $binary_remote_addr zone=nng8_dashboard_ip:10m rate=10r/s;
+map $http_authorization $qp_qd_authorization {
+    ~*^basic  "";
+    default   $http_authorization;
+}
+server {
+    listen 80;
+    server_name 150.158.46.28;
+    server_tokens off;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/lib/nng8-acme;
+        default_type text/plain;
+        try_files $uri =404;
+        limit_except GET { deny all; }
+    }
+    location / { return 308 https://150.158.46.28$request_uri; }
+}
+server {
+    listen 443 ssl;
+    server_name 150.158.46.28;
+    server_tokens off;
+    ssl_certificate /etc/letsencrypt/live/nng8-dashboard-ip/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/nng8-dashboard-ip/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:nng8_dashboard_tls:1m;
+    ssl_session_timeout 10m;
+    ssl_session_tickets off;
+    # default: everything requires basic auth; only /qd/ and /api/ opt out (QD has its own login, as on :8443)
+    auth_basic "nnG8 private dashboard";
+    auth_basic_user_file /etc/nginx/nng8-dashboard.htpasswd;
+    limit_req_status 429;
+    client_max_body_size 64k;
+    client_body_timeout 10s;
+    add_header Cache-Control "no-store" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Frame-Options "DENY" always;
+    if ($host != "150.158.46.28") { return 444; }
+
+    # ---- unified shell ----
+    location = / {
+        limit_req zone=nng8_dashboard_ip burst=40 nodelay;
+        if ($request_method !~ ^(GET|HEAD)$) { return 405; }
+        root /opt/quant-platform-shell/current;
+        try_files /index.html =404;
+        add_header Cache-Control "no-store" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+    }
+    location ^~ /shell-assets/ {
+        limit_req zone=nng8_dashboard_ip burst=40 nodelay;
+        if ($request_method !~ ^(GET|HEAD)$) { return 405; }
+        root /opt/quant-platform-shell/current;
+        try_files $uri =404;
+    }
+
+    # ---- research workbench (former 443 root) ----
+    location = /workbench { return 301 /workbench/; }
+    location ^~ /workbench/ {
+        limit_req zone=nng8_dashboard_ip burst=40 nodelay;
+        if ($request_method !~ ^(GET|HEAD)$) { return 405; }
+        proxy_pass http://127.0.0.1:8080/;
+        proxy_set_header Host localhost;
+        proxy_set_header Authorization "";
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 15s;
+    }
+    location ^~ /data/ {
+        limit_req zone=nng8_dashboard_ip burst=40 nodelay;
+        if ($request_method !~ ^(GET|HEAD)$) { return 405; }
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host localhost;
+        proxy_set_header Authorization "";
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 15s;
+    }
+    location ^~ /assets/ {
+        limit_req zone=nng8_dashboard_ip burst=40 nodelay;
+        if ($request_method !~ ^(GET|HEAD)$) { return 405; }
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host localhost;
+        proxy_set_header Authorization "";
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 15s;
+    }
+    # old workbench page URLs -> /workbench/
+    location ~ ^/(index|evidence|progress|projects|report|delivery)\.html$ {
+        return 301 /workbench/$1.html$is_args$args;
+    }
+
+    # ---- QuantDinger (own login; same exposure as former :8443) ----
+    location = /qd { auth_basic off; return 301 /qd/; }
+    location ^~ /qd/ {
+        auth_basic off;
+        limit_req zone=quantdinger_general burst=80 nodelay;
+        client_max_body_size 10m;
+        proxy_pass http://127.0.0.1:8888/;
+        include /etc/nginx/snippets/quantdinger-proxy.conf;
+        proxy_set_header Authorization $qp_qd_authorization;
+        include /etc/nginx/snippets/quant-platform-qd-headers.conf;
+    }
+    location = /api/auth/register { auth_basic off; return 403; }
+    location = /api/auth/login {
+        auth_basic off;
+        limit_req zone=quantdinger_login burst=3 nodelay;
+        client_max_body_size 10m;
+        proxy_pass http://127.0.0.1:8888;
+        include /etc/nginx/snippets/quantdinger-proxy.conf;
+        proxy_set_header Authorization $qp_qd_authorization;
+        include /etc/nginx/snippets/quant-platform-qd-headers.conf;
+    }
+    location ^~ /api/ {
+        auth_basic off;
+        limit_req zone=quantdinger_general burst=80 nodelay;
+        client_max_body_size 10m;
+        proxy_pass http://127.0.0.1:8888;
+        include /etc/nginx/snippets/quantdinger-proxy.conf;
+        proxy_set_header Authorization $qp_qd_authorization;
+        include /etc/nginx/snippets/quant-platform-qd-headers.conf;
+    }
+
+    location ~ /\. { deny all; return 403; }
+    # anything else: basic auth (server level) + 404
+    location / {
+        limit_req zone=nng8_dashboard_ip burst=40 nodelay;
+        return 404;
+    }
+}
