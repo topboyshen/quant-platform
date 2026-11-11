@@ -94,8 +94,9 @@ def qlib_catalog(root: Path, status_path: Path) -> dict:
     members = {}
     for idx in INDEX_FILES:
         lines, sha = _lines(root / f"instruments/{idx}.txt")
-        rows = [ln.split()[:3] for ln in lines if len(ln.split()) >= 3]
-        members[idx] = {"file_sha256": sha, "rows": rows,
+        raw_rows = [tuple(ln.split()[:3]) for ln in lines if len(ln.split()) >= 3]
+        rows = [list(r) for r in sorted(set(raw_rows))]
+        members[idx] = {"file_sha256": sha, "rows": rows, "raw_rows": len(raw_rows),
                         "checksum": canon(sorted(f"{idx}|{a}|{b}|{c}" for a, b, c in rows))}
     try:
         feature_dirs = sum(1 for _ in os.scandir(root / "features"))

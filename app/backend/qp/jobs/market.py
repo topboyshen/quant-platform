@@ -290,10 +290,10 @@ def ingest(s: Session, snap: dict) -> list[dict]:
                           canon(sorted(f"{a}|{b}|{c}" for a, b, c in back))))
         for idx, m in (q.get("members") or {}).items():
             s.execute(delete(IndexMember).where(IndexMember.index_code == idx))
-            rows = {(a, b): c for a, b, c in m["rows"]}  # PK (symbol, start) unique
-            for i, chunk in enumerate([list(rows.items())[k:k + 2000] for k in range(0, len(rows), 2000)]):
+            rows = m["rows"]  # unique (symbol, start, end) tuples from the reader
+            for k in range(0, len(rows), 2000):
                 s.execute(insert(IndexMember).values([{"index_code": idx, "symbol": a, "start_date": d(b), "end_date": d(c)}
-                                                      for (a, b), c in chunk]))
+                                                      for a, b, c in rows[k:k + 2000]]))
             s.flush()
             back = s.execute(select(IndexMember.symbol, IndexMember.start_date, IndexMember.end_date)
                              .where(IndexMember.index_code == idx)).all()

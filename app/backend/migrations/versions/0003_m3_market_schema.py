@@ -74,7 +74,7 @@ def upgrade() -> None:
     sa.Column('symbol', sa.String(length=16), nullable=False),
     sa.Column('start_date', sa.Date(), nullable=False),
     sa.Column('end_date', sa.Date(), nullable=False),
-    sa.PrimaryKeyConstraint('index_code', 'symbol', 'start_date', name=op.f('pk_index_member')),
+    sa.PrimaryKeyConstraint('index_code', 'symbol', 'start_date', 'end_date', name=op.f('pk_index_member')),
     schema='market'
     )
     op.create_table('instrument',

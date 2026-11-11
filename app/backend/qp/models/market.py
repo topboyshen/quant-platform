@@ -66,7 +66,7 @@ class IndexMember(Base):
     index_code: Mapped[str] = mapped_column(String(16), primary_key=True)
     symbol: Mapped[str] = mapped_column(String(16), primary_key=True)
     start_date: Mapped[dt.date] = mapped_column(Date, primary_key=True)
-    end_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[dt.date] = mapped_column(Date, primary_key=True)
 
 
 class MarketSummary(Base):
