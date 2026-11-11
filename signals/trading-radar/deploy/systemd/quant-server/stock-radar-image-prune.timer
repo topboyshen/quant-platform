@@ -1,0 +1,12 @@
+[Unit]
+Description=Trading Radar — Quant weekly image retention
+
+[Timer]
+OnCalendar=Sun *-*-* 03:30
+Persistent=true
+AccuracySec=10min
+RandomizedDelaySec=5min
+Unit=stock-radar-image-prune.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,301 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ==========================================
+  # 基础设施层 (Infrastructure)
+  # ==========================================
+  redis:
+    image: docker.1ms.run/library/redis:7-alpine
+    container_name: radar-redis
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - radar-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  mihomo:
+    image: docker.1ms.run/metacubex/mihomo@sha256:9211361a3ed85305383288d38c05e85862d6d5a590c10007c37fc059cca82e9c
+    container_name: radar-mihomo
+    mem_limit: 128m
+    cpus: 0.25
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:${MIHOMO_HTTP_PORT:-7890}:7890"
+      - "127.0.0.1:${MIHOMO_SOCKS_PORT:-7891}:7891"
+      - "127.0.0.1:${MIHOMO_CONTROLLER_PORT:-9092}:9090"
+    volumes:
+      - ${MIHOMO_CONFIG:-/home/ubuntu/mihomo/config.yaml}:/root/.config/mihomo/config.yaml:ro
+      - ./data/mihomo/cache.db:/root/.config/mihomo/cache.db
+    networks:
+      - radar-net
+    healthcheck:
+      test: ["CMD", "/mihomo", "-t", "-d", "/root/.config/mihomo"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  prometheus:
+    image: docker.1ms.run/prom/prometheus:v2.53.0
+    container_name: radar-prometheus
+    mem_limit: 192m
+    cpus: 0.25
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:9091:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--storage.tsdb.retention.size=1GB"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./data/prometheus:/prometheus
+    networks:
+      - radar-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  grafana:
+    image: docker.1ms.run/grafana/grafana:11.0.0
+    container_name: radar-grafana
+    mem_limit: 192m
+    cpus: 0.25
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/grafana_admin_password
+      - GF_USERS_ALLOW_SIGN_UP=false
+    secrets:
+      - grafana_admin_password
+    volumes:
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./data/grafana:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks:
+      - radar-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ==========================================
+  # 核心业务层 (Trading Radar Apps)
+  # ==========================================
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.monitor-slim
+    container_name: radar-monitor
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      - RADAR_EVENT_BUS=redis
+      - RADAR_REDIS_URL=redis://redis:6379/0
+      - RADAR_ML_SERVE_URL=http://ml-serve:8090
+      - RADAR_ML_GRPC_URL=ml-serve:8091
+      - HEALTH_HOST=0.0.0.0
+      - HEALTH_PORT=8080
+      - RADAR_LOCAL_CONFIG=/app/config.local.json
+      - TELEGRAM_BOT_TOKEN_FILE=/run/secrets/telegram_bot_token
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - RADAR_ALL_PROXY=http://mihomo:7890
+      - RADAR_HTTP_PROXY=http://mihomo:7890
+      - RADAR_HTTPS_PROXY=http://mihomo:7890
+      - NO_PROXY=127.0.0.1,localhost,redis,ml-serve,dashboard,mihomo
+      # 风控状态写到共享 data 卷，供 dashboard 容器读取
+      - RADAR_RISK_STATE_FILE=/app/data/radar_risk_state.json
+      - RADAR_RISK_OVERRIDE_FILE=/app/data/radar_risk_override.json
+    depends_on:
+      redis:
+        condition: service_healthy
+      ml-serve:
+        condition: service_healthy
+      mihomo:
+        condition: service_healthy
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./config.local.json:/app/config.local.json:ro
+      - ./config.swing.json:/app/config.swing.json:ro
+      - ./models:/app/models:ro
+      - ./rl_models:/app/rl_models:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./price_history.db:/app/price_history.db
+    secrets:
+      - telegram_bot_token
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - radar-net
+
+  ml-serve:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml-serve
+    container_name: radar-ml-serve
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      - RADAR_ML_MODEL_DIR=/app/models
+      - ML_SERVE_HOST=0.0.0.0
+      - ML_SERVE_PORT=8090
+      - ML_SERVE_GRPC_PORT=8091
+      - ML_SERVE_CACHE_BACKEND=redis
+      - ML_SERVE_REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./models:/app/models:ro
+      - ./logs:/app/logs
+    ports:
+      - "127.0.0.1:8090:8090"
+      - "127.0.0.1:8091:8091"
+    networks:
+      - radar-net
+
+  dashboard:
+    # QuantDinger 已承接 Radar 决策页面。旧独立 UI 仅在显式启用
+    # `--profile legacy-ui` 时启动，避免常规 compose up 将其复活。
+    profiles:
+      - legacy-ui
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: radar-dashboard
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      - RADAR_REDIS_URL=redis://redis:6379/0
+      - RADAR_ML_SERVE_URL=http://ml-serve:8090
+      - RADAR_MONITOR_HEALTH_URL=http://monitor:8080/health
+      - RADAR_ALL_PROXY=http://mihomo:7890
+      - RADAR_HTTP_PROXY=http://mihomo:7890
+      - RADAR_HTTPS_PROXY=http://mihomo:7890
+      - RADAR_DASHBOARD_EASTMONEY_BACKOFF_SEC=300
+      - RADAR_DASHBOARD_REFRESH_TRADING_SEC=5
+      - RADAR_DASHBOARD_REFRESH_CLOSED_SEC=60
+      - RADAR_DASHBOARD_REFRESH_WEEKEND_SEC=300
+      - NO_PROXY=127.0.0.1,localhost,redis,ml-serve,monitor,mihomo
+      - DASHBOARD_HOST=0.0.0.0
+      - DASHBOARD_PORT=8081
+      - RADAR_LOCAL_CONFIG=/app/config.local.json
+      # 与 monitor 共享同一份风控状态文件（data 卷只读挂载）
+      - RADAR_RISK_STATE_FILE=/app/data/radar_risk_state.json
+      - RADAR_RISK_OVERRIDE_FILE=/app/data/radar_risk_override.json
+    depends_on:
+      redis:
+        condition: service_healthy
+      ml-serve:
+        condition: service_healthy
+      mihomo:
+        condition: service_healthy
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./config.local.json:/app/config.local.json:ro
+      - ./config.swing.json:/app/config.swing.json:ro
+      - ./models:/app/models:ro
+      - ./data:/app/data:ro
+      - ./logs:/app/logs:ro
+    ports:
+      - "127.0.0.1:8081:8081"
+    networks:
+      - radar-net
+
+  alertmanager:
+    image: docker.1ms.run/prom/alertmanager:v0.27.0
+    container_name: radar-alertmanager
+    mem_limit: 64m
+    cpus: 0.10
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:9093:9093"
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.listen-address=0.0.0.0:9093"
+    environment:
+      HTTP_PROXY: http://radar-mihomo:7890
+      HTTPS_PROXY: http://radar-mihomo:7890
+      NO_PROXY: localhost,127.0.0.1,prometheus,alertmanager,node-exporter,radar-net
+    depends_on:
+      - mihomo
+    volumes:
+      - ./deploy/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./secrets/telegram_bot_token:/etc/alertmanager/secrets/telegram_bot_token:ro
+      - ./data/alertmanager:/alertmanager
+    networks:
+      - radar-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9093/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  node-exporter:
+    image: docker.1ms.run/prom/node-exporter:v1.8.2
+    container_name: radar-node-exporter
+    mem_limit: 64m
+    cpus: 0.10
+    restart: unless-stopped
+    logging: *default-logging
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+      - "--collector.textfile.directory=/textfile"
+      - "--web.listen-address=0.0.0.0:9100"
+    volumes:
+      - /:/host:ro,rslave
+      - ./data/prometheus-textfile:/textfile:ro
+    ports:
+      - "127.0.0.1:9100:9100"
+    networks:
+      - radar-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9100/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+
+networks:
+  radar-net:
+    driver: bridge
+
+secrets:
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password
+  telegram_bot_token:
+    file: ./secrets/telegram_bot_token

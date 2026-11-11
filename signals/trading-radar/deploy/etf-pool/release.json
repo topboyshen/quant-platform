@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "release": "etf-pool-20260912.2",
+  "host_base_commit": "f7f38b2",
+  "frontend_frozen_source_sha256": "35472889fb5639a24e275239eb85d397e91854fe4bdd957089f7cfe514e4f213",
+  "frontend_source_sha256": "2493d8138d6c0e9cb322c3c14e431ddbbe7a2d61bc55d7c8a130397ca7533c4b",
+  "frontend_patch_sha256": "110e3bf687fc89192edbeca20e082ad9797c121c13250aa4edbe0854741a9fa4",
+  "frontend_source_commit": "1abb663b945c847634e061e9f3342d4fa0e58576",
+  "frontend_dist_archive_sha256": "69ef033dd25724902452a7485ed4e358ec7bf5b27dcbe7d987f8edb8b8033b80",
+  "frontend_index_sha256": "c5e2a2d48dd52e7c929e3ac7dd98820b442111a0a2b3d7fe89b2239647a865d3",
+  "frontend_image_id": "sha256:11efc8438993062010d9115fe6c36e0ed924643a2780de2a7320b73b1b8b526e",
+  "integration_image_id": "sha256:96813d01ea51cbdbb1ad5f4151281ef2c8f55a87423c382a83e5375c89675b16",
+  "integration_dependency_snapshot_sha256": "2b8611139da13e868657265535b940901dd979928380a8c5b5ffe7e65f37d364",
+  "validation": {
+    "python_tests_passed": 76,
+    "frontend_tests_passed": 202,
+    "frontend_external_fixture_cases_excluded": 2,
+    "frozen_source_reconstruction_files": 359,
+    "eslint": "passed",
+    "vite_build": "passed",
+    "isolated_browser": "passed",
+    "final_candidate_api": "passed"
+  },
+  "changed_services": ["integration-api", "quantdinger-frontend"],
+  "forbidden_scope": {
+    "backend_rebuilt": false,
+    "strategy_changed": false,
+    "universe_changed": false,
+    "db_written": false,
+    "backups_or_prune_run": false
+  },
+  "source_files": {
+    "dashboard/etf_pool.py": "e99dd5d3648005878858269edf673dde11cb06d29f999e101f979a2ed5312117",
+    "dashboard/integration_app.py": "07402642dede6b5408e1497c11032a7cf74a66fed408445801615b9b4bb88437",
+    "runtime_contracts/calendar.py": "2654431b9febaecd2123d334b2fcf64b5341b92a255ebc57aa12db254bcb0e21"
+  }
+}

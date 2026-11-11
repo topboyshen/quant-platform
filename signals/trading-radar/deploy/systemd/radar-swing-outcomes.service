@@ -1,0 +1,21 @@
+[Unit]
+Description=Trading Radar — Swing forward outcome collector
+After=network-online.target radar-swing-eod.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/opt/trading_radar
+Environment=PYTHONPATH=/opt/trading_radar
+Environment=RADAR_ALL_PROXY=http://127.0.0.1:7890
+Environment=HTTP_PROXY=
+Environment=HTTPS_PROXY=
+Environment=ALL_PROXY=
+EnvironmentFile=-/opt/trading_radar/.env
+ExecStart=/opt/trading_radar/.venv/bin/python /opt/trading_radar/scripts/evaluate_swing_outcomes.py --config /opt/trading_radar/config.swing.json
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/trading_radar/data /opt/trading_radar/logs

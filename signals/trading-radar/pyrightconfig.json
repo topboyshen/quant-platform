@@ -1,0 +1,8 @@
+{
+    "typeCheckingMode": "basic",
+    "reportMissingTypeStubs": false,
+    "reportMissingImports": false,
+    "include": ["radar", "dashboard", "mx_client", "tools"],
+    "exclude": ["venv", ".trash", "**/__pycache__"],
+    "pythonVersion": "3.12"
+}

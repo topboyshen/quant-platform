@@ -1,0 +1,27 @@
+[Unit]
+Description=Trading Radar — ML 推理服务（serve_ml.py，.pkl + 热重载）
+Documentation=file:///opt/trading_radar/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/trading_radar
+Environment=PYTHONPATH=/opt/trading_radar
+Environment=ML_SERVE_HOST=127.0.0.1
+Environment=ML_SERVE_PORT=8090
+Environment=NO_PROXY=127.0.0.1,localhost
+Environment=no_proxy=127.0.0.1,localhost
+EnvironmentFile=-/opt/trading_radar/.env
+ExecStart=/opt/trading_radar/.venv/bin/python /opt/trading_radar/serve_ml.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/trading_radar
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,35 @@
+[Unit]
+Description=Trading Radar — Dashboard (gunicorn)
+Documentation=file:///opt/trading_radar/README.md
+After=network-online.target stock-radar.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/trading_radar
+Environment=PYTHONPATH=/opt/trading_radar
+Environment=DASHBOARD_HOST=127.0.0.1
+Environment=DASHBOARD_PORT=8081
+Environment=RADAR_ALL_PROXY=http://127.0.0.1:7890
+Environment=HTTP_PROXY=
+Environment=HTTPS_PROXY=
+Environment=ALL_PROXY=
+Environment=http_proxy=
+Environment=https_proxy=
+Environment=all_proxy=
+Environment=NO_PROXY=127.0.0.1,localhost
+Environment=no_proxy=127.0.0.1,localhost
+EnvironmentFile=-/opt/trading_radar/.env
+ExecStart=/opt/trading_radar/.venv/bin/gunicorn --workers 2 --threads 4 --timeout 60 --bind ${DASHBOARD_HOST}:${DASHBOARD_PORT} dashboard.wsgi:app
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/trading_radar
+
+[Install]
+WantedBy=multi-user.target
+Alias=radar-dashboard.service

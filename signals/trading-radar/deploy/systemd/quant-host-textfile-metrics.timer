@@ -1,0 +1,12 @@
+[Unit]
+Description=Export Quant host textfile metrics every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=false
+Unit=quant-host-textfile-metrics.service
+
+[Install]
+WantedBy=timers.target

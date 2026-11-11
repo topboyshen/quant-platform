@@ -1,0 +1,226 @@
+{
+  "annotations": {"list": []},
+  "description": "radar/ml_serve 独立微服务：特征/预测缓存、推理延迟、置信度分布。Prometheus 需单独 scrape ML-Serve /metrics（如 :8090）。",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "title": "特征 / 预测缓存（MX Feature Cache Hit Rate）",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.5},
+              {"color": "orange", "value": 0.7},
+              {"color": "green", "value": 0.8}
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": {"h": 5, "w": 8, "x": 0, "y": 1},
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(radar_ml_serve_cache_hits_total[10m])) / (sum(rate(radar_ml_serve_cache_hits_total[10m])) + sum(rate(radar_ml_serve_cache_misses_total[10m])) + 1e-9)",
+          "legendFormat": "命中率(10m rolling)",
+          "refId": "A"
+        }
+      ],
+      "title": "缓存命中率（rolling rate 比）",
+      "type": "stat",
+      "description": "低于 0.8（黄线）多为预热不足或缓存键抖动；未启用缓存时无 miss 样本，比值可能恒为 1。"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "ops"}},
+      "gridPos": {"h": 8, "w": 16, "x": 8, "y": 1},
+      "id": 3,
+      "options": {
+        "legend": {"calcs": ["mean"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "expr": "rate(radar_ml_serve_cache_hits_total[5m])",
+          "legendFormat": "hits/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(radar_ml_serve_cache_misses_total[5m])",
+          "legendFormat": "misses/s",
+          "refId": "B"
+        }
+      ],
+      "title": "缓存命中 / 未命中速率",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 9},
+      "id": 4,
+      "title": "推理延迟（Inference Latency）",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"axisPlacement": "auto"},
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 10},
+      "id": 10,
+      "options": {
+        "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(radar_ml_serve_predict_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95 全部请求",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(radar_ml_serve_predict_latency_seconds_bucket{cache_state=\"miss\"}[5m])) by (le))",
+          "legendFormat": "p95 仅模型路径(miss)",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(radar_ml_serve_predict_latency_seconds_bucket{cache_state=\"hit\"}[5m])) by (le))",
+          "legendFormat": "p95 仅缓存命中",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(radar_ml_serve_predict_latency_seconds_bucket{cache_state=\"miss\"}[5m])) by (le))",
+          "legendFormat": "p99 仅模型路径",
+          "refId": "D"
+        }
+      ],
+      "title": "推理延迟分位（排查 200ms→2s 级别劣化）",
+      "type": "timeseries",
+      "description": "miss 曲线随盘中变长多见于算力或 Python 内存膨胀；noop=未启用缓存时的纯推理。"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 19},
+      "id": 5,
+      "title": "信号置信度（Prediction probability）",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 20},
+      "id": 20,
+      "options": {
+        "legend": {"calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [
+        {
+          "expr": "rate(radar_ml_serve_prediction_probability_sum[5m]) / rate(radar_ml_serve_prediction_probability_count[5m])",
+          "legendFormat": "请求加权平均概率",
+          "refId": "A"
+        }
+      ],
+      "title": "置信度均值（sum/count）",
+      "type": "timeseries",
+      "description": "整体「模棱两可」时均值趋近 0.5；单边行情下可长期偏离。"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "scheme", "schemeName": "Spectral"},
+          "custom": {"fillOpacity": 80, "hideFrom": {"legend": false, "tooltip": false, "viz": false}},
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 20},
+      "id": 21,
+      "options": {
+        "calculate": false,
+        "cellGap": 2,
+        "color": {"exponent": 0.5, "fill": "dark-orange", "mode": "scheme", "reverse": false, "scale": "exponential", "scheme": "Spectral", "steps": 64},
+        "exemplars": {"color": "rgba(255,0,255,0.7)"},
+        "filterValues": {"le": 1e-9},
+        "legend": {"show": true},
+        "rowsFrame": {"layout": "auto"},
+        "tooltip": {"mode": "single", "showColorScale": false, "yHistogram": false},
+        "yAxis": {"axisPlacement": "left", "reverse": false, "unit": "short"}
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "sum(rate(radar_ml_serve_prediction_probability_bucket[5m])) by (le)",
+          "format": "heatmap",
+          "legendFormat": "{{le}}",
+          "refId": "A"
+        }
+      ],
+      "title": "概率分布热力图（Histogram bucket）",
+      "type": "heatmap",
+      "description": "Prometheus 聚合分布，非逐笔散点；细颗粒度随时间看「信心带」是否收窄。"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "unit": "ops"}},
+      "gridPos": {"h": 7, "w": 24, "x": 0, "y": 27},
+      "id": 30,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "single", "sort": "none"}
+      },
+      "targets": [
+        {
+          "expr": "rate(radar_ml_serve_predict_requests_total[5m])",
+          "legendFormat": "predict/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(radar_ml_serve_predict_errors_total[5m])",
+          "legendFormat": "errors/s",
+          "refId": "B"
+        }
+      ],
+      "title": "推理 QPS / 错误率",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["trading-radar", "ml-serve", "prometheus"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "Asia/Shanghai",
+  "title": "Trading Radar — AI 参谋层（ML-Serve）",
+  "uid": "trading-radar-ml-advisor",
+  "version": 1,
+  "weekStart": ""
+}

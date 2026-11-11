@@ -1,0 +1,147 @@
+--- a/app/data_sources/cn_stock.py
++++ b/app/data_sources/cn_stock.py
+@@ -79,8 +79,14 @@
+         if tf in ("1D", "1W"):
+             tf_map = {"1D": "day", "1W": "week"}
+             period = tf_map.get(tf, "day")
+-            raw_rows = fetch_kline(code, period=period, count=lim, adj="qfq")
+-            out = tencent_kline_rows_to_dicts(raw_rows)
++            # Tencent propagates exhausted retries, including HTTP errors.
++            # Keep the existing Sina/yfinance/AkShare fallback reachable.
++            try:
++                raw_rows = fetch_kline(code, period=period, count=lim, adj="qfq")
++                out = tencent_kline_rows_to_dicts(raw_rows)
++            except Exception as exc:
++                logger.warning("CNStock Tencent failed for %s: %s", code, type(exc).__name__)
++                out = []
+             if out:
+                 return self.filter_and_limit(
+                     out,
+--- a/app/data_sources/tencent.py
++++ b/app/data_sources/tencent.py
+@@ -82,14 +82,16 @@
+     limiter = get_tencent_limiter()
+     limiter.wait()
+     url = f"https://qt.gtimg.cn/q={c}"
+-    resp = requests.get(url, headers=get_request_headers(referer="https://qt.gtimg.cn/"), timeout=timeout)
+-    # Tencent quote is often GBK encoded
+-    try:
+-        resp.encoding = "gbk"
+-    except Exception:
+-        pass
+-
+-    text = (resp.text or "").strip()
++    # Backport OpenByteInc/QuantDinger 25eaf36: release responses on every path
++    # and let the existing retry decorator handle HTTP failures.
++    with requests.get(url, headers=get_request_headers(referer="https://qt.gtimg.cn/"), timeout=timeout) as resp:
++        resp.raise_for_status()
++        # Tencent quote is often GBK encoded
++        try:
++            resp.encoding = "gbk"
++        except Exception:
++            pass
++        text = (resp.text or "").strip()
+     if not text or "~" not in text:
+         return None
+ 
+@@ -209,8 +211,9 @@
+ 
+     url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+     params = {"param": f"{c},{period},,,{int(count)},{adj}"}
+-    resp = requests.get(url, headers=get_request_headers(referer="https://gu.qq.com/"), params=params, timeout=timeout)
+-    data = resp.json() if resp.text else {}
++    with requests.get(url, headers=get_request_headers(referer="https://gu.qq.com/"), params=params, timeout=timeout) as resp:
++        resp.raise_for_status()
++        data = resp.json() if resp.text else {}
+     if not isinstance(data, dict) or int(data.get("code", 0)) != 0:
+         return []
+     root = (data.get("data") or {}).get(c)
+@@ -235,4 +238,3 @@
+         if isinstance(v, list) and v and str(k).lower().endswith(str(period).lower()):
+             return v
+     return []
+-
+--- a/app/services/backtest.py
++++ b/app/services/backtest.py
+@@ -23,6 +23,54 @@
+ from app.services.indicator_params import IndicatorParamsParser, IndicatorCaller
+ 
+ logger = get_logger(__name__)
++
++
++def _sample_equity_curve(items: List[Dict[str, Any]], limit: int, initial: float) -> List[Dict[str, Any]]:
++    """Preserve endpoints and risk extrema when bounding a chart payload.
++
++    Adapted from OpenByteInc/QuantDinger cb78a62 (Apache-2.0),
++    strategy_v2/curve_sampling.py. Only presentation is sampled; metric,
++    trade, benchmark and simulation calculations remain unchanged.
++    """
++    if len(items) <= limit:
++        return list(items)
++    if limit < 10:
++        raise ValueError("Equity curve sampling requires at least ten points")
++
++    required = {0, len(items) - 1}
++    peak, peak_index = initial, 0
++    worst, worst_pair = 0.0, (0, 0)
++    low, high = math.inf, -math.inf
++    low_index = high_index = 0
++    saved_worst, saved_index = 0.0, 0
++    first_insolvent = None
++    for index, item in enumerate(items):
++        value = float(item["value"])
++        if not math.isfinite(value):
++            continue
++        if value < low:
++            low, low_index = value, index
++        if value > high:
++            high, high_index = value, index
++        if peak <= 0 or value > peak:
++            peak, peak_index = value, index
++        drawdown = (value / peak - 1.0) * 100.0 if peak > 0 else 0.0
++        if drawdown < worst:
++            worst, worst_pair = drawdown, (peak_index, index)
++        saved = item.get("drawdown")
++        if saved is not None and float(saved) < saved_worst:
++            saved_worst, saved_index = float(saved), index
++        if value <= 0 and first_insolvent is None:
++            first_insolvent = index
++
++    required.update((*worst_pair, low_index, high_index, saved_index))
++    if first_insolvent is not None:
++        required.update((max(0, first_insolvent - 1), first_insolvent))
++    candidates = [index for index in range(len(items)) if index not in required]
++    slots = limit - len(required)
++    step = (len(candidates) - 1) / (slots - 1)
++    required.update(candidates[round(index * step)] for index in range(slots))
++    return [items[index] for index in sorted(required)]
+ 
+ 
+ class _KlineCache:
+@@ -5178,12 +5226,6 @@
+         trades: List
+     ) -> Dict[str, Any]:
+         """格式化回测结果"""
+-        # Simplify equity curve
+-        max_points = 500
+-        if len(equity_curve) > max_points:
+-            step = len(equity_curve) // max_points
+-            equity_curve = equity_curve[::step]
+-        
+         # Clean NaN/Inf values for JSON serialization
+         def clean_value(value):
+             """清理数值，将NaN/Inf转换为0"""
+@@ -5204,6 +5246,13 @@
+                 'time': item['time'],
+                 'value': clean_value(item['value'])
+             })
++
++        # Match the legacy drawdown metric's first-observation starting point.
++        # Sanitize before sampling so chart extrema refer to the JSON values.
++        if cleaned_curve:
++            cleaned_curve = _sample_equity_curve(
++                cleaned_curve, limit=500, initial=float(cleaned_curve[0]['value'])
++            )
+         
+         # Clean trades
+         cleaned_trades = []

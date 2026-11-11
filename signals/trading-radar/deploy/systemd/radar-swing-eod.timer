@@ -1,0 +1,14 @@
+[Unit]
+Description=Trading Radar — Swing EOD 定时器（交易日收盘后 15:30）
+Documentation=file:///opt/trading_radar/README.md
+
+[Timer]
+# 周一至周五 15:30（系统时区需为 Asia/Shanghai；否则改用 OnCalendar 配合 UTC）。
+# radar_swing_eod.py 内部仍会用 ScanScheduler.is_trading_day() 过滤节假日。
+OnCalendar=Mon..Fri 15:30
+Persistent=true
+AccuracySec=30s
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target

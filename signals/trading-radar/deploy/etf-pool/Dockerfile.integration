@@ -1,0 +1,7 @@
+# Verified local base ID: sha256:69a75d6ac1480463088aac9432542c362dc5246892e45230514b581eb956b48e
+# Build from a minimal reviewed context, --network=none --pull=false. No dependency changes.
+FROM trading-radar-integration:2026.08.23-smoke.1
+LABEL org.opencontainers.image.description="Read-only ETF universe and immutable EOD evidence overlay"
+COPY dashboard/integration_app.py dashboard/etf_pool.py /app/dashboard/
+COPY runtime_contracts/__init__.py runtime_contracts/calendar.py /app/runtime_contracts/
+RUN python -m py_compile /app/dashboard/integration_app.py /app/dashboard/etf_pool.py /app/runtime_contracts/calendar.py

@@ -1,0 +1,28 @@
+# Docker Compose 用：服务名解析为容器 DNS
+# 注：生产 monitor 走 systemd 跑在宿主机 8080，不在 docker bridge 内，
+#     用 host.docker.internal 解析（compose 里需配 extra_hosts: host-gateway）。
+#     如果用 --profile full 启动了容器化 monitor，hostname `monitor` 也指向同一物
+#     （docker 会优先用 service 名解析，因此覆盖 host.docker.internal 不冲突）。
+global:
+  scrape_interval: 15s
+
+# 告警 SLO：scan_freshness / scan_success
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: trading-radar-monitor
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - host.docker.internal:8080
+        labels:
+          service: radar_monitor
+
+  - job_name: trading-radar-ml-serve
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - ml-serve:8090
+        labels:
+          service: radar_ml_serve

@@ -1,0 +1,2704 @@
+{
+  "rule_files": [
+    "alerts.yml"
+  ],
+  "evaluation_interval": "1m",
+  "tests": [
+    {
+      "name": "historical EOD 10/10 fails plus macro failure produces one fallback alert",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"10\",kline_ok=\"0\",kline_samples=\"10\",total_amount_fail=\"1\",fallback=\"11\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "invocation_id": "484daa7578b0466f91178fdc61a96d28",
+                "event_date": "2026-09-07",
+                "event_time": "2026-09-07T15:30:21+08:00",
+                "kline_fail": "10",
+                "kline_ok": "0",
+                "kline_samples": "10",
+                "total_amount_fail": "1",
+                "fallback": "11",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant 最近一次已完成 EOD 出现 K线主源失败及降级（非实时探测）",
+                "description": "事件=2026-09-07T15:30:21+08:00；Invocation=484daa7578b0466f91178fdc61a96d28。腾讯 K线失败日志=10/10（成功=0）；total_amount 失败日志=1，单列不混入 K线分母；fallback 日志=11。K线 0 样本不能计算失败率；仅成交额降级不构成本告警。保留当轮降级审计，不代表主源当前持续失效；后续 repair/outcomes 成功另行验收。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "partial 60 percent failures with fallback also one alert",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6 6"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"6\",kline_ok=\"4\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"6\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "invocation_id": "484daa7578b0466f91178fdc61a96d28",
+                "event_date": "2026-09-07",
+                "event_time": "2026-09-07T15:30:21+08:00",
+                "kline_fail": "6",
+                "kline_ok": "4",
+                "kline_samples": "10",
+                "total_amount_fail": "0",
+                "fallback": "6",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant 最近一次已完成 EOD 出现 K线主源失败及降级（非实时探测）",
+                "description": "事件=2026-09-07T15:30:21+08:00；Invocation=484daa7578b0466f91178fdc61a96d28。腾讯 K线失败日志=6/10（成功=4）；total_amount 失败日志=0，单列不混入 K线分母；fallback 日志=6。K线 0 样本不能计算失败率；仅成交额降级不构成本告警。保留当轮降级审计，不代表主源当前持续失效；后续 repair/outcomes 成功另行验收。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "exact threshold is not exceeded",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"5\",kline_ok=\"5\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"5\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "high failure without observed fallback",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8 0.8"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"8\",kline_ok=\"2\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "invocation_id": "484daa7578b0466f91178fdc61a96d28",
+                "event_date": "2026-09-07",
+                "event_time": "2026-09-07T15:30:21+08:00",
+                "kline_fail": "8",
+                "kline_ok": "2",
+                "kline_samples": "10",
+                "total_amount_fail": "0",
+                "fallback": "0",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant 最近一次已完成 EOD 检测到主源异常（非实时探测）",
+                "description": "事件=2026-09-07T15:30:21+08:00；Invocation=484daa7578b0466f91178fdc61a96d28。腾讯 K线失败日志=8/10（成功=2）；total_amount 失败日志=0，单列不混入 K线分母；fallback 日志=0。尚无当轮兜底成功日志，不据此断言全部业务失败；后续恢复须另验。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "macro failure independent from successful kline denominator",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"1\",fallback=\"1\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "macro failure and no kline sample is not kline fallback risk",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"0\",kline_samples=\"0\",total_amount_fail=\"1\",fallback=\"1\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "empty completed run is unknown not success",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"0\",kline_samples=\"0\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "journal error suppresses historical failure and emits unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"10\",kline_ok=\"0\",kline_samples=\"10\",total_amount_fail=\"1\",fallback=\"11\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "incomplete run cannot assert datasource failure",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10 10"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"10\",kline_ok=\"0\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"10\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "new running event preserves old completed evidence",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"10\",kline_ok=\"0\",kline_samples=\"10\",total_amount_fail=\"1\",fallback=\"11\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "invocation_id": "484daa7578b0466f91178fdc61a96d28",
+                "event_date": "2026-09-07",
+                "event_time": "2026-09-07T15:30:21+08:00",
+                "kline_fail": "10",
+                "kline_ok": "0",
+                "kline_samples": "10",
+                "total_amount_fail": "1",
+                "fallback": "11",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant 最近一次已完成 EOD 出现 K线主源失败及降级（非实时探测）",
+                "description": "事件=2026-09-07T15:30:21+08:00；Invocation=484daa7578b0466f91178fdc61a96d28。腾讯 K线失败日志=10/10（成功=0）；total_amount 失败日志=1，单列不混入 K线分母；fallback 日志=11。K线 0 样本不能计算失败率；仅成交额降级不构成本告警。保留当轮降级审计，不代表主源当前持续失效；后续 repair/outcomes 成功另行验收。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "stale collector metadata becomes unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "healthy completed kline event",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "fallback alone without primary failure not proof of failure",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"1\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "fallback holds for 15m without concurrent high-failure alert",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"10\",kline_ok=\"0\",kline_samples=\"10\",total_amount_fail=\"1\",fallback=\"11\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "10m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "14m30s",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "14m30s",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "14m30s",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "15m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "15m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "invocation_id": "484daa7578b0466f91178fdc61a96d28",
+                "event_date": "2026-09-07",
+                "event_time": "2026-09-07T15:30:21+08:00",
+                "kline_fail": "10",
+                "kline_ok": "0",
+                "kline_samples": "10",
+                "total_amount_fail": "1",
+                "fallback": "11",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant 最近一次已完成 EOD 出现 K线主源失败及降级（非实时探测）",
+                "description": "事件=2026-09-07T15:30:21+08:00；Invocation=484daa7578b0466f91178fdc61a96d28。腾讯 K线失败日志=10/10（成功=0）；total_amount 失败日志=1，单列不混入 K线分母；fallback 日志=11。K线 0 样本不能计算失败率；仅成交额降级不构成本告警。保留当轮降级审计，不代表主源当前持续失效；后续 repair/outcomes 成功另行验收。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "15m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "macro failure without fallback",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"1\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "invocation_id": "484daa7578b0466f91178fdc61a96d28",
+                "event_date": "2026-09-07",
+                "event_time": "2026-09-07T15:30:21+08:00",
+                "kline_fail": "0",
+                "kline_ok": "10",
+                "kline_samples": "10",
+                "total_amount_fail": "1",
+                "fallback": "0",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant 最近一次已完成 EOD 检测到主源异常（非实时探测）",
+                "description": "事件=2026-09-07T15:30:21+08:00；Invocation=484daa7578b0466f91178fdc61a96d28。腾讯 K线失败日志=0/10（成功=10）；total_amount 失败日志=1，单列不混入 K线分母；fallback 日志=0。尚无当轮兜底成功日志，不据此断言全部业务失败；后续恢复须另验。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "missing exporter evidence is explicit unknown",
+      "interval": "1m",
+      "input_series": [],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial schema missing radar_datasource_eod_complete is unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial schema missing radar_datasource_eod_has_samples is unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial schema missing radar_datasource_eod_info is unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial schema missing radar_datasource_metrics_unixtime is unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial schema missing radar_datasource_primary_kline_failure_ratio is unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial schema missing radar_datasource_total_amount_failed_log_entries is unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial schema missing radar_datasource_fallback_log_entries is unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial schema missing radar_datasource_eod_latest_incomplete is unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial schema missing radar_datasource_eod_in_progress is unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "historical failure with missing info does not silently resolve to healthy",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "old exporter schema parsed alone is unknown per instance",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_primary_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_total{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "partial schema on second instance is not hidden by complete first instance",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host-2:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host-2:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host-2:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host-2:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host-2:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host-2:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host-2:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host-2:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host-2:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host-2:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host-2:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "missing parsed on second node-exporter instance is not hidden by first instance",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "up{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "up{job=\"node-exporter\",instance=\"quant-host-2:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host-2:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "all evidence missing with known up produces one instance unknown not global duplicate",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "up{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "stale collector preserves historical fallback audit and separately reports unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"10\",kline_ok=\"0\",kline_samples=\"10\",total_amount_fail=\"1\",fallback=\"11\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "invocation_id": "484daa7578b0466f91178fdc61a96d28",
+                "event_date": "2026-09-07",
+                "event_time": "2026-09-07T15:30:21+08:00",
+                "kline_fail": "10",
+                "kline_ok": "0",
+                "kline_samples": "10",
+                "total_amount_fail": "1",
+                "fallback": "11",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant 最近一次已完成 EOD 出现 K线主源失败及降级（非实时探测）",
+                "description": "事件=2026-09-07T15:30:21+08:00；Invocation=484daa7578b0466f91178fdc61a96d28。腾讯 K线失败日志=10/10（成功=0）；total_amount 失败日志=1，单列不混入 K线分母；fallback 日志=11。K线 0 样本不能计算失败率；仅成交额降级不构成本告警。保留当轮降级审计，不代表主源当前持续失效；后续 repair/outcomes 成功另行验收。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "latest terminal but truncated event keeps old audit and emits unknown",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"10\",kline_ok=\"0\",kline_samples=\"10\",total_amount_fail=\"1\",fallback=\"11\"}",
+          "values": "1+0x31"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "invocation_id": "484daa7578b0466f91178fdc61a96d28",
+                "event_date": "2026-09-07",
+                "event_time": "2026-09-07T15:30:21+08:00",
+                "kline_fail": "10",
+                "kline_ok": "0",
+                "kline_samples": "10",
+                "total_amount_fail": "1",
+                "fallback": "11",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant 最近一次已完成 EOD 出现 K线主源失败及降级（非实时探测）",
+                "description": "事件=2026-09-07T15:30:21+08:00；Invocation=484daa7578b0466f91178fdc61a96d28。腾讯 K线失败日志=10/10（成功=0）；total_amount 失败日志=1，单列不混入 K线分母；fallback 日志=11。K线 0 样本不能计算失败率；仅成交额降级不构成本告警。保留当轮降级审计，不代表主源当前持续失效；后续 repair/outcomes 成功另行验收。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant EOD 数据源证据不可判定，不能视为恢复",
+                "description": "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "old failed invocation becomes new successful invocation without stale metadata join",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_datasource_primary_kline_failure_ratio{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_total_amount_failed_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_journal_parsed{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_complete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_has_samples{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_fallback_log_entries{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_in_progress{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_metrics_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x31"
+        },
+        {
+          "series": "radar_datasource_index_cache_is_primary{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"484daa7578b0466f91178fdc61a96d28\",event_date=\"2026-09-07\",event_time=\"2026-09-07T15:30:21+08:00\",kline_fail=\"10\",kline_ok=\"0\",kline_samples=\"10\",total_amount_fail=\"1\",fallback=\"11\"}",
+          "values": "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 stale _ _ _ _ _ _ _ _ _ _ _"
+        },
+        {
+          "series": "radar_datasource_eod_latest_incomplete{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+        },
+        {
+          "series": "radar_datasource_eod_info{job=\"node-exporter\",instance=\"quant-host:9100\",invocation_id=\"bfa348ef812541c892bef6d16bbf6133\",event_date=\"2026-09-08\",event_time=\"2026-09-08T15:30:21+08:00\",kline_fail=\"0\",kline_ok=\"10\",kline_samples=\"10\",total_amount_fail=\"0\",fallback=\"0\"}",
+          "values": "_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 1 1 1 1 1 1 1 1 1 1 1 1"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "19m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "19m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "invocation_id": "484daa7578b0466f91178fdc61a96d28",
+                "event_date": "2026-09-07",
+                "event_time": "2026-09-07T15:30:21+08:00",
+                "kline_fail": "10",
+                "kline_ok": "0",
+                "kline_samples": "10",
+                "total_amount_fail": "1",
+                "fallback": "11",
+                "severity": "warning",
+                "service": "radar_datasource"
+              },
+              "exp_annotations": {
+                "summary": "Quant 最近一次已完成 EOD 出现 K线主源失败及降级（非实时探测）",
+                "description": "事件=2026-09-07T15:30:21+08:00；Invocation=484daa7578b0466f91178fdc61a96d28。腾讯 K线失败日志=10/10（成功=0）；total_amount 失败日志=1，单列不混入 K线分母；fallback 日志=11。K线 0 样本不能计算失败率；仅成交额降级不构成本告警。保留当轮降级审计，不代表主源当前持续失效；后续 repair/outcomes 成功另行验收。"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "19m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "20m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "20m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "20m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantPrimaryDatasourceHighFailureRate",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceSilentFallbackRisk",
+          "exp_alerts": []
+        },
+        {
+          "eval_time": "30m",
+          "alertname": "QuantDatasourceEODEvidenceUnknown",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "validated failed_final pages business terminal",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_swing_eod_recovery_status{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "3 3 3 3 3 3 3 3 3 3"
+        },
+        {
+          "series": "radar_swing_eod_evidence_valid{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1x9"
+        },
+        {
+          "series": "radar_swing_eod_checked_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0+60x9"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "5m",
+          "alertname": "QuantSwingEodBusinessFailedFinal",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "critical",
+                "service": "swing_eod"
+              },
+              "exp_annotations": {
+                "summary": "Swing EOD 日级终态仍失败",
+                "description": "已确认失败，或应验收交易日 15:50 后仍缺失/运行/等待重试；不因经过 18h 自动恢复。保留首次失败审计，对照 watchdog JSON 与同日 retry。"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "failed_final remains failed beyond 18h",
+      "interval": "1m",
+      "input_series": [
+        {
+          "series": "radar_swing_eod_recovery_status{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "3x1200"
+        },
+        {
+          "series": "radar_swing_eod_evidence_valid{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "1x1200"
+        },
+        {
+          "series": "radar_swing_eod_checked_unixtime{job=\"node-exporter\",instance=\"quant-host:9100\"}",
+          "values": "0x20"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "19h",
+          "alertname": "QuantSwingEodBusinessFailedFinal",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "job": "node-exporter",
+                "instance": "quant-host:9100",
+                "severity": "critical",
+                "service": "swing_eod"
+              },
+              "exp_annotations": {
+                "summary": "Swing EOD 日级终态仍失败",
+                "description": "已确认失败，或应验收交易日 15:50 后仍缺失/运行/等待重试；不因经过 18h 自动恢复。保留首次失败审计，对照 watchdog JSON 与同日 retry。"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

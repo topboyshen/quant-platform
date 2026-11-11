@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies (CI lite)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[ci]"
+
+      - name: Lint (ruff)
+        run: >-
+          ruff check radar/ tests/ radar_monitor_v3.py radar_swing_eod.py
+          radarctl.py scripts/repair_swing_total_amount.py
+
+      - name: Run pytest
+        run: pytest --tb=short -q
+
+      - name: Syntax check all Python files
+        run: |
+          python -m py_compile radarctl.py radar_swing_eod.py scripts/repair_swing_total_amount.py
+          find radar tests -name "*.py" -exec python -m py_compile {} +

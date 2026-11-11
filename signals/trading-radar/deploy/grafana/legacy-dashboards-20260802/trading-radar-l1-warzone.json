@@ -1,0 +1,130 @@
+{
+  "annotations": {"list": []},
+  "description": "L1 主战区：超额曲线（策略 vs 沪深300 归一化）与策略标签资金占比。依赖 radar_monitor /metrics（prometheus-client）与可选 akshare 拉取 HS300。",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "title": "⚔️ L1 视界：主战区（时间序列）",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "两线均为「北京时间交易日首个成功采样=100」的归一化指数，便于对照是否跑赢 HS300。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "fillOpacity": 8, "lineWidth": 2},
+          "decimals": 2,
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "hs300"},
+            "properties": [
+              {"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}},
+              {"id": "custom.lineStyle", "value": {"dash": [10, 10], "fill": "dash"}}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "strategy"},
+            "properties": [
+              {"id": "color", "value": {"fixedColor": "semi-dark-green", "mode": "fixed"}}
+            ]
+          }
+        ]
+      },
+      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 1},
+      "id": 10,
+      "options": {
+        "legend": {"calcs": ["last", "min", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "radar_alpha_curve_index{series=\"strategy\"}",
+          "legendFormat": "strategy",
+          "refId": "A"
+        },
+        {
+          "expr": "radar_alpha_curve_index{series=\"hs300\"}",
+          "legendFormat": "hs300",
+          "refId": "B"
+        }
+      ],
+      "title": "超额收益曲线 · Alpha vs 沪深300（归一化 基准=100）",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 15},
+      "id": 2,
+      "title": "仓位与信号 · 条形水位（策略标签）",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "各 strategy_tag 持仓市值 / 组合总市值（含现金）；Σ≤1，现金占比为 1−Σ。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "continuous-BlYlRd"},
+          "decimals": 3,
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 50},
+              {"color": "red", "value": 85}
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": {"h": 11, "w": 24, "x": 0, "y": 16},
+      "id": 20,
+      "options": {
+        "displayMode": "lcd",
+        "minVizHeight": 14,
+        "minVizWidth": 12,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "radar_strategy_tag_capital_allocation_ratio",
+          "legendFormat": "{{strategy_tag}}",
+          "refId": "A"
+        }
+      ],
+      "title": "策略占用资金比例（按标签 Bar gauge）",
+      "type": "bargauge"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["trading-radar", "l1", "alpha"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "Asia/Shanghai",
+  "title": "Trading Radar — L1 主战区（Alpha & 仓位）",
+  "uid": "trading-radar-l1-warzone",
+  "version": 1,
+  "weekStart": ""
+}

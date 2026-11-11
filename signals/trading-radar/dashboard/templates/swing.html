@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+
+{% block title %}核心决策 - 趋势波段 | Radar 趋势波段决策中心{% endblock %}
+
+{% block extra_css %}
+<style>
+    .swing-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    .swing-badge.hot   { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
+    .swing-badge.cold  { background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); }
+    .swing-badge.normal{ background: rgba(107, 114, 128, 0.15); color: var(--text-secondary); }
+
+    .swing-empty {
+        background: var(--bg-card);
+        border: 1px dashed var(--border);
+        border-radius: 16px;
+        padding: 48px 24px;
+        text-align: center;
+        color: var(--text-secondary);
+    }
+    .swing-empty i { font-size: 40px; color: var(--accent-cyan); margin-bottom: 12px; }
+
+    .period-tag {
+        padding: 3px 9px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .period-tag.W { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); }
+    .period-tag.D { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); }
+
+    .signal-detail { font-size: 12px; color: var(--text-secondary); font-family: monospace; }
+
+    .etf-sector-tag {
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        background: rgba(59, 130, 246, 0.12);
+        color: var(--accent-blue);
+    }
+    .etf-sector-tag.growth-risk {
+        background: rgba(245, 158, 11, 0.15);
+        color: var(--accent-yellow);
+    }
+    .etf-sector-tag.defensive {
+        background: rgba(16, 185, 129, 0.15);
+        color: var(--accent-green);
+    }
+
+    .swing-core-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    .swing-core-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 16px;
+    }
+    .swing-core-label { color: var(--text-secondary); font-size: 12px; margin-bottom: 8px; }
+    .swing-core-value { color: var(--text-primary); font-size: 18px; font-weight: 700; }
+    .swing-core-detail { color: var(--text-secondary); font-size: 12px; margin-top: 6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="status-bar">
+    <div class="status-indicator">
+        <span class="status-dot"></span>
+        <span>核心决策面板：趋势波段 EOD（收盘后机械决策）</span>
+    </div>
+    <div class="last-update">
+        {% if swing.available %}
+            数据日期: {{ swing.updated }} · 来源: {{ swing.source }}
+        {% else %}
+            暂无数据
+        {% endif %}
+    </div>
+</div>
+
+{% if not swing.available and not swing.factors and not swing.signals %}
+<div class="swing-empty">
+    <div><i class="fas fa-water"></i></div>
+    <h3>波段化模块尚未产出数据</h3>
+    <p style="margin-top:8px;">{{ swing.error or '请先运行收盘后批处理 radar_swing_eod.py' }}</p>
+    <p style="margin-top:12px; font-family:monospace; color:var(--text-primary);">
+        python radar_swing_eod.py --config config.swing.json --force
+    </p>
+</div>
+{% else %}
+
+<!-- 核心纪律 -->
+<div class="section-header">
+    <div class="section-title"><i class="fas fa-compass"></i> 今日机械决策纪律</div>
+    <span class="chart-subtitle">
+        {% if risk.level == 'growth_blocked' %}
+            GROWTH_BLOCK 满载运行：盘中严格执行风控优先级
+        {% else %}
+            盘中不看盘，收盘后用事实做趋势波段决策
+        {% endif %}
+    </span>
+</div>
+<div class="swing-core-grid">
+    {% if risk.level == 'growth_blocked' %}
+    <div class="swing-core-card">
+        <div class="swing-core-label">风控模式</div>
+        <div class="swing-core-value">GROWTH_BLOCK</div>
+        <div class="swing-core-detail">强制满载：新增买入先过宏观风控闸门</div>
+    </div>
+    <div class="swing-core-card">
+        <div class="swing-core-label">禁买纪律</div>
+        <div class="swing-core-value">AI 硬件链 0 新增</div>
+        <div class="swing-core-detail">CPO / 光模块 / 算力等高位成长买入一律拦截</div>
+    </div>
+    <div class="swing-core-card">
+        <div class="swing-core-label">底仓处理</div>
+        <div class="swing-core-value">盈利分批止盈</div>
+        <div class="swing-core-detail">盘中脉冲冲高优先释放现金流，不追高加仓</div>
+    </div>
+    <div class="swing-core-card">
+        <div class="swing-core-label">风险预算</div>
+        <div class="swing-core-value">仅拦新增买入</div>
+        <div class="swing-core-detail">卖出/减仓继续放行；仓位比例为人工纪律，不伪装成自动执行</div>
+    </div>
+    {% else %}
+    <div class="swing-core-card">
+        <div class="swing-core-label">决策时间</div>
+        <div class="swing-core-value">{{ swing.strategy.decision_time or '15:30 Asia/Shanghai' }}</div>
+        <div class="swing-core-detail">盘中不看盘，收盘后做决策</div>
+    </div>
+    <div class="swing-core-card">
+        <div class="swing-core-label">ETF 标的池</div>
+        <div class="swing-core-value">{{ swing.strategy.target_count or swing.targets|length }} 只</div>
+        <div class="swing-core-detail">宽基 / 行业 / 黄金，规避个股黑天鹅</div>
+    </div>
+    <div class="swing-core-card">
+        <div class="swing-core-label">趋势过滤</div>
+        <div class="swing-core-value">周线 MACD + MA60</div>
+        <div class="swing-core-detail">放量阈值 {{ swing.strategy.volume_breakout_ratio or 1.5 }}x</div>
+    </div>
+    <div class="swing-core-card">
+        <div class="swing-core-label">情绪极值</div>
+        <div class="swing-core-value">{{ swing.strategy.extreme_low or 5 }}% / {{ swing.strategy.extreme_high or 95 }}%</div>
+        <div class="swing-core-detail">冰点/沸点只做状态提醒，不单独生成交易指令</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 有效性只显示保守分级；样本成熟前不展示精确胜率。 -->
+<div class="section-header">
+    <div class="section-title"><i class="fas fa-flask"></i> Quant 有效性验证</div>
+    <span class="chart-subtitle">T+1 开盘执行 · 1/3/5/10/20 日 · Live OOS / Walk-forward OOS</span>
+</div>
+<div class="swing-core-grid">
+    <div class="swing-core-card">
+        <div class="swing-core-label">当前结论</div>
+        <div class="swing-core-value">{{ swing.validity.label }}</div>
+        <div class="swing-core-detail">
+            20 日完整样本 {{ swing.validity.sample_size }}/{{ swing.validity.minimum_samples }}；
+            未达到门槛前不展示精确胜率
+        </div>
+    </div>
+    <div class="swing-core-card">
+        <div class="swing-core-label">执行假设</div>
+        <div class="swing-core-value">下一交易日开盘</div>
+        <div class="swing-core-detail">计入手续费、滑点、跳空、涨停/停牌无法成交</div>
+    </div>
+    <div class="swing-core-card">
+        <div class="swing-core-label">风控反事实样本</div>
+        <div class="swing-core-value">{{ swing.validity.risk_counterfactual.sample_size }} 条</div>
+        <div class="swing-core-detail">同时跟踪原始信号、实际放行和被拦截信号后续表现</div>
+    </div>
+</div>
+
+<!-- 大盘环境：宏观情绪切片 -->
+
+<!-- 宏观风控状态 -->
+<div class="section-header">
+    <div class="section-title"><i class="fas fa-shield-halved"></i> 宏观风控系统</div>
+    <span class="chart-subtitle">
+        VIX / 美债10Y / 原油价格 ·
+        {% if risk.age_seconds is defined %}{{ risk.age_seconds }} 秒前更新{% else %}等待更新{% endif %}
+        {% if risk.cached_fields %} · 缓存: {{ risk.cached_fields|join(', ') }}{% endif %}
+    </span>
+</div>
+<div class="stats-grid" style="margin-bottom:24px;">
+    <div class="stat-card {% if risk.level == 'critical' %}red{% elif risk.level in ['growth_blocked', 'warning'] %}yellow{% else %}green{% endif %}">
+        <div class="stat-header">
+            <span class="stat-title">风控状态</span>
+            <div class="stat-icon {% if risk.level == 'critical' %}red{% elif risk.level in ['growth_blocked', 'warning'] %}yellow{% else %}green{% endif %}">
+                <i class="fas fa-shield-halved"></i>
+            </div>
+        </div>
+        <div class="stat-value {% if risk.level == 'critical' %}red{% elif risk.level in ['growth_blocked', 'warning'] %}yellow{% else %}green{% endif %}">
+            {% if risk.level == 'critical' %}危机{% elif risk.level == 'growth_blocked' %}约束{% elif risk.level == 'warning' %}数据异常{% else %}正常{% endif %}
+        </div>
+        <div class="stat-detail">
+            {% if risk.message %}
+                {{ risk.message }}
+            {% elif risk.level == 'critical' %}
+                ⚠️ VIX危机: 系统拦截新增买入，仓位≤30%为人工纪律
+            {% elif risk.level == 'growth_blocked' %}
+                ⚠️ 美债/原油阈值触发，拦截成长类新增买入
+            {% else %}
+                SYSTEM_OK: 宏观环境平稳
+            {% endif %}
+        </div>
+    </div>
+    <div class="stat-card blue">
+        <div class="stat-header">
+            <span class="stat-title">VIX 波动率</span>
+            <div class="stat-icon blue"><i class="fas fa-bolt"></i></div>
+        </div>
+        <div class="stat-value blue">{{ '%.2f'|format(risk.vix) if risk.vix is not none else '--' }}</div>
+        <div class="stat-detail">阈值: 17.5 | {% if risk.vix is none %}数据缺失{% elif risk.vix > 17.5 %}⚠️ 超标{% elif 'vix' in risk.cached_fields %}缓存值{% else %}正常{% endif %}</div>
+    </div>
+    <div class="stat-card purple">
+        <div class="stat-header">
+            <span class="stat-title">美债10Y</span>
+            <div class="stat-icon purple"><i class="fas fa-landmark"></i></div>
+        </div>
+        <div class="stat-value purple">{{ '%.2f%%'|format(risk.us_10y) if risk.us_10y is not none else '--' }}</div>
+        <div class="stat-detail">阈值: 4.55% | {% if risk.us_10y is none %}数据缺失{% elif risk.us_10y >= 4.55 %}⚠️ 超标{% elif 'us_10y' in risk.cached_fields %}缓存值{% else %}正常{% endif %}</div>
+    </div>
+    <div class="stat-card cyan">
+        <div class="stat-header">
+            <span class="stat-title">原油价格</span>
+            <div class="stat-icon cyan"><i class="fas fa-oil-can"></i></div>
+        </div>
+        <div class="stat-value cyan">{{ '%.2f'|format(risk.crude_oil) if risk.crude_oil is not none else '--' }}</div>
+        <div class="stat-detail">阈值: 88.5 | {% if risk.crude_oil is none %}数据缺失{% elif risk.crude_oil > 88.5 %}⚠️ 超标{% elif 'crude_oil' in risk.cached_fields %}缓存值{% else %}正常{% endif %}</div>
+    </div>
+</div>
+
+<!-- 大盘环境：宏观情绪切片 -->
+<div class="section-header">
+    <div class="section-title"><i class="fas fa-gauge-high"></i> 大盘环境过滤器</div>
+    <span class="chart-subtitle">
+        {% if swing.environment_state == 'normal' %}结论：正常
+        {% elif swing.environment_state == 'extreme' %}结论：触及极值
+        {% elif swing.environment_state == 'insufficient' %}结论：样本不足
+        {% elif swing.environment_state == 'degraded' %}结论：数据降级
+        {% else %}结论：不可用{% endif %}
+    </span>
+</div>
+<div class="swing-core-card" style="margin-bottom:16px;">
+    <div class="swing-core-label">环境判定状态</div>
+    <div class="swing-core-value">
+        {% if swing.environment_state == 'normal' %}正常
+        {% elif swing.environment_state == 'extreme' %}极值
+        {% elif swing.environment_state == 'insufficient' %}样本不足
+        {% elif swing.environment_state == 'degraded' %}降级
+        {% else %}不可用{% endif %}
+    </div>
+    <div class="swing-core-detail">{{ swing.environment_message }}</div>
+</div>
+<div class="sentiment-grid" style="margin-bottom:24px;">
+    {% for f in swing.factors %}
+    {% set cls = 'bullish' if f.level == '沸点' else ('bearish' if f.level == '冰点' else 'neutral') %}
+    <div class="sentiment-card {{ cls }}">
+        <div class="sentiment-label">{{ f.label }}</div>
+        <div class="sentiment-value {{ cls }}">
+            {% if f.value is not none %}{{ '%.2f'|format(f.value) }}{{ f.unit }}{% else %}--{% endif %}
+        </div>
+        <div class="sentiment-change">
+            {% if f.state == 'anomalous' %}
+                <span class="swing-badge hot">异常</span>
+            {% elif f.state == 'missing' %}
+                <span class="swing-badge normal">缺失</span>
+            {% elif f.state == 'stale' %}
+                <span class="swing-badge normal">滞后</span>
+            {% elif f.state == 'insufficient' %}
+                <span class="swing-badge normal">样本不足</span>
+            {% elif f.level == '沸点' %}
+                <span class="swing-badge hot">沸点</span>
+            {% elif f.level == '冰点' %}
+                <span class="swing-badge cold">冰点</span>
+            {% else %}
+                <span class="swing-badge normal">正常</span>
+            {% endif %}
+            {% if f.percentile is not none %}
+                <span style="color:var(--text-secondary); font-size:12px;"> · 分位 {{ f.percentile }}%</span>
+            {% elif f.value is not none and not f.history_ready %}
+                <span style="color:var(--text-secondary); font-size:12px;"> · 历史样本 {{ f.sample_size }} 天</span>
+            {% endif %}
+            {% if f.observed_date and f.observed_date != swing.updated %}
+                <div style="color:var(--text-secondary); font-size:12px; margin-top:4px;">真实观测日：{{ f.observed_date }}</div>
+            {% elif f.is_stale %}
+                <div style="color:var(--text-secondary); font-size:12px; margin-top:4px;">沿用值：{{ f.value_date }}</div>
+            {% endif %}
+            {% if f.collect_message and (f.value is none or f.collect_anomalous) %}
+                <div style="color:var(--accent-yellow); font-size:12px; margin-top:4px;">采集失败：{{ f.collect_message }}</div>
+            {% elif f.collect_source %}
+                <div style="color:var(--text-secondary); font-size:12px; margin-top:4px;">来源 {{ f.collect_source }}</div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- 补充上下文 -->
+<div class="stats-grid">
+    <div class="stat-card red">
+        <div class="stat-header">
+            <span class="stat-title">涨停家数</span>
+            <div class="stat-icon red"><i class="fas fa-arrow-up"></i></div>
+        </div>
+        <div class="stat-value red">{{ swing.limit_up if swing.limit_up is not none else '--' }}</div>
+        <div class="stat-detail">与跌停家数同一观测日才可用{% if swing.limit_observed_date %} · {{ swing.limit_observed_date }}{% endif %}{% if swing.limit_stale %} · 滞后{% endif %}</div>
+    </div>
+    <div class="stat-card green">
+        <div class="stat-header">
+            <span class="stat-title">跌停家数</span>
+            <div class="stat-icon green"><i class="fas fa-arrow-down"></i></div>
+        </div>
+        <div class="stat-value green">{{ swing.limit_down if swing.limit_down is not none else '--' }}</div>
+        <div class="stat-detail">平滑比公式：涨停 / (跌停 + 1){% if swing.limit_observed_date %} · {{ swing.limit_observed_date }}{% endif %}</div>
+    </div>
+    <div class="stat-card yellow">
+        <div class="stat-header">
+            <span class="stat-title">两融余额</span>
+            <div class="stat-icon yellow"><i class="fas fa-coins"></i></div>
+        </div>
+        <div class="stat-value yellow">
+            {% if swing.margin_balance is not none %}{{ '%.0f'|format(swing.margin_balance) }}亿{% else %}--{% endif %}
+        </div>
+        <div class="stat-detail">杠杆资金体量{% if swing.margin_observed_date %} · 观测日 {{ swing.margin_observed_date }}{% endif %}{% if swing.margin_stale %} · 滞后{% endif %}</div>
+    </div>
+</div>
+
+<!-- 十只 ETF 监控池 -->
+<div class="stocks-section" style="margin-bottom:24px;">
+    <div class="section-header">
+        <div class="section-title"><i class="fas fa-layer-group"></i> 十只 ETF 监控池</div>
+        <span class="chart-subtitle">共 {{ swing.targets|length }} 只 · 趋势波段核心观察池，风控只约束买入动作，不移除监控</span>
+    </div>
+    <div class="stock-table-container">
+        <table class="stock-table">
+            <thead>
+                <tr>
+                    <th>代码</th>
+                    <th>名称</th>
+                    <th>方向</th>
+                    <th>类别</th>
+                    <th>今日纪律</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for target in swing.targets %}
+                {% set growth_risk = target.sector in ['成长', '硬科技', '港股科技'] or '半导体' in target.name %}
+                {% set defensive = target.sector in ['防御', '避险'] %}
+                <tr>
+                    <td><strong>{{ target.code }}</strong></td>
+                    <td>{{ target.name }}</td>
+                    <td>{{ target.mode or 'trend' }}</td>
+                    <td>
+                        <span class="etf-sector-tag {% if growth_risk %}growth-risk{% elif defensive %}defensive{% endif %}">
+                            {{ target.sector or '--' }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if risk.level == 'growth_blocked' and growth_risk %}
+                            禁止新增买入，已有盈利按信号分批止盈
+                        {% elif risk.level == 'growth_blocked' and defensive %}
+                            保留监控，可作为防御/避险蓄水池
+                        {% elif risk.level == 'growth_blocked' %}
+                            保留监控，新增买入需等待风控解除
+                        {% else %}
+                            按周线 MACD / MA60 / 成交量纪律执行
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 趋势确认信号 -->
+<div class="stocks-section">
+    <div class="section-header">
+        <div class="section-title"><i class="fas fa-khanda"></i> 当日 ETF 趋势确认信号</div>
+        <span class="chart-subtitle">仅展示数据日期 {{ swing.updated }} 新触发的信号，不用历史信号填充</span>
+    </div>
+    {% if swing.risk_blocked_signal_count %}
+    <p class="loading-text" style="margin-bottom:14px;">
+        <i class="fas fa-shield-halved"></i> {{ swing.updated }} 另有 {{ swing.risk_blocked_signal_count }} 条趋势买入信号被宏观风控拦截。
+        {% set gate = swing.risk_blocked_signals[0].detail.risk_gate %}
+        风控等级：{{ gate.level }}{% if gate.message %} · {{ gate.message }}{% endif %}
+    </p>
+    {% endif %}
+    {% if swing.signals %}
+    <div class="stock-table-container">
+        <table class="stock-table">
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>标的</th>
+                    <th>信号</th>
+                    <th>周期</th>
+                    <th>置信度</th>
+                    <th>细节</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in swing.signals %}
+                <tr>
+                    <td>{{ s.date }}</td>
+                    <td><strong>{{ s.name }}</strong> <span style="color:var(--text-secondary);">{{ s.code }}</span></td>
+                    <td>{{ s.title }}</td>
+                    <td><span class="period-tag {{ s.period }}">{{ '周线' if s.period == 'W' else '日线' }}</span></td>
+                    <td>{{ '%.2f'|format(s.confidence) if s.confidence is not none else '--' }}</td>
+                    <td class="signal-detail">
+                        {% for k, v in s.detail.items() %}{{ k }}={{ v }}{% if not loop.last %} · {% endif %}{% endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="loading-text">
+        <i class="fas fa-moon"></i> {{ swing.updated }} 无可执行的新趋势确认信号。
+        {% if swing.latest_signal_date %}最近一次历史信号日期：{{ swing.latest_signal_date }}。{% endif %}
+    </p>
+    {% endif %}
+</div>
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,508 @@
+groups:
+  - name: quantdinger-radar-runtime
+    interval: 30s
+    rules:
+      - alert: RadarMacroRiskProducerDown
+        expr: up{job="quantdinger-radar-macro-risk"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: radar_macro_risk
+        annotations:
+          summary: "Radar 宏观风险生产器不可用"
+          description: "轻量风险生产器已连续 2 分钟无法被 Prometheus 抓取。"
+
+      - alert: RadarMacroRiskStateStale
+        expr: radar_macro_risk_age_seconds > 900
+        for: 5m
+        labels:
+          severity: critical
+          service: radar_macro_risk
+        annotations:
+          summary: "Radar 宏观风险状态超过 15 分钟未刷新"
+          description: "当前状态年龄 {{ $value | humanizeDuration }}，请检查 Mihomo 与 Yahoo 数据源。"
+
+      - alert: RadarMacroRiskDataMissing
+        expr: radar_macro_risk_missing_fields > 0
+        for: 15m
+        labels:
+          severity: warning
+          service: radar_macro_risk
+        annotations:
+          summary: "Radar 宏观风险输入不完整"
+          description: "当前缺少 {{ $value }} 个宏观风险字段；系统保持 fail-closed 告警状态。"
+
+  - name: quant-runtime-readonly-observer
+    interval: 30s
+    rules:
+      - alert: QuantRuntimeObserverDown
+        expr: up{job="quant-runtime-freshness"} == 0 or absent(up{job="quant-runtime-freshness"})
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quant 只读监控采集器不可用"
+      - alert: QuantBusinessEndpointUnavailable
+        expr: probe_success{job="quant-runtime-http"} == 0 or up{job="quant-runtime-http"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quant 业务端点连续不可用：{{ $labels.instance }}"
+      - alert: QuantBusinessProbeCoverageMissing
+        expr: count(up{job="quant-runtime-http"}) != 3 or absent(up{job="quant-runtime-http"})
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quant 三个业务端点的监控覆盖缺失"
+      - alert: QuantTradingCalendarUnknown
+        expr: radar_runtime_expected_date_known == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quant 交易日历缺失、损坏或覆盖已到期"
+      - alert: QuantIndexCacheInvalid
+        expr: radar_runtime_index_cache_valid == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quant 四指数缓存不可读取或内容校验失败"
+      - alert: QuantTradingCalendarRefreshOverdue
+        expr: radar_runtime_calendar_age_seconds > 1209600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quant 交易日历已超过 14 天未更新"
+          description: "更新年龄与覆盖失效分别判定；独立维护 timer 按计划刷新，本告警不触发更新或补跑。"
+      - alert: QuantIndexCacheStale
+        expr: radar_runtime_index_cache_stale == 1 and on(job,instance) radar_runtime_expected_date_known == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quant 指数缓存连续 30 分钟未达到应有交易日"
+          description: "交易日 15:30 切换期望日期，保留 15:35/45/55 自然 repair 窗口；不补跑。"
+      - alert: QuantResearchDigestInvalid
+        expr: radar_runtime_digest_valid == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quant 研究摘要不可读取或结构校验失败"
+          description: "可读但指数输入过期由 QuantResearchDigestInputsStale 判定，保留 16:00 自然更新窗口；本告警不补跑。"
+      - alert: QuantResearchDigestNotRefreshed
+        expr: radar_runtime_digest_age_seconds > 5400
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quant 每小时研究摘要超过 90 分钟未刷新"
+      - alert: QuantResearchDigestInputsStale
+        expr: radar_runtime_digest_inputs_stale == 1 and on(job,instance) radar_runtime_expected_date_known == 1
+        for: 35m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quant 摘要中的指数输入未达到应有交易日"
+          description: "摘要生成时间与输入数据日期分别校验，保留 16:00 自然摘要更新窗口。"
+
+  - name: quant-datasource-disk
+    interval: 30s
+    rules:
+      # Historical evidence from one completed EOD Invocation, not a live probe.
+      # The branches are mutually exclusive; unknown evidence has its own alert.
+      - alert: QuantPrimaryDatasourceHighFailureRate
+        expr: |
+          (
+            (
+              radar_datasource_primary_kline_failure_ratio > 0.5
+              or on(job,instance) radar_datasource_total_amount_failed_log_entries > 0
+            )
+            and on(job,instance) radar_datasource_eod_journal_parsed == 1
+            and on(job,instance) radar_datasource_eod_complete == 1
+            and on(job,instance) radar_datasource_eod_has_samples == 1
+            and on(job,instance) radar_datasource_fallback_log_entries == 0
+          )
+          * on(job,instance) group_left(invocation_id,event_date,event_time,kline_fail,kline_ok,kline_samples,total_amount_fail,fallback)
+            radar_datasource_eod_info
+        for: 10m
+        labels:
+          severity: warning
+          service: radar_datasource
+        annotations:
+          summary: "Quant 最近一次已完成 EOD 检测到主源异常（非实时探测）"
+          description: "事件={{ $labels.event_time }}；Invocation={{ $labels.invocation_id }}。腾讯 K线失败日志={{ $labels.kline_fail }}/{{ $labels.kline_samples }}（成功={{ $labels.kline_ok }}）；total_amount 失败日志={{ $labels.total_amount_fail }}，单列不混入 K线分母；fallback 日志={{ $labels.fallback }}。尚无当轮兜底成功日志，不据此断言全部业务失败；后续恢复须另验。"
+
+      - alert: QuantDatasourceSilentFallbackRisk
+        expr: |
+          (
+            radar_datasource_primary_kline_failure_ratio > 0.5
+            and on(job,instance) radar_datasource_eod_journal_parsed == 1
+            and on(job,instance) radar_datasource_eod_complete == 1
+            and on(job,instance) radar_datasource_eod_has_samples == 1
+            and on(job,instance) radar_datasource_fallback_log_entries > 0
+          )
+          * on(job,instance) group_left(invocation_id,event_date,event_time,kline_fail,kline_ok,kline_samples,total_amount_fail,fallback)
+            radar_datasource_eod_info
+        for: 15m
+        labels:
+          severity: warning
+          service: radar_datasource
+        annotations:
+          summary: "Quant 最近一次已完成 EOD 出现 K线主源失败及降级（非实时探测）"
+          description: "事件={{ $labels.event_time }}；Invocation={{ $labels.invocation_id }}。腾讯 K线失败日志={{ $labels.kline_fail }}/{{ $labels.kline_samples }}（成功={{ $labels.kline_ok }}）；total_amount 失败日志={{ $labels.total_amount_fail }}，单列不混入 K线分母；fallback 日志={{ $labels.fallback }}。K线 0 样本不能计算失败率；仅成交额降级不构成本告警。保留当轮降级审计，不代表主源当前持续失效；后续 repair/outcomes 成功另行验收。"
+
+      - alert: QuantDatasourceEODEvidenceUnknown
+        expr: |
+          radar_datasource_eod_journal_parsed == 0
+          or on(job,instance) radar_datasource_eod_complete == 0
+          or on(job,instance) radar_datasource_eod_has_samples == 0
+          or on(job,instance) (
+            radar_datasource_eod_latest_incomplete == 1
+            and on(job,instance) radar_datasource_eod_in_progress == 0
+          )
+          or on(job,instance) (time() - radar_datasource_metrics_unixtime > 900)
+          or on(job,instance) (radar_datasource_eod_journal_parsed unless on(job,instance) radar_datasource_eod_complete)
+          or on(job,instance) (radar_datasource_eod_journal_parsed unless on(job,instance) radar_datasource_eod_has_samples)
+          or on(job,instance) (radar_datasource_eod_journal_parsed unless on(job,instance) radar_datasource_eod_info)
+          or on(job,instance) (radar_datasource_eod_journal_parsed unless on(job,instance) radar_datasource_metrics_unixtime)
+          or on(job,instance) (radar_datasource_eod_journal_parsed unless on(job,instance) radar_datasource_primary_kline_failure_ratio)
+          or on(job,instance) (radar_datasource_eod_journal_parsed unless on(job,instance) radar_datasource_total_amount_failed_log_entries)
+          or on(job,instance) (radar_datasource_eod_journal_parsed unless on(job,instance) radar_datasource_fallback_log_entries)
+          or on(job,instance) (radar_datasource_eod_journal_parsed unless on(job,instance) radar_datasource_eod_latest_incomplete)
+          or on(job,instance) (radar_datasource_eod_journal_parsed unless on(job,instance) radar_datasource_eod_in_progress)
+          or on(job,instance) (up{job="node-exporter"} unless on(job,instance) radar_datasource_eod_journal_parsed)
+          or (absent(radar_datasource_eod_journal_parsed) unless on() up{job="node-exporter"})
+        for: 5m
+        labels:
+          severity: warning
+          service: radar_datasource
+        annotations:
+          summary: "Quant EOD 数据源证据不可判定，不能视为恢复"
+          description: "采集失败、无完整 Invocation、无可识别样本或指标过旧；请只读核对日志保留、非交易日及任务状态。缺少证据不等于腾讯不可用，也不等于成功；不自动触发或补跑。"
+
+      - alert: QuantIndexCacheNotPrimarySource
+        expr: radar_datasource_index_cache_uses_fallback == 1
+        for: 30m
+        labels:
+          severity: warning
+          service: radar_datasource
+        annotations:
+          summary: "四指数缓存未使用纯 tencent 主源"
+          description: "index_closes_latest.json 含 sina 降级痕迹；对照 research-index-close-cache journal。"
+
+      - alert: QuantHostDiskUsageWarning
+        expr: |
+          max by (job, instance, mountpoint) (
+            (
+              node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint="/"}
+                / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint="/"}
+            ) <= 0.10
+            or
+            node_textfile_disk_used_percent{mountpoint="/"} >= 90
+          )
+        for: 10m
+        labels:
+          severity: warning
+          service: host_disk
+        annotations:
+          summary: "Quant-Server 根分区磁盘使用率 ≥ 90%"
+          description: "可用比例或 textfile 使用率触发 warning 阈值。"
+
+      - alert: QuantHostDiskUsageCritical
+        expr: |
+          max by (job, instance, mountpoint) (
+            (
+              node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint="/"}
+                / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs",mountpoint="/"}
+            ) <= 0.05
+            or
+            node_textfile_disk_used_percent{mountpoint="/"} >= 95
+          )
+        for: 5m
+        labels:
+          severity: critical
+          service: host_disk
+        annotations:
+          summary: "Quant-Server 根分区磁盘使用率 ≥ 95%"
+          description: "磁盘 critically low；避免镜像堆积与日志膨胀。"
+
+      - alert: QuantSwingEodBusinessFailedFinal
+        expr: |
+          (
+            radar_swing_eod_recovery_status == 3
+            or on(job,instance) (
+              (
+                radar_swing_eod_recovery_status == 1
+                or radar_swing_eod_recovery_status == 4
+                or radar_swing_eod_recovery_status == 6
+                or radar_swing_eod_recovery_status == 7
+              )
+              and on(job,instance) radar_swing_eod_terminal_due == 1
+              and on(job,instance) radar_swing_eod_evidence_current == 1
+            )
+          )
+          and on(job,instance) radar_swing_eod_evidence_valid == 1
+        for: 5m
+        labels:
+          severity: critical
+          service: swing_eod
+        annotations:
+          summary: "Swing EOD 日级终态仍失败"
+          description: "已确认失败，或应验收交易日 15:50 后仍缺失/运行/等待重试；不因经过 18h 自动恢复。保留首次失败审计，对照 watchdog JSON 与同日 retry。"
+
+      - alert: QuantSwingEodEvidenceUnknown
+        expr: |
+          radar_swing_eod_evidence_valid == 0
+          or radar_swing_eod_calendar_valid == 0
+          or (radar_swing_eod_evidence_valid != radar_swing_eod_evidence_valid)
+          or (
+            radar_swing_eod_evidence_current == 0
+            and on(job,instance) radar_swing_eod_terminal_due == 1
+          )
+          or (up{job="node-exporter"} unless on(job,instance) radar_swing_eod_evidence_valid)
+          or (radar_swing_eod_evidence_valid unless on(job,instance) radar_swing_eod_calendar_valid)
+          or (radar_swing_eod_evidence_valid unless on(job,instance) radar_swing_eod_evidence_current)
+          or (radar_swing_eod_evidence_valid unless on(job,instance) radar_swing_eod_terminal_due)
+          or (radar_swing_eod_evidence_valid unless on(job,instance) radar_swing_eod_recovery_status)
+          or (time() - radar_datasource_metrics_unixtime > 900)
+          or (absent(radar_swing_eod_evidence_valid) unless on() up{job="node-exporter"})
+        for: 5m
+        labels:
+          severity: warning
+          service: swing_eod
+        annotations:
+          summary: "Swing EOD 审计证据缺失或不可判定"
+          description: "JSON 缺失/非法、交易日历不可用、应验收日期不匹配或指标缺失/过期；不能视为成功。周末/节假日沿用上一交易日，不读取生产库或自动补跑。"
+
+      - alert: QuantSwingEodWatchdogRunFailed
+        expr: |
+          radar_swing_eod_watchdog_run_failed == 1
+          and on(job,instance) radar_swing_eod_watchdog_run_valid == 1
+          and on(job,instance) radar_swing_eod_watchdog_run_current == 1
+        for: 5m
+        labels:
+          severity: critical
+          service: swing_eod
+        annotations:
+          summary: "Swing EOD watchdog/日报程序自身崩溃"
+          description: "watchdog 或日报生成在当日会话内崩溃（由 watchdog 自写的 swing_eod_watchdog_run.json 经 textfile 导出，独立于其业务产物）；日报可能未生成、未发送。查看 journalctl -u stock-radar-swing-watchdog 与该 JSON 的 error_type/error_location；不会自动补发。"
+
+  - name: quant-host-metrics-health
+    rules:
+    - alert: QuantHostExporterDown
+      expr: up{job="node-exporter"} == 0
+      for: 10m
+      labels:
+        severity: warning
+        service: host_disk
+      annotations:
+        summary: node-exporter 抓取失败
+    - alert: QuantHostExporterTargetMissing
+      expr: 'absent(up{job="node-exporter", instance="node-exporter:9100"})
+  
+        '
+      for: 10m
+      labels:
+        severity: warning
+        service: host_disk
+      annotations:
+        summary: 预期采集目标消失
+    - alert: QuantHostDiskMetricsMissing
+      expr: "(up{job=\"node-exporter\"} == 1)\nunless on(job, instance)\n(\n  (\n  \
+        \  (node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs\",mountpoint=\"\
+        /\"}\n      / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay|squashfs\"\
+        ,mountpoint=\"/\"}) >= 0\n    and\n    (node_filesystem_avail_bytes{fstype!~\"\
+        tmpfs|overlay|squashfs\",mountpoint=\"/\"}\n      / node_filesystem_size_bytes{fstype!~\"\
+        tmpfs|overlay|squashfs\",mountpoint=\"/\"}) <= 1\n  )\n  or\n  (\n    node_textfile_disk_used_percent{mountpoint=\"\
+        /\"} >= 0\n    and\n    node_textfile_disk_used_percent{mountpoint=\"/\"} <=\
+        \ 100\n  )\n)\n"
+      for: 10m
+      labels:
+        severity: warning
+        service: host_disk
+      annotations:
+        summary: exporter 正常但磁盘指标不可用（含 0/0 与正数除零）
+    - alert: QuantHostDiskTextfileMissing
+      expr: "(up{job=\"node-exporter\"} == 1)\nunless on(job, instance)\n(\n  node_textfile_disk_used_percent{mountpoint=\"\
+        /\"}\n  and on(job, instance) node_textfile_mtime_seconds{file=\"/textfile/disk.prom\"\
+        }\n)\n"
+      for: 10m
+      labels:
+        severity: info
+        service: host_disk
+      annotations:
+        summary: textfile 指标缺失（used_percent 或 mtime 缺一即报）
+    - alert: QuantHostDiskTextfileStale
+      expr: '(node_textfile_mtime_seconds{file="/textfile/disk.prom"} <= (time() - 900))
+  
+        and on(job, instance) (up{job="node-exporter"} == 1)
+  
+        '
+      for: 10m
+      labels:
+        severity: warning
+        service: host_disk
+      annotations:
+        summary: textfile 停写（年龄达到 900 秒即不新鲜）
+
+  - name: quant-notification-maintenance
+    interval: 30s
+    rules:
+      - alert: QuantNotificationMaintenanceOverdue
+        expr: quant_notify_maintenance_maintenance_overdue{job="node-exporter",instance="node-exporter:9100"} == 1
+        for: 2m
+        labels:
+          severity: critical
+          service: quant_notify_maintenance
+        annotations:
+          summary: "通知维护超过登记截止时间"
+          description: "维护屏障仍在且已逾期；仅告警，不自动撤屏障、不补跑。请核对维护台账与负责人。"
+      - alert: QuantNotificationMaintenanceUnregistered
+        expr: quant_notify_maintenance_maintenance_unregistered{job="node-exporter",instance="node-exporter:9100"} == 1
+        for: 2m
+        labels:
+          severity: warning
+          service: quant_notify_maintenance
+        annotations:
+          summary: "通知维护屏障没有匹配的有效台账"
+          description: "屏障来源或期限未能确认；保留屏障和 UNKNOWN，不自动恢复或补登事实。"
+      - alert: QuantNotificationMaintenanceLedgerInvalid
+        expr: quant_notify_maintenance_ledger_invalid{job="node-exporter",instance="node-exporter:9100"} == 1
+        for: 2m
+        labels:
+          severity: warning
+          service: quant_notify_maintenance
+        annotations:
+          summary: "通知维护台账不可读取或校验失败"
+          description: "维护责任、期限或关闭证据不可判定；不能当作正常，也不自动修改台账。"
+      - alert: QuantNotificationMaintenanceClosureMissing
+        expr: quant_notify_maintenance_closure_missing{job="node-exporter",instance="node-exporter:9100"} == 1
+        for: 2m
+        labels:
+          severity: warning
+          service: quant_notify_maintenance
+        annotations:
+          summary: "通知维护屏障已不在，但台账缺关闭证据"
+          description: "台账仍为进行中，需核对原始切换收据；不据屏障消失推断维护验收通过。"
+      - alert: QuantNotificationSummaryConsumerUnavailable
+        expr: |
+          quant_notify_maintenance_consumer_unavailable{job="node-exporter",instance="node-exporter:9100"} == 1
+          and on(job,instance)
+          quant_notify_maintenance_marker_present{job="node-exporter",instance="node-exporter:9100"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          service: quant_notify_maintenance
+        annotations:
+          summary: "统一日报接收环节不可用，不能静默交接"
+          description: "当前无维护屏障，但日报定时器或服务不可用；原任务保留交接警告，不启用第二套常规发送器。"
+      - alert: QuantNotificationMaintenanceMonitorUnavailable
+        expr: |
+          quant_notify_maintenance_monitor_success{job="node-exporter",instance="node-exporter:9100"} == 0
+          or on(job,instance)
+          (time() - quant_notify_maintenance_observed_unixtime{job="node-exporter",instance="node-exporter:9100"}) > 180
+          or on(job,instance)
+          quant_notify_maintenance_observed_unixtime{job="node-exporter",instance="node-exporter:9100"} > (time() + 60)
+          or on(job,instance)
+          absent(quant_notify_maintenance_observed_unixtime{job="node-exporter",instance="node-exporter:9100"})
+          or on(job,instance)
+          absent(quant_notify_maintenance_monitor_success{job="node-exporter",instance="node-exporter:9100"})
+          or on(job,instance)
+          (
+            quant_notify_maintenance_monitor_success{job="node-exporter",instance="node-exporter:9100"}
+            unless on(job,instance)
+            (
+              quant_notify_maintenance_marker_present
+              and on(job,instance) quant_notify_maintenance_maintenance_overdue
+              and on(job,instance) quant_notify_maintenance_maintenance_unregistered
+              and on(job,instance) quant_notify_maintenance_ledger_invalid
+              and on(job,instance) quant_notify_maintenance_closure_missing
+              and on(job,instance) quant_notify_maintenance_consumer_unavailable
+            )
+          )
+        for: 2m
+        labels:
+          severity: warning
+          service: quant_notify_maintenance
+        annotations:
+          summary: "通知维护独立监控失败或超过 3 分钟未更新"
+          description: "检查独立监控服务与 textfile 采集；状态不可判定，不触发研究、通知重发或自动撤屏障。"
+  - name: quant-ops-health
+    rules:
+      - alert: QuantSystemdFailedUnits
+        expr: qd_systemd_failed_units > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Quant 主机存在 failed 状态的 systemd 单元"
+          description: "failed 单元数={{ $value }}；用 systemctl --failed 查看。"
+      - alert: QuantNng8SyncStale
+        expr: time() - qd_unit_last_success_timestamp_seconds{unit="quant-nng8-sync"} > 1200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "nnG8 同步超过 20 分钟没有成功"
+          description: "quant-nng8-sync 最近成功距今 {{ $value | humanizeDuration }}。"
+      - alert: QuantRedactedLogCollectorStale
+        expr: time() - qd_log_collector_heartbeat_timestamp_seconds > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "脱敏日志收集器心跳超过 10 分钟"
+          description: "role={{ $labels.role }}，nginx/前端分类日志可能已停止。"
+      - alert: QuantRedactedLogRawPersisted
+        expr: qd_log_collector_raw_persisted == 1
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "脱敏日志收集器报告保存了原始消息"
+          description: "role={{ $labels.role }}，可能有原始请求行落盘，需立即检查。"
+      - alert: QuantOpsMetricsMissing
+        # Expected scrape targets are explicit: update this roster with any target change.
+        # One stable host identity covers unavailable commands and missing required samples.
+        # No successful sync observation is unknown, not a fabricated epoch timestamp.
+        expr: |
+          max by (job, instance) (
+            (absent(up{job="node-exporter",instance="node-exporter:9100"})
+            or (up{job="node-exporter",instance="node-exporter:9100"} == 0)
+            or (
+              (up{job="node-exporter",instance="node-exporter:9100"} == 1)
+              unless on(job,instance) (
+              (qd_ops_collection_success{job="node-exporter",instance="node-exporter:9100"} == 1)
+              and on(job,instance) (qd_ops_source_success{job="node-exporter",instance="node-exporter:9100",source="failed_units"} == 1)
+              and on(job,instance) (qd_ops_source_success{job="node-exporter",instance="node-exporter:9100",source="sync"} == 1)
+              and on(job,instance) (qd_ops_source_success{job="node-exporter",instance="node-exporter:9100",source="host_log"} == 1)
+              and on(job,instance) (qd_ops_source_success{job="node-exporter",instance="node-exporter:9100",source="frontend_log"} == 1)
+              and on(job,instance) (qd_ops_metrics_last_run_timestamp_seconds{job="node-exporter",instance="node-exporter:9100"} > 0)
+              and on(job,instance) (qd_ops_metrics_last_run_timestamp_seconds{job="node-exporter",instance="node-exporter:9100"} <= (time() + 5))
+              and on(job,instance) (qd_systemd_failed_units{job="node-exporter",instance="node-exporter:9100"} >= 0)
+              and on(job,instance) (qd_systemd_failed_units{job="node-exporter",instance="node-exporter:9100"} < +Inf)
+              and on(job,instance) (floor(qd_systemd_failed_units{job="node-exporter",instance="node-exporter:9100"}) == qd_systemd_failed_units{job="node-exporter",instance="node-exporter:9100"})
+              and on(job,instance) (qd_sync_success_seen{job="node-exporter",instance="node-exporter:9100",unit="quant-nng8-sync"} == 1)
+              and on(job,instance) (qd_unit_last_success_timestamp_seconds{job="node-exporter",instance="node-exporter:9100",unit="quant-nng8-sync"} > 0)
+              and on(job,instance) (qd_unit_last_success_timestamp_seconds{job="node-exporter",instance="node-exporter:9100",unit="quant-nng8-sync"} <= (time() + 5))
+              and on(job,instance) (qd_log_collector_heartbeat_timestamp_seconds{job="node-exporter",instance="node-exporter:9100",role="host"} > 0)
+              and on(job,instance) (qd_log_collector_heartbeat_timestamp_seconds{job="node-exporter",instance="node-exporter:9100",role="host"} <= (time() + 5))
+              and on(job,instance) ((qd_log_collector_raw_persisted{job="node-exporter",instance="node-exporter:9100",role="host"} == 0 or qd_log_collector_raw_persisted{job="node-exporter",instance="node-exporter:9100",role="host"} == 1))
+              and on(job,instance) (qd_log_collector_heartbeat_timestamp_seconds{job="node-exporter",instance="node-exporter:9100",role="frontend"} > 0)
+              and on(job,instance) (qd_log_collector_heartbeat_timestamp_seconds{job="node-exporter",instance="node-exporter:9100",role="frontend"} <= (time() + 5))
+              and on(job,instance) ((qd_log_collector_raw_persisted{job="node-exporter",instance="node-exporter:9100",role="frontend"} == 0 or qd_log_collector_raw_persisted{job="node-exporter",instance="node-exporter:9100",role="frontend"} == 1))
+              )
+            )
+            or (time() - qd_ops_metrics_last_run_timestamp_seconds{job="node-exporter",instance="node-exporter:9100"} > 300))
+          )
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "qd_ops 采集失败、必需指标缺失或超过 5 分钟未刷新"
+          description: "固定目标的抓取、四类采集来源、首次同步成功证据及双角色日志指标须完整；缺失不能视为健康，不自动重试业务任务。"

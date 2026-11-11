@@ -1,0 +1,38 @@
+[MASTER]
+# Pylint configuration for trading_radar
+# Invoke: pylint --rcfile=.pylintrc radar/ dashboard/ mx_client/ tools/
+
+ignore=venv,.trash,__pycache__,.git,radar_pro
+ignore-patterns=test_.*\.py
+
+# 代码质量门禁：禁止 bare except 和未标注返回类型
+disable=all
+enable=
+    bare-except,
+    broad-exception-caught,
+
+# 最大复杂度（函数/方法）
+max-args=8
+max-locals=20
+max-returns=6
+max-branches=15
+max-statements=60
+
+# 忽略的目录内的文件
+ignore-paths=^venv/,^.trash/,^__pycache__/
+
+[FORMAT]
+max-line-length=120
+
+[MESSAGES CONTROL]
+# 暂时 suppress（后续逐步开放）
+disable=
+    missing-function-docstring,
+    missing-class-docstring,
+    missing-module-docstring,
+    too-many-lines,
+    too-many-instance-attributes,
+    too-many-public-methods,
+    too-many-arguments,
+    too-many-locals,
+    duplicate-code,

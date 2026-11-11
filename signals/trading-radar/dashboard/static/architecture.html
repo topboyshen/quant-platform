@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trading Radar Architecture - Docker Compose</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot {
+      width: 12px; height: 12px; background: #22d3ee; border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container {
+      background: rgba(15,23,42,0.5); border-radius: 1rem;
+      border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto;
+    }
+    svg { width: 100%; min-width: 1300px; display: block; }
+    .cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem; margin-top: 2rem;
+    }
+    .card {
+      background: rgba(15,23,42,0.5); border-radius: 0.75rem;
+      border: 1px solid #1e293b; padding: 1.25rem;
+    }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card-dot.orange { background: #fb923c; }
+    .card-dot.blue { background: #60a5fa; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Trading Radar Architecture</h1>
+      </div>
+      <p class="subtitle">A-Share Stock Monitoring System — Docker Compose Deployment</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1400 950">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrowhead-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+          <!-- Docker container pattern -->
+          <pattern id="docker-pattern" width="8" height="8" patternUnits="userSpaceOnUse">
+            <rect width="8" height="8" fill="rgba(96,165,250,0.05)"/>
+            <circle cx="4" cy="4" r="1" fill="rgba(96,165,250,0.15)"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ==================== 外部数据源层 ==================== -->
+        <text x="50" y="30" fill="#94a3b8" font-size="10" font-weight="600">外部数据源</text>
+
+        <rect x="50" y="45" width="100" height="50" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="100" y="68" fill="white" font-size="10" font-weight="600" text-anchor="middle">东财批量</text>
+        <text x="100" y="84" fill="#94a3b8" font-size="8" text-anchor="middle">ulist.np</text>
+
+        <rect x="170" y="45" width="100" height="50" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="220" y="68" fill="white" font-size="10" font-weight="600" text-anchor="middle">腾讯批量</text>
+        <text x="220" y="84" fill="#94a3b8" font-size="8" text-anchor="middle">qt.gtimg.cn</text>
+
+        <rect x="290" y="45" width="100" height="50" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="340" y="68" fill="white" font-size="10" font-weight="600" text-anchor="middle">新浪批量</text>
+        <text x="340" y="84" fill="#94a3b8" font-size="8" text-anchor="middle">hq.sinajs.cn</text>
+
+        <rect x="410" y="45" width="100" height="50" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="460" y="68" fill="white" font-size="10" font-weight="600" text-anchor="middle">腾讯K线</text>
+        <text x="460" y="84" fill="#94a3b8" font-size="8" text-anchor="middle">fqkline</text>
+
+        <rect x="530" y="45" width="100" height="50" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="580" y="68" fill="white" font-size="10" font-weight="600" text-anchor="middle">AkShare</text>
+        <text x="580" y="84" fill="#94a3b8" font-size="8" text-anchor="middle">增值数据</text>
+
+        <!-- 数据源到 Docker 网络箭头 -->
+        <line x1="100" y1="95" x2="100" y2="115" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="220" y1="95" x2="220" y2="115" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="340" y1="95" x2="340" y2="115" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="460" y1="95" x2="460" y2="115" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="580" y1="95" x2="580" y2="115" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- ==================== Docker Compose 层 ==================== -->
+        <rect x="40" y="110" width="1320" height="560" rx="12" fill="rgba(96,165,250,0.03)" stroke="#60a5fa" stroke-width="2" stroke-dasharray="8,4"/>
+        <text x="55" y="130" fill="#60a5fa" font-size="12" font-weight="700">Docker Compose — radar-net (bridge)</text>
+        <text x="1200" y="130" fill="#60a5fa" font-size="9">7 containers</text>
+
+        <!-- ==== mihomo 代理容器 ==== -->
+        <rect x="60" y="145" width="180" height="90" rx="8" fill="url(#docker-pattern)" stroke="#60a5fa" stroke-width="2"/>
+        <text x="70" y="162" fill="#60a5fa" font-size="10" font-weight="700">radar-mihomo</text>
+        <text x="70" y="178" fill="#94a3b8" font-size="8">代理容器</text>
+        <text x="70" y="194" fill="white" font-size="9">http://mihomo:7890</text>
+        <text x="70" y="210" fill="#94a3b8" font-size="8">allow-lan: true</text>
+        <text x="70" y="224" fill="#94a3b8" font-size="8">bind-address: 0.0.0.0</text>
+
+        <!-- mihomo 到外部 -->
+        <line x1="150" y1="145" x2="150" y2="95" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="3,3"/>
+        <text x="155" y="120" fill="#60a5fa" font-size="7">proxy</text>
+
+        <!-- ==== monitor 容器 ==== -->
+        <rect x="60" y="260" width="380" height="200" rx="8" fill="url(#docker-pattern)" stroke="#34d399" stroke-width="2"/>
+        <text x="70" y="278" fill="#34d399" font-size="10" font-weight="700">radar-monitor (8080)</text>
+        <text x="280" y="278" fill="#94a3b8" font-size="8">image: trading-radar:latest</text>
+
+        <rect x="75" y="295" width="100" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="125" y="317" fill="white" font-size="10" font-weight="600" text-anchor="middle">价格触发</text>
+        <text x="125" y="333" fill="#94a3b8" font-size="8" text-anchor="middle">above/below</text>
+
+        <rect x="190" y="295" width="100" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="240" y="317" fill="white" font-size="10" font-weight="600" text-anchor="middle">ML预测</text>
+        <text x="240" y="333" fill="#94a3b8" font-size="8" text-anchor="middle">6模型RPC</text>
+
+        <rect x="305" y="295" width="100" height="50" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="355" y="317" fill="white" font-size="10" font-weight="600" text-anchor="middle">RL策略</text>
+        <text x="355" y="333" fill="#94a3b8" font-size="8" text-anchor="middle">组合优化</text>
+
+        <rect x="75" y="360" width="330" height="40" rx="6" fill="rgba(6,78,59,0.3)" stroke="#34d399" stroke-width="1"/>
+        <text x="240" y="375" fill="white" font-size="9" text-anchor="middle">BattlefieldState — SQLite持久化</text>
+        <text x="240" y="390" fill="#94a3b8" font-size="8" text-anchor="middle">price_history.db / alert_accuracy.db / cooldown.db</text>
+
+        <rect x="75" y="410" width="160" height="35" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="155" y="425" fill="white" font-size="8" text-anchor="middle">DataSourceManager</text>
+        <text x="155" y="438" fill="#fbbf24" font-size="7" text-anchor="middle">断路器 + 自动降级</text>
+
+        <rect x="250" y="410" width="155" height="35" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="327" y="425" fill="white" font-size="8" text-anchor="middle">MarketDataFetcher</text>
+        <text x="327" y="438" fill="#fbbf24" font-size="7" text-anchor="middle">腾讯K线备用源</text>
+
+        <!-- monitor 到 mihomo -->
+        <line x1="150" y1="260" x2="150" y2="235" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrowhead)"/>
+        <text x="155" y="250" fill="#60a5fa" font-size="7">proxy</text>
+
+        <!-- ==== dashboard 容器 ==== -->
+        <rect x="460" y="260" width="320" height="200" rx="8" fill="url(#docker-pattern)" stroke="#22d3ee" stroke-width="2"/>
+        <text x="470" y="278" fill="#22d3ee" font-size="10" font-weight="700">radar-dashboard (8081)</text>
+        <text x="660" y="278" fill="#94a3b8" font-size="8">image: trading-radar:latest</text>
+
+        <rect x="475" y="295" width="90" height="50" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="520" y="317" fill="white" font-size="10" font-weight="600" text-anchor="middle">HTTP API</text>
+        <text x="520" y="333" fill="#94a3b8" font-size="8" text-anchor="middle">/api/status</text>
+
+        <rect x="580" y="295" width="90" height="50" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="625" y="317" fill="white" font-size="10" font-weight="600" text-anchor="middle">SSE推送</text>
+        <text x="625" y="333" fill="#94a3b8" font-size="8" text-anchor="middle">/api/stream</text>
+
+        <rect x="685" y="295" width="80" height="50" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="725" y="317" fill="white" font-size="10" font-weight="600" text-anchor="middle">OpsStatus</text>
+        <text x="725" y="333" fill="#94a3b8" font-size="8" text-anchor="middle">状态收集</text>
+
+        <rect x="475" y="360" width="290" height="40" rx="6" fill="rgba(8,51,68,0.3)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="620" y="375" fill="white" font-size="9" text-anchor="middle">Flask 3.0 + DataProvider统一数据层</text>
+        <text x="620" y="390" fill="#94a3b8" font-size="8" text-anchor="middle">绑定 0.0.0.0:8081 (容器内)</text>
+
+        <rect x="475" y="415" width="140" height="30" rx="6" fill="rgba(136,19,55,0.3)" stroke="#fb7185" stroke-width="1"/>
+        <text x="545" y="433" fill="white" font-size="8" text-anchor="middle">AlertManager</text>
+
+        <rect x="630" y="415" width="135" height="30" rx="6" fill="rgba(136,19,55,0.3)" stroke="#fb7185" stroke-width="1"/>
+        <text x="697" y="433" fill="white" font-size="8" text-anchor="middle">TelegramNotifier</text>
+
+        <!-- dashboard 到 monitor -->
+        <line x1="460" y1="360" x2="440" y2="360" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- ==== ml-serve 容器 ==== -->
+        <rect x="800" y="145" width="200" height="120" rx="8" fill="url(#docker-pattern)" stroke="#fbbf24" stroke-width="2"/>
+        <text x="810" y="162" fill="#fbbf24" font-size="10" font-weight="700">radar-ml-serve</text>
+        <text x="810" y="178" fill="#94a3b8" font-size="8">8090:gRPC / 8091:HTTP</text>
+        <text x="810" y="194" fill="white" font-size="9">6 sklearn models (.pkl)</text>
+        <text x="810" y="210" fill="#94a3b8" font-size="8">grpcio 1.81.0</text>
+        <text x="810" y="226" fill="#94a3b8" font-size="8">image: trading-radar:latest</text>
+
+        <!-- ml-serve 到 monitor -->
+        <line x1="800" y1="205" x2="440" y2="300" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrowhead)"/>
+        <text x="600" y="245" fill="#fbbf24" font-size="8">predict RPC</text>
+
+        <!-- ==== redis 容器 ==== -->
+        <rect x="1020" y="145" width="150" height="90" rx="8" fill="url(#docker-pattern)" stroke="#a78bfa" stroke-width="2"/>
+        <text x="1030" y="162" fill="#a78bfa" font-size="10" font-weight="700">radar-redis</text>
+        <text x="1030" y="178" fill="#94a3b8" font-size="8">:6379 AOF持久化</text>
+        <text x="1030" y="194" fill="white" font-size="9">ML缓存 + 指标</text>
+        <text x="1030" y="210" fill="#94a3b8" font-size="8">image: redis:7-alpine</text>
+
+        <!-- redis 到 ml-serve -->
+        <line x1="1020" y1="190" x2="1000" y2="190" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- ==== prometheus 容器 ==== -->
+        <rect x="800" y="300" width="180" height="80" rx="8" fill="url(#docker-pattern)" stroke="#a78bfa" stroke-width="2"/>
+        <text x="810" y="318" fill="#a78bfa" font-size="10" font-weight="700">radar-prometheus</text>
+        <text x="810" y="334" fill="#94a3b8" font-size="8">:9091 (宿主机映射)</text>
+        <text x="810" y="350" fill="white" font-size="9">指标收集 + 告警规则</text>
+        <text x="810" y="366" fill="#94a3b8" font-size="8">image: prom/prometheus</text>
+
+        <!-- prometheus 到 monitor -->
+        <line x1="800" y1="340" x2="440" y2="340" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrowhead)"/>
+        <text x="610" y="335" fill="#a78bfa" font-size="8">metrics</text>
+
+        <!-- ==== grafana 容器 ==== -->
+        <rect x="1000" y="300" width="170" height="80" rx="8" fill="url(#docker-pattern)" stroke="#a78bfa" stroke-width="2"/>
+        <text x="1010" y="318" fill="#a78bfa" font-size="10" font-weight="700">radar-grafana</text>
+        <text x="1010" y="334" fill="#94a3b8" font-size="8">:3000 (宿主机映射)</text>
+        <text x="1010" y="350" fill="white" font-size="9">可视化仪表盘</text>
+        <text x="1010" y="366" fill="#94a3b8" font-size="8">image: grafana/grafana:11</text>
+
+        <!-- grafana 到 prometheus -->
+        <line x1="1000" y1="340" x2="980" y2="340" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- ==== Swing EOD 批处理 (容器内) ==== -->
+        <rect x="60" y="490" width="720" height="140" rx="8" fill="url(#docker-pattern)" stroke="#fb923c" stroke-width="2"/>
+        <text x="70" y="508" fill="#fb923c" font-size="10" font-weight="700">radar-monitor Swing EOD (定时15:10)</text>
+        <text x="400" y="508" fill="#94a3b8" font-size="8">同容器，独立进程</text>
+
+        <rect x="75" y="525" width="120" height="50" rx="6" fill="rgba(251,146,60,0.3)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="135" y="547" fill="white" font-size="10" font-weight="600" text-anchor="middle">宏观采集</text>
+        <text x="135" y="563" fill="#94a3b8" font-size="8" text-anchor="middle">成交额/两融/涨跌</text>
+
+        <rect x="210" y="525" width="120" height="50" rx="6" fill="rgba(251,146,60,0.3)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="270" y="547" fill="white" font-size="10" font-weight="600" text-anchor="middle">趋势确认</text>
+        <text x="270" y="563" fill="#94a3b8" font-size="8" text-anchor="middle">MA/MACD</text>
+
+        <rect x="345" y="525" width="120" height="50" rx="6" fill="rgba(251,146,60,0.3)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="405" y="547" fill="white" font-size="10" font-weight="600" text-anchor="middle">SwingReporter</text>
+        <text x="405" y="563" fill="#94a3b8" font-size="8" text-anchor="middle">过滤+通知</text>
+
+        <rect x="480" y="525" width="120" height="50" rx="6" fill="rgba(251,146,60,0.3)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="540" y="547" fill="white" font-size="10" font-weight="600" text-anchor="middle">腾讯K线</text>
+        <text x="540" y="563" fill="#94a3b8" font-size="8" text-anchor="middle">东财备用源</text>
+
+        <rect x="75" y="590" width="690" height="30" rx="6" fill="rgba(251,146,60,0.2)" stroke="#fb923c" stroke-width="1"/>
+        <text x="420" y="608" fill="white" font-size="8" text-anchor="middle">10只ETF: 510300/510500/159915/588000/512480/512890/513180/512000/512170/518880</text>
+
+        <!-- Swing 到通知 -->
+        <line x1="700" y1="560" x2="750" y2="560" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead-rose)"/>
+        <text x="720" y="552" fill="#fb923c" font-size="8">冰点/沸点</text>
+
+        <!-- ==================== 宿主机层 ==================== -->
+        <text x="50" y="670" fill="#94a3b8" font-size="10" font-weight="600">宿主机 (Ubuntu VM-0-11-ubuntu)</text>
+
+        <rect x="50" y="685" width="1320" height="120" rx="8" fill="rgba(30,41,59,0.3)" stroke="#475569" stroke-width="1.5" stroke-dasharray="4,4"/>
+
+        <!-- Nginx -->
+        <rect x="70" y="700" width="140" height="60" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="140" y="722" fill="white" font-size="10" font-weight="600" text-anchor="middle">Nginx</text>
+        <text x="140" y="738" fill="#94a3b8" font-size="8" text-anchor="middle">反向代理 :80/:443</text>
+        <text x="140" y="752" fill="#94a3b8" font-size="8" text-anchor="middle">→ dashboard:8081</text>
+
+        <!-- 端口映射 -->
+        <rect x="230" y="700" width="160" height="60" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="310" y="722" fill="white" font-size="10" font-weight="600" text-anchor="middle">端口映射</text>
+        <text x="310" y="738" fill="#94a3b8" font-size="8" text-anchor="middle">127.0.0.1:8080→monitor</text>
+        <text x="310" y="752" fill="#94a3b8" font-size="8" text-anchor="middle">127.0.0.1:9091→prometheus</text>
+
+        <!-- SQLite 数据卷 -->
+        <rect x="410" y="700" width="200" height="60" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="510" y="722" fill="white" font-size="10" font-weight="600" text-anchor="middle">SQLite 数据卷</text>
+        <text x="510" y="738" fill="#94a3b8" font-size="8" text-anchor="middle">battlefield_state.db</text>
+        <text x="510" y="752" fill="#94a3b8" font-size="8" text-anchor="middle">price_history.db / swing_macro.db</text>
+
+        <!-- COS 备份 -->
+        <rect x="630" y="700" width="180" height="60" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="720" y="722" fill="white" font-size="10" font-weight="600" text-anchor="middle">COS 自动备份</text>
+        <text x="720" y="738" fill="#94a3b8" font-size="8" text-anchor="middle">每天 02:30 crontab</text>
+        <text x="720" y="752" fill="#94a3b8" font-size="8" text-anchor="middle">jiejiezi-backup-1259080705</text>
+
+        <!-- systemd 备用 -->
+        <rect x="830" y="700" width="140" height="60" rx="6" fill="rgba(30,41,59,0.3)" stroke="#475569" stroke-width="1.5"/>
+        <text x="900" y="722" fill="#94a3b8" font-size="10" font-weight="600" text-anchor="middle">systemd (备用)</text>
+        <text x="900" y="738" fill="#64748b" font-size="8" text-anchor="middle">stock-radar.service</text>
+        <text x="900" y="752" fill="#64748b" font-size="8" text-anchor="middle">swing-eod.timer</text>
+
+        <!-- mihomo 宿主机配置 -->
+        <rect x="990" y="700" width="160" height="60" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="1070" y="722" fill="white" font-size="10" font-weight="600" text-anchor="middle">mihomo 配置</text>
+        <text x="1070" y="738" fill="#94a3b8" font-size="8" text-anchor="middle">~/mihomo/config.yaml</text>
+        <text x="1070" y="752" fill="#94a3b8" font-size="8" text-anchor="middle">挂载到容器 :ro</text>
+
+        <!-- 宿主机到 Docker 网络 -->
+        <line x1="140" y1="700" x2="140" y2="670" stroke="#475569" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="310" y1="700" x2="310" y2="670" stroke="#475569" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="510" y1="700" x2="510" y2="670" stroke="#475569" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- ==================== 用户访问层 ==================== -->
+        <rect x="250" y="820" width="120" height="50" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="310" y="842" fill="white" font-size="10" font-weight="600" text-anchor="middle">用户浏览器</text>
+        <text x="310" y="858" fill="#94a3b8" font-size="8" text-anchor="middle">http://111.229.252.186</text>
+
+        <rect x="450" y="820" width="120" height="50" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="510" y="842" fill="white" font-size="10" font-weight="600" text-anchor="middle">Telegram Bot</text>
+        <text x="510" y="858" fill="#94a3b8" font-size="8" text-anchor="middle">告警推送</text>
+
+        <rect x="650" y="820" width="120" height="50" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="710" y="842" fill="white" font-size="10" font-weight="600" text-anchor="middle">Grafana 访问</text>
+        <text x="710" y="858" fill="#94a3b8" font-size="8" text-anchor="middle">:3000</text>
+
+        <!-- 用户到 Nginx -->
+        <line x1="310" y1="820" x2="310" y2="760" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="510" y1="820" x2="510" y2="760" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="710" y1="820" x2="710" y2="760" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+        <!-- ==================== 降级链标注 ==================== -->
+        <text x="950" y="520" fill="#fbbf24" font-size="10" font-weight="600">数据源降级链</text>
+        <rect x="950" y="535" width="320" height="80" rx="6" fill="rgba(120,53,15,0.15)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="960" y="555" fill="white" font-size="8">实时行情: 东财批量 → 腾讯批量 → 新浪批量</text>
+        <text x="960" y="575" fill="white" font-size="8">K线历史: 东财K线 → 腾讯K线(fqkline) → AkShare</text>
+        <text x="960" y="595" fill="#94a3b8" font-size="8">东财 push2 容器内被阻断 → 腾讯K线兜底</text>
+
+        <!-- ==================== 容器清单 ==================== -->
+        <text x="950" y="640" fill="#60a5fa" font-size="10" font-weight="600">Docker Compose 服务清单</text>
+        <rect x="950" y="655" width="320" height="110" rx="6" fill="rgba(96,165,250,0.05)" stroke="#60a5fa" stroke-width="1"/>
+        <text x="960" y="675" fill="#34d399" font-size="8">radar-monitor :8080 — 实时监控引擎</text>
+        <text x="960" y="690" fill="#22d3ee" font-size="8">radar-dashboard :8081 — Web仪表板</text>
+        <text x="960" y="705" fill="#fbbf24" font-size="8">radar-ml-serve :8090/8091 — 模型推理</text>
+        <text x="960" y="720" fill="#a78bfa" font-size="8">radar-prometheus :9091 — 指标收集</text>
+        <text x="960" y="735" fill="#a78bfa" font-size="8">radar-grafana :3000 — 可视化</text>
+        <text x="960" y="750" fill="#a78bfa" font-size="8">radar-redis :6379 — 缓存</text>
+        <text x="960" y="765" fill="#60a5fa" font-size="8">radar-mihomo :7890/7891 — 代理</text>
+
+        <!-- ==================== Legend ==================== -->
+        <text x="1300" y="30" fill="white" font-size="10" font-weight="600" text-anchor="end">Legend</text>
+        <rect x="1230" y="42" width="14" height="10" rx="2" fill="url(#docker-pattern)" stroke="#34d399" stroke-width="1"/>
+        <text x="1250" y="50" fill="#94a3b8" font-size="8">引擎容器</text>
+        <rect x="1230" y="58" width="14" height="10" rx="2" fill="url(#docker-pattern)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="1250" y="66" fill="#94a3b8" font-size="8">前端容器</text>
+        <rect x="1230" y="74" width="14" height="10" rx="2" fill="url(#docker-pattern)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="1250" y="82" fill="#94a3b8" font-size="8">infra容器</text>
+        <rect x="1230" y="90" width="14" height="10" rx="2" fill="url(#docker-pattern)" stroke="#60a5fa" stroke-width="1"/>
+        <text x="1250" y="98" fill="#94a3b8" font-size="8">代理容器</text>
+        <rect x="1230" y="106" width="14" height="10" rx="2" fill="url(#docker-pattern)" stroke="#fb923c" stroke-width="1"/>
+        <text x="1250" y="114" fill="#94a3b8" font-size="8">批处理</text>
+        <rect x="1230" y="122" width="14" height="10" rx="2" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1"/>
+        <text x="1250" y="130" fill="#94a3b8" font-size="8">宿主机</text>
+
+      </svg>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>radar-monitor (8080)</h3>
+        </div>
+        <ul>
+          <li>• 9只A股价格监控 (above/below)</li>
+          <li>• 6个ML模型预测 (gRPC → ml-serve)</li>
+          <li>• RL策略组合优化 (SB3)</li>
+          <li>• 30分钟告警冷却 + 断路器降级</li>
+          <li>• SQLite状态持久化 (bind mount)</li>
+          <li>• Swing EOD 批处理 (同容器)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>radar-dashboard (8081)</h3>
+        </div>
+        <ul>
+          <li>• Flask 3.0 + SSE实时推送</li>
+          <li>• /api/status 系统状态API</li>
+          <li>• /api/stream 事件流</li>
+          <li>• AlertManager + TelegramNotifier</li>
+          <li>• 绑定 0.0.0.0:8081 (容器内)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>radar-ml-serve (8090/8091)</h3>
+        </div>
+        <ul>
+          <li>• 6个sklearn模型 (.pkl)</li>
+          <li>• gRPC + HTTP 双协议</li>
+          <li>• Redis缓存预测结果</li>
+          <li>• grpcio 1.81.0</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>可观测性栈</h3>
+        </div>
+        <ul>
+          <li>• radar-prometheus :9091</li>
+          <li>• radar-grafana :3000</li>
+          <li>• radar-redis :6379 (AOF)</li>
+          <li>• 宿主机端口映射访问</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot blue"></div>
+          <h3>radar-mihomo 代理</h3>
+        </div>
+        <ul>
+          <li>• 容器内 http://mihomo:7890</li>
+          <li>• allow-lan: true, bind 0.0.0.0</li>
+          <li>• 配置挂载 :ro (宿主机)</li>
+          <li>• 容器内 Google 200 OK 验证</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot orange"></div>
+          <h3>波段趋势 EOD</h3>
+        </div>
+        <ul>
+          <li>• 10只ETF (宽基/行业/港股/避险)</li>
+          <li>• 日线: 放量突破MA60</li>
+          <li>• 周线: MACD金叉</li>
+          <li>• 宏观情绪: 成交额/两融/涨跌停</li>
+          <li>• 腾讯K线备用 (东财被阻断)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>部署与运维</h3>
+        </div>
+        <ul>
+          <li>• Docker Compose 7服务统一编排</li>
+          <li>• radar-net bridge 网络互通</li>
+          <li>• SQLite bind mount 持久化</li>
+          <li>• COS 每天 02:30 自动备份</li>
+          <li>• systemd 已禁用 (备用)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>数据源降级链</h3>
+        </div>
+        <ul>
+          <li>• 实时: 东财批量 → 腾讯 → 新浪</li>
+          <li>• K线: 东财 → 腾讯fqkline → AkShare</li>
+          <li>• 东财 push2 容器内被阻断</li>
+          <li>• 腾讯/新浪 容器内正常工作</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">
+      Trading Radar v3.0 • Docker Compose + 7 Containers • Python 3.12 + Flask + gRPC + Redis + Prometheus + Grafana
+    </p>
+  </div>
+</body>
+</html>

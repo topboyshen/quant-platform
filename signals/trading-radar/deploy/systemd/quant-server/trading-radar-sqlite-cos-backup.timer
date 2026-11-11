@@ -1,0 +1,12 @@
+[Unit]
+Description=Trading Radar SQLite → COS daily backup timer
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+AccuracySec=5min
+RandomizedDelaySec=5min
+Unit=trading-radar-sqlite-cos-backup.service
+
+[Install]
+WantedBy=timers.target

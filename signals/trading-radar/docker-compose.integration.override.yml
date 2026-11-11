@@ -1,0 +1,100 @@
+services:
+  dashboard:
+    image: trading-radar-dashboard:2026.07.28.1
+    environment:
+      - DASHBOARD_API_TOKEN_FILE=/run/secrets/dashboard_api_token
+    secrets:
+      - dashboard_api_token
+
+  monitor:
+    image: trading-radar-monitor:2026.08.02-secrets.1
+
+  integration-api:
+    image: trading-radar-integration:etf-named-triggers-20261106.1
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: deploy/etf-diagnostics-20260916/Dockerfile.integration
+    container_name: radar-integration-api
+    mem_limit: 192m
+    cpus: 0.35
+    restart: unless-stopped
+    init: true
+    read_only: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command:
+      - gunicorn
+      - --no-control-socket
+      - --bind=0.0.0.0:8092
+      - --workers=2
+      - --threads=2
+      - --timeout=30
+      - --worker-tmp-dir=/dev/shm
+      - --access-logfile=/dev/null
+      - --error-logfile=-
+      - dashboard.integration_app:app
+    environment:
+      - RADAR_INTEGRATION_TOKEN_FILE=/run/secrets/radar_integration_token
+      - RADAR_WORKBENCH_TOKEN_FILE=/run/secrets/radar_workbench_token
+      - RADAR_RISK_STATE_FILE=/app/data/radar_risk_state.json
+      - PYTHONDONTWRITEBYTECODE=1
+      - RADAR_WORKBENCH_HERMES_DIR=/app/hermes-state
+      - RADAR_WORKBENCH_PROFIT_REPORTS_DIR=/app/hermes-reports
+      - RADAR_WORKBENCH_PROFIT_WHITELIST=026a1083d9e0/latest.md,ec6c86fd856c/latest.md
+      - NNG8_BUNDLE_FILE=/app/nng8-readonly/current.json
+      - NNG8_SYNC_HEALTH_FILE=/app/nng8-readonly/sync_health.json
+    volumes:
+      - ./config.swing.json:/app/config.swing.json:ro
+      - ./data:/app/data:ro
+      - ./data/hermes-workbench-allowlist/workbench-evidence/digest-view:/app/data/approved-signals:ro
+      - ./data/hermes-workbench-allowlist/workbench-evidence/release:/app/release:ro
+      - ./data/hermes-workbench-allowlist/hermes-state:/app/hermes-state:ro
+      - ./data/hermes-workbench-allowlist/hermes-reports:/app/hermes-reports:ro
+      - /var/lib/quant-nng8-sync-staging:/app/nng8-readonly:ro
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    secrets:
+      - radar_integration_token
+      - radar_workbench_token
+    networks:
+      integration-net:
+        ipv4_address: 172.28.92.2
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8092/ready', timeout=2)
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+    group_add:
+      - "978"
+networks:
+  integration-net:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.28.92.0/29
+
+secrets:
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password
+  telegram_bot_token:
+    file: ./secrets/telegram_bot_token
+  dashboard_api_token:
+    file: ./secrets/dashboard_api_token
+  radar_integration_token:
+    file: ./secrets/radar_integration_token

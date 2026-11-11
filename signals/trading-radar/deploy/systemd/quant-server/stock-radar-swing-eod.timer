@@ -1,0 +1,12 @@
+[Unit]
+Description=Trading Radar — Quant Swing EOD at 15:30
+
+[Timer]
+OnCalendar=Mon..Fri 15:30
+Persistent=true
+AccuracySec=30s
+RandomizedDelaySec=0
+Unit=stock-radar-swing-eod.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the Trading Radar Mihomo egress watchdog every five minutes
+
+[Timer]
+OnActiveSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+RandomizedDelaySec=15s
+Persistent=false
+Unit=stock-radar-mihomo-egress-watchdog.service
+
+[Install]
+WantedBy=timers.target

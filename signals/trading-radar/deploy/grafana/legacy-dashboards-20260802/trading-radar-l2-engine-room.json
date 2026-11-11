@@ -1,0 +1,190 @@
+{
+  "annotations": {"list": []},
+  "description": "L2 引擎室：Tick-to-Trade 热力图/尾延迟与 ML-Serve 预测缓存命中率。TTT 来自 radar_monitor（prometheus-client）；缓存命中率来自 radar_ml_serve_*，需在 Prometheus 中 scrape ML-Serve（默认 :8090）。平时无需盯盘，L0 红灯或排障时下钻。",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "code": {"language": "markdown", "showLineNumbers": false, "showMiniMap": false},
+        "content": "### 🔧 L2 视界：引擎室\n**Tick-to-Trade**：行情进入监控进程 → 策略产出告警/信号的端到端延迟（事件模式由 PushAdapter 计时）。颜色变深、高桶变长 ≈ 系统拥堵或尾部恶化。\n\n**MX Feature Cache**：即 ML-Serve 侧 `radar_ml_serve_cache_*`（预测结果缓存）。命中率跌破 **80%** 多为冷启动未预热或缓存键抖动，推理会频繁打满特征/模型。",
+        "mode": "markdown"
+      },
+      "pluginVersion": "10.0.0",
+      "title": "",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3},
+      "id": 2,
+      "title": "Tick-to-Trade 延迟（ms）",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"hideFrom": {"legend": false, "tooltip": false, "viz": false}},
+          "unit": "ms"
+        }
+      },
+      "gridPos": {"h": 11, "w": 24, "x": 0, "y": 4},
+      "id": 10,
+      "options": {
+        "calculate": false,
+        "cellGap": 2,
+        "color": {"exponent": 0.5, "fill": "dark-orange", "mode": "scheme", "reverse": false, "scale": "exponential", "scheme": "Oranges", "steps": 64},
+        "exemplars": {"color": "rgba(255,0,255,0.7)"},
+        "filterValues": {"le": 1e-9},
+        "legend": {"show": true},
+        "rowsFrame": {"layout": "auto"},
+        "tooltip": {"mode": "single", "showColorScale": true, "yHistogram": false},
+        "yAxis": {"axisPlacement": "left", "reverse": true}
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "sum(rate(radar_tick_to_trade_latency_milliseconds_bucket[$__rate_interval])) by (le)",
+          "format": "heatmap",
+          "legendFormat": "{{le}}",
+          "refId": "A"
+        }
+      ],
+      "title": "TTT 分布热力图（Histogram bucket）",
+      "type": "heatmap",
+      "description": "桶为毫秒上界；深色表示该延迟区间请求更频繁。事件模式未开启时可能无样本。"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "unit": "ms"},
+        "overrides": []
+      },
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 15},
+      "id": 11,
+      "options": {
+        "legend": {"calcs": ["mean", "max", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(radar_tick_to_trade_latency_milliseconds_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(radar_tick_to_trade_latency_milliseconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(radar_tick_to_trade_latency_milliseconds_bucket[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "title": "TTT 尾部分位（尾部变长 = 卡顿/排队）",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 24},
+      "id": 3,
+      "title": "MX Feature Cache（ML-Serve 预测缓存）",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "需 Prometheus scrape **ML-Serve** `/metrics`。未启用 Redis/Memcached 时可能恒为 1 或无 miss。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 3,
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.5},
+              {"color": "orange", "value": 0.7},
+              {"color": "green", "value": 0.8}
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": {"h": 8, "w": 10, "x": 0, "y": 25},
+      "id": 20,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "sum(rate(radar_ml_serve_cache_hits_total[10m])) / (sum(rate(radar_ml_serve_cache_hits_total[10m])) + sum(rate(radar_ml_serve_cache_misses_total[10m])) + 1e-9)",
+          "legendFormat": "hit_ratio",
+          "refId": "A"
+        }
+      ],
+      "title": "特征缓存命中率（Gauge · 目标 ≥80%）",
+      "type": "gauge"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "unit": "ops"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 14, "x": 10, "y": 25},
+      "id": 21,
+      "options": {
+        "legend": {"calcs": ["mean"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "rate(radar_ml_serve_cache_hits_total[5m])",
+          "legendFormat": "hits/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(radar_ml_serve_cache_misses_total[5m])",
+          "legendFormat": "misses/s",
+          "refId": "B"
+        }
+      ],
+      "title": "缓存命中 / 未命中速率（辅助判因）",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["trading-radar", "l2", "ttt", "ml-serve"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "Asia/Shanghai",
+  "title": "Trading Radar — L2 引擎室（TTT & 特征缓存）",
+  "uid": "trading-radar-l2-engine-room",
+  "version": 1,
+  "weekStart": ""
+}

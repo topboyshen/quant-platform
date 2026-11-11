@@ -1,0 +1,17 @@
+[Unit]
+Description=Trading Radar — Swing EOD terminal audit watchdog
+After=network-online.target radar-swing-eod.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/opt/trading_radar
+Environment=PYTHONPATH=/opt/trading_radar
+EnvironmentFile=-/opt/trading_radar/.env
+ExecStart=/opt/trading_radar/.venv/bin/python /opt/trading_radar/scripts/check_swing_eod_terminal.py --config /opt/trading_radar/config.swing.json
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/trading_radar/data /opt/trading_radar/logs

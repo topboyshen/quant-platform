@@ -1,0 +1,43 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  # User policy 2026-09-08: these warnings are audit-only, with no expiry.
+  routes:
+  - receiver: quant-warning-audit-only
+    matchers:
+    - severity="warning"
+    - alertname=~"^(QuantDatasourceSilentFallbackRisk|QuantPrimaryDatasourceHighFailureRate|QuantTradingCalendarRefreshOverdue|QuantDatasourceEODEvidenceUnknown)$"
+    - instance=~"^(node-exporter:9100|runtime-observer:9116)$"
+    continue: false
+  receiver: telegram
+  group_by: ['alertname', 'severity']
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+
+receivers:
+  - name: quant-warning-audit-only
+  - name: telegram
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
+        chat_id: 6325485529
+        api_url: https://api.telegram.org
+        parse_mode: HTML
+        send_resolved: true
+        http_config:
+          proxy_url: http://host.docker.internal:7890
+        message: |-
+          {{ range .Alerts }}
+          <b>{{ .Labels.alertname }}</b> [{{ .Status }}]
+          {{ if .Labels.severity }}severity={{ .Labels.severity }}{{ end }}
+          {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end }}
+
+inhibit_rules:
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ['alertname']

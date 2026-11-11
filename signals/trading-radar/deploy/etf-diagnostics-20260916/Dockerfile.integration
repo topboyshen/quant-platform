@@ -1,0 +1,8 @@
+# Exact local production base; do not rebuild dependencies or the backend.
+FROM trading-radar-integration:personal-2026.09.12-etf-pool.2
+ARG SOURCE_SHA256
+LABEL org.opencontainers.image.description="Run-bound ETF trigger diagnostics and qualified history; read-only API" \
+      org.opencontainers.image.revision="${SOURCE_SHA256}" \
+      quant.release="personal-2026.09.16-etf-diagnostics.1"
+COPY dashboard/etf_pool.py /app/dashboard/etf_pool.py
+RUN python -m py_compile /app/dashboard/etf_pool.py

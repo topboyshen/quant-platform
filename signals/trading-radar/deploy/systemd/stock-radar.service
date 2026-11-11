@@ -1,0 +1,36 @@
+[Unit]
+Description=Trading Radar — 监控主进程（radar_monitor_v3.py，不含独立 ML 端口）
+Documentation=file:///opt/trading_radar/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 按实际部署修改 User / 路径 / 虚拟环境
+User=ubuntu
+WorkingDirectory=/opt/trading_radar
+Environment=PYTHONPATH=/opt/trading_radar
+Environment=HEALTH_HOST=127.0.0.1
+Environment=RADAR_ALL_PROXY=http://127.0.0.1:7890
+Environment=HTTP_PROXY=
+Environment=HTTPS_PROXY=
+Environment=ALL_PROXY=
+Environment=http_proxy=
+Environment=https_proxy=
+Environment=all_proxy=
+Environment=NO_PROXY=127.0.0.1,localhost
+Environment=no_proxy=127.0.0.1,localhost
+# 推理拆到 radar-ml-serve 时设置，例如: Environment=RADAR_ML_SERVE_URL=http://127.0.0.1:8090
+EnvironmentFile=-/opt/trading_radar/.env
+ExecStart=/opt/trading_radar/.venv/bin/python /opt/trading_radar/radar_monitor_v3.py --config /opt/trading_radar/config.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/trading_radar
+
+[Install]
+WantedBy=multi-user.target
+Alias=radar-monitor.service

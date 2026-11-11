@@ -1,0 +1,103 @@
+# 默认上来的服务: redis + ml-serve + prometheus + grafana
+#
+# 不上来的：
+#   - monitor    生产用 systemd 跑 radar_monitor_v3.py（详见 deploy/systemd/）
+#                这里保留 build 上下文做 disaster-recovery；用 profile=full 显式启用：
+#                docker compose -f deploy/docker-compose.yml --profile full up -d
+#   - dashboard  生产用 systemd（stock-radar-dashboard.service），compose 里已删除
+#
+# 用法:
+#   docker compose -f deploy/docker-compose.yml up -d              # redis + ml-serve + prom + grafana
+#   docker compose -f deploy/docker-compose.yml --profile full up -d  # 全栈（含容器化 monitor）
+#
+# 访问:
+#   Grafana    http://localhost:3000   默认 admin / admin
+#   Prometheus http://localhost:9090
+#   ML API     http://localhost:8090/v1/predict
+#   Redis      127.0.0.1:6379          仅本机暴露，便于宿主机 hermes / 测试连接
+#   Monitor    /metrics 在 monitor:8080（仅 --profile full 时存在；systemd 版直接看 8080）
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      # 只绑 127.0.0.1，避免外网误暴露；hermes 等宿主机进程可直连
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - radar-redis-data:/data
+
+  ml-serve:
+    build:
+      context: ..
+      dockerfile: Dockerfile.ml-serve
+    restart: unless-stopped
+    depends_on:
+      - redis
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - ../models:/app/models:ro
+    environment:
+      RADAR_ML_MODEL_DIR: /app/models
+      ML_SERVE_HOST: "0.0.0.0"
+      ML_SERVE_PORT: "8090"
+      ML_SERVE_CACHE_BACKEND: redis
+      ML_SERVE_REDIS_URL: redis://redis:6379/0
+      ML_SERVE_CACHE_TTL_SEC: "300"
+
+  monitor:
+    # 默认 profile 不包含 monitor —— 生产由 systemd 拉起
+    profiles: ["full"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.monitor-slim
+    restart: unless-stopped
+    depends_on:
+      - ml-serve
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ../config.json:/app/config.json:ro
+      - ../models:/app/models:ro
+    environment:
+      PYTHONPATH: /app
+      RADAR_ML_SERVE_URL: http://ml-serve:8090
+      HEALTH_HOST: "0.0.0.0"
+      HEALTH_PORT: "8080"
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    depends_on:
+      - ml-serve
+    ports:
+      - "127.0.0.1:9090:9090"
+    # 让容器能用 host.docker.internal 抓到宿主机 systemd 上的 monitor:8080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./prometheus/prometheus-docker.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - radar-prom-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - radar-grafana-data:/var/lib/grafana
+
+volumes:
+  radar-redis-data:
+  radar-prom-data:
+  radar-grafana-data:

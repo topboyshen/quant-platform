@@ -1,0 +1,44 @@
+name: Docker Build
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build dashboard image
+        run: |
+          docker build --build-arg PYTHON_BASE_IMAGE=python:3.12-slim-bookworm -f Dockerfile.dashboard -t trading-radar-dashboard:latest .
+
+  build-monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Dockerfile.monitor installs torch + stable-baselines3; the default
+      # ubuntu-latest free space (~14 GB) is not enough and the runner dies
+      # with "No space left on device" mid-build. Reclaim the preinstalled
+      # toolchains the image build does not use.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo apt-get clean
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build monitor image
+        run: |
+          docker build --build-arg PYTHON_BASE_IMAGE=python:3.12-slim-bookworm -f Dockerfile.monitor -t trading-radar-monitor:latest .

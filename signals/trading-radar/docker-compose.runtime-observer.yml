@@ -1,0 +1,27 @@
+# Standalone project: never pass business compose files to this deployment.
+services:
+  runtime-observer:
+    image: sha256:b74bfc86e668f0d0ee9fef99563a65c90444a1649d859fce79a7402797b432e2
+    container_name: radar-runtime-observer
+    restart: unless-stopped
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    cpus: 0.10
+    pids_limit: 64
+    volumes:
+      - ./data:/app/data:ro
+    networks:
+      radar-net:
+        aliases: [runtime-observer]
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+networks:
+  radar-net:
+    external: true
+    name: trading-radar_radar-net

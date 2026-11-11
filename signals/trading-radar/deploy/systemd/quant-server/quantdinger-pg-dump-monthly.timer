@@ -1,0 +1,12 @@
+[Unit]
+Description=QuantDinger PostgreSQL monthly escape-hatch dump timer
+
+[Timer]
+OnCalendar=monthly
+Persistent=true
+AccuracySec=1h
+RandomizedDelaySec=30min
+Unit=quantdinger-pg-dump-monthly.service
+
+[Install]
+WantedBy=timers.target

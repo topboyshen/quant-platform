@@ -1,0 +1,304 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 100,
+      "panels": [],
+      "title": "阵地状态机（来自 battlefield_state / RL / RL 告警冷却）",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "blue", "value": null},
+              {"color": "green", "value": 1}
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 1},
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "radar_battlefield_lane_symbols{lane=\"empty_wait\"}",
+          "legendFormat": "空仓等待",
+          "refId": "A"
+        }
+      ],
+      "title": "空仓等待（持仓股数=0）",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "orange", "value": null},
+              {"color": "yellow", "value": 1}
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 1},
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "radar_battlefield_lane_symbols{lane=\"has_position\"}",
+          "legendFormat": "持仓",
+          "refId": "A"
+        }
+      ],
+      "title": "已建仓位（持仓股数>0）",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "purple", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 1},
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "radar_battlefield_lane_symbols{lane=\"rl_takeprofit_cooldown\"}",
+          "legendFormat": "RL冷却",
+          "refId": "A"
+        }
+      ],
+      "title": "RL 告警冷却（近似止盈静默窗）",
+      "type": "stat",
+      "description": "AlertCooldownManager key ``rl``（合并告警路径）；止盈建议等多走 RL 时可对照盯盘。"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 7},
+      "id": 101,
+      "panels": [],
+      "title": "胜率 / 盈亏 / 回撤（账户 + strategy_tag）",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "palette-classic"},
+          "custom": {"axisPlacement": "auto"},
+          "unit": "currencyCNY"
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byFrameRefID", "options": "B"},
+            "properties": [
+              {"id": "unit", "value": "percentunit"},
+              {"id": "custom.axisPlacement", "value": "right"},
+              {"id": "custom.axisSoftMin", "value": 0},
+              {"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}
+            ]
+          }
+        ]
+      },
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 8},
+      "id": 10,
+      "options": {
+        "legend": {"calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "expr": "radar_portfolio_net_profit_cny",
+          "legendFormat": "累计净利（总市值−初始现金）",
+          "refId": "A"
+        },
+        {
+          "expr": "radar_portfolio_max_drawdown_ratio",
+          "legendFormat": "回撤",
+          "refId": "B"
+        }
+      ],
+      "title": "净利（左轴）与最大回撤（右轴）",
+      "type": "timeseries",
+      "description": "回撤相对进程内观测到的权益峰值；重启后峰值重置。"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "unit": "currencyCNY"}
+      },
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 18},
+      "id": 11,
+      "options": {
+        "legend": {"calcs": ["last"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "expr": "radar_strategy_tag_open_unrealized_pnl_cny",
+          "legendFormat": "{{strategy_tag}}",
+          "refId": "A"
+        }
+      ],
+      "title": "按策略标签拆分的浮动盈亏（targets.strategy_tag）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {"unit": "short"},
+        "overrides": []
+      },
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 18},
+      "id": 12,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "expr": "radar_strategy_tag_trade_wins_total",
+          "legendFormat": "{{strategy_tag}} wins",
+          "refId": "A"
+        },
+        {
+          "expr": "radar_strategy_tag_trade_losses_total",
+          "legendFormat": "{{strategy_tag}} losses",
+          "refId": "B"
+        }
+      ],
+      "title": "平仓计数",
+      "type": "timeseries",
+      "description": "由 PortfolioTracker.execute_trade(close) 在平仓后递增；接入实盘时在成交回调同样打点。"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"align": "auto", "inspect": false},
+          "decimals": 2,
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 27},
+      "id": 13,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false},
+        "showHeader": true,
+        "sortBy": [{"desc": false, "displayName": "strategy_tag"}]
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum by (strategy_tag) (radar_strategy_tag_trade_wins_total) / sum by (strategy_tag) (radar_strategy_tag_trade_wins_total + radar_strategy_tag_trade_losses_total)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "平仓胜率（按 strategy_tag）",
+      "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true}, "renameByName": {"Value": "win_rate"}}}],
+      "type": "table",
+      "description": "无平仓样本时可能无数据或 NaN。"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 33},
+      "id": 102,
+      "panels": [],
+      "title": "滑点（bps）",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 34},
+      "id": 20,
+      "options": {
+        "legend": {"calcs": ["mean"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, strategy_tag) (rate(radar_order_slippage_bps_bucket[15m])))",
+          "legendFormat": "p95 {{strategy_tag}}",
+          "refId": "A"
+        }
+      ],
+      "title": "成交价偏离预期 — p95 滑点（基点）",
+      "type": "timeseries",
+      "description": "execute_trade 传入 expected_price 时记入；实盘撮合回填同理。"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["trading-radar", "battlefield", "prometheus"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "Asia/Shanghai",
+  "title": "Trading Radar — 战局统筹（策略表现）",
+  "uid": "trading-radar-battlefield",
+  "version": 2,
+  "weekStart": ""
+}

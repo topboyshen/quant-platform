@@ -1,0 +1,18 @@
+[Unit]
+Description=Refresh or repair stale A-share four-index close cache
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/trading-radar
+Environment=PYTHONPATH=/home/ubuntu/trading-radar
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /home/ubuntu/trading-radar/scripts/update_index_close_cache.py --repair-if-stale
+TimeoutStartSec=3min
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0022

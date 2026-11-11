@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+readonly root=/home/ubuntu/trading-radar
+readonly pin_file="$root/deploy/PRODUCTION_PIN.md"
+readonly expected_compose_file='docker-compose.yml:docker-compose.integration.override.yml:docker-compose.quantdinger.yml:docker-compose.runtime-cleanup.yml'
+readonly layers=(
+  docker-compose.yml
+  docker-compose.integration.override.yml
+  docker-compose.quantdinger.yml
+  docker-compose.runtime-cleanup.yml
+)
+readonly guarded_services=(quantdinger-backend quantdinger-frontend)
+
+# Shared advisory release lock. Direct Docker/config writers remain outside it.
+release_lock_required=1
+case "${1:-}" in
+  config)
+    # Some config options write files, so only these exact read forms bypass.
+    if (( $# == 1 )) || [[ "$*" == "config --quiet" ]] || [[ "$*" == "config --format json" ]]; then
+      release_lock_required=0
+    fi
+    ;;
+  ps|images|logs|ls|version|help|top|events) release_lock_required=0 ;;
+esac
+if (( release_lock_required )); then
+  if [[ -n "${TRADING_RADAR_RELEASE_LOCK_FD+x}" ]]; then
+    /usr/bin/python3 -I /usr/local/libexec/trading-radar-release-lock.py assert
+  else
+    exec /usr/bin/python3 -I /usr/local/libexec/trading-radar-release-lock.py wrapper -- "$@"
+  fi
+fi
+
+cd "$root"
+actual_compose_file="$(sed -n 's/^COMPOSE_FILE=//p' .env)"
+if [[ "$actual_compose_file" != "$expected_compose_file" ]]; then
+  echo "FAIL: production COMPOSE_FILE is missing, duplicated, or not the canonical four-layer set" >&2
+  exit 78
+fi
+
+compose_args=()
+for layer in "${layers[@]}"; do
+  if [[ ! -f "$root/$layer" || -L "$root/$layer" ]]; then
+    echo "FAIL: canonical Compose layer is missing, not regular, or a symlink: $layer" >&2
+    exit 78
+  fi
+  compose_args+=( -f "$root/$layer" )
+done
+
+# --- PRODUCTION_PIN release gate for QuantDinger rebuilds ---
+# Refuse build / --build of quantdinger-backend|frontend unless ALLOW_UNPINNED_BUILD=1.
+# Emergency override (does NOT update the pin by itself):
+#   ALLOW_UNPINNED_BUILD=1 /home/ubuntu/bin/trading-radar-compose build quantdinger-backend
+guard_quantdinger_rebuild() {
+  local args=("$@")
+  local has_build=0
+  local i=0
+  local svc
+  local targeted=()
+  local building_unguarded=0
+
+  while (( i < ${#args[@]} )); do
+    case "${args[$i]}" in
+      build)
+        has_build=1
+        ((i++)) || true
+        while (( i < ${#args[@]} )); do
+          case "${args[$i]}" in
+            -*)
+              ;;
+            *)
+              targeted+=("${args[$i]}")
+              ;;
+          esac
+          ((i++)) || true
+        done
+        break
+        ;;
+      --build)
+        has_build=1
+        ((i++)) || true
+        ;;
+      up|create|run)
+        # collect following non-flag tokens as potential service names later
+        ((i++)) || true
+        while (( i < ${#args[@]} )); do
+          case "${args[$i]}" in
+            --build)
+              has_build=1
+              ;;
+            --)
+              ((i++)) || true
+              break
+              ;;
+            -*)
+              ;;
+            *)
+              targeted+=("${args[$i]}")
+              ;;
+          esac
+          ((i++)) || true
+        done
+        break
+        ;;
+      *)
+        ((i++)) || true
+        ;;
+    esac
+  done
+
+  if (( has_build == 0 )); then
+    return 0
+  fi
+
+  if [[ "${ALLOW_UNPINNED_BUILD:-0}" == "1" ]]; then
+    echo "WARN: ALLOW_UNPINNED_BUILD=1 — skipping PRODUCTION_PIN rebuild gate" >&2
+    return 0
+  fi
+
+  # If no services named, compose may rebuild any service with a build: key.
+  # QuantDinger prod services are image-pinned, but still block explicit targets
+  # and warn/block bare `build` / `up --build` when a guarded name appears or
+  # when the command is a bare rebuild of everything.
+  local hit=0
+  if ((${#targeted[@]} == 0)); then
+    hit=1
+  else
+    for svc in "${targeted[@]}"; do
+      for g in "${guarded_services[@]}"; do
+        if [[ "$svc" == "$g" ]]; then
+          hit=1
+        fi
+      done
+    done
+  fi
+
+  if (( hit == 0 )); then
+    return 0
+  fi
+
+  echo "FAIL: refusing QuantDinger rebuild — production is pin-gated by deploy/PRODUCTION_PIN.md" >&2
+  echo "  guarded services: ${guarded_services[*]}" >&2
+  echo "  pin file: $pin_file" >&2
+  if [[ -f "$pin_file" ]]; then
+    echo "  pin head:" >&2
+    sed -n '1,25p' "$pin_file" >&2 || true
+  fi
+  echo "  emergency override: ALLOW_UNPINNED_BUILD=1 $0 $*" >&2
+  echo "  after an intentional rebuild, update PRODUCTION_PIN.md before clearing the override habit." >&2
+  exit 78
+}
+
+# A caller cannot bypass the canonical layers/project checked above.
+for arg in "$@"; do
+  case "$arg" in
+    -f*|--file*|-p|--project-name*|--project-directory*|--env-file*)
+      echo "FAIL: Compose project/layer overrides are forbidden by the production wrapper" >&2
+      exit 78 ;;
+  esac
+done
+# Keep command dispatch explicit; global options could otherwise hide a mutating command.
+if [[ "${1:-}" == -* ]]; then
+  echo "FAIL: put the Compose command first (canonical global options are wrapper-owned)" >&2
+  exit 78
+fi
+guard_quantdinger_rebuild "$@"
+compose=(docker compose --project-directory "$root" --project-name trading-radar "${compose_args[@]}")
+case "${1:-}" in
+  up|start|restart)
+    # Reads resolved config through a pipe: no env/secrets written to logs or disk.
+    "${compose[@]}" config --format json |
+      /usr/bin/python3 "$root/scripts/verify_production_pin.py" --phase preflight --compose-json -
+    "${compose[@]}" "$@"
+    # Report a bad rollout; never repair/restart/rollback automatically.
+    exec /usr/bin/python3 "$root/scripts/verify_production_pin.py" --wait-seconds 60
+    ;;
+  *) exec "${compose[@]}" "$@" ;;
+esac

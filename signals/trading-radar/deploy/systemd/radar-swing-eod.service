@@ -1,0 +1,31 @@
+[Unit]
+Description=Trading Radar — Swing EOD (收盘后波段趋势确认)
+Documentation=file:///opt/trading_radar/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/opt/trading_radar
+Environment=PYTHONPATH=/opt/trading_radar
+Environment=RADAR_ALL_PROXY=http://127.0.0.1:7890
+Environment=HTTP_PROXY=
+Environment=HTTPS_PROXY=
+Environment=ALL_PROXY=
+Environment=http_proxy=
+Environment=https_proxy=
+Environment=all_proxy=
+Environment=NO_PROXY=127.0.0.1,localhost
+Environment=no_proxy=127.0.0.1,localhost
+EnvironmentFile=-/opt/trading_radar/.env
+ExecCondition=/opt/trading_radar/.venv/bin/python /opt/trading_radar/scripts/check_swing_eod_window.py
+ExecStart=/opt/trading_radar/.venv/bin/python /opt/trading_radar/radar_swing_eod.py --config /opt/trading_radar/config.swing.json
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/trading_radar
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Trading Radar — Quant Swing audit checks at 15:40 and 15:50
+
+[Timer]
+OnCalendar=Mon..Fri 15:40
+OnCalendar=Mon..Fri 15:50
+Persistent=true
+AccuracySec=30s
+RandomizedDelaySec=0
+Unit=stock-radar-swing-watchdog.service
+
+[Install]
+WantedBy=timers.target

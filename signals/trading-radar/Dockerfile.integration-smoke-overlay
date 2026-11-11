@@ -1,0 +1,4 @@
+FROM sha256:df09103f04b6226f3347a2bb8d6dd2323b99ab11c73b8e3e9b50847e555b7475
+
+COPY scripts/smoke_integration.py /app/scripts/smoke_integration.py
+RUN python -m py_compile /app/scripts/smoke_integration.py

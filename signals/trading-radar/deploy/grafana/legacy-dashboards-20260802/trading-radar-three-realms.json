@@ -1,0 +1,232 @@
+{
+  "annotations": {"list": []},
+  "description": "三层视界：L0 上帝视角用大数字与红绿灯；L1/L2 预留扩展。依赖 radar_monitor /metrics；QMT 与数据库状态可通过环境变量 RADAR_L0_QMT_ADAPTER_UP、RADAR_L0_DATABASE_UP（或 RADAR_L0_AWS_DATABASE_UP）注入。",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 100,
+      "panels": [],
+      "title": "👑 L0 视界：上帝视角（大数字与红绿灯）",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "相对北京时间当日进程首次采样权益的增量；重启进程后基准为重启后首次采样。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "dark-red", "value": null},
+              {"color": "dark-green", "value": 0}
+            ]
+          },
+          "unit": "currencyCNY"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 12, "w": 14, "x": 0, "y": 1},
+      "id": 10,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "radar_daily_pnl_cny",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "今日总盈亏（Daily PnL）",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "标的池中「已建底仓」数量（持仓股数>0），对应 battlefield lane has_position。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "blue", "value": null},
+              {"color": "orange", "value": 1}
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 4, "w": 10, "x": 14, "y": 1},
+      "id": 11,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "value_and_name"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "radar_battlefield_lane_symbols{lane=\"has_position\"}",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "状态机 · 已建底仓（只数）",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "需采集含 radar_l0_dependency_up；或由 RADAR_L0_QMT_ADAPTER_UP 注入（每次 scrape 刷新）。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 0,
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "semi-dark-red", "value": null},
+              {"color": "semi-dark-green", "value": 1}
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 10, "x": 14, "y": 5},
+      "id": 12,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "value"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "radar_l0_dependency_up{dependency=\"qmt_adapter\"}",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "核心 · QMT 适配器（1=UP / 0=DOWN）",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "RDS / PostgreSQL 等；RADAR_L0_DATABASE_UP 或 RADAR_L0_AWS_DATABASE_UP。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "semi-dark-red", "value": null},
+              {"color": "semi-dark-green", "value": 1}
+            ]
+          },
+          "unit": "none"
+        }
+      },
+      "gridPos": {"h": 4, "w": 10, "x": 14, "y": 9},
+      "id": 13,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "value"
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "expr": "radar_l0_dependency_up{dependency=\"database\"}",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "title": "核心 · AWS / 数据库连接（1=UP）",
+      "type": "stat"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 13},
+      "id": 101,
+      "panels": [],
+      "title": "⚔️ L1 视界：战斗中军（预留 — 订单节奏 / 分批执行）",
+      "type": "row"
+    },
+    {
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 14},
+      "id": 102,
+      "options": {
+        "code": {"language": "markdown", "showLineNumbers": false, "showMiniMap": false},
+        "content": "### L1 主战区（独立仪表盘）\n完整 **超额曲线 vs 沪深300**、**策略标签仓位 Bar gauge** 见：`Trading Radar — L1 主战区（Alpha & 仓位）`（uid **trading-radar-l1-warzone**）。\n\n此处仍可挂载：**单笔风控限额**、**拆单队列** 等补充面板。",
+        "mode": "markdown"
+      },
+      "pluginVersion": "10.0.0",
+      "title": "",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 18},
+      "id": 103,
+      "panels": [],
+      "title": "🔭 L2 视界：引擎室（排障时才展开）",
+      "type": "row"
+    },
+    {
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 19},
+      "id": 104,
+      "options": {
+        "code": {"language": "markdown", "showLineNumbers": false, "showMiniMap": false},
+        "content": "### L2 引擎室（独立仪表盘）\n**Tick-to-Trade 热力图**、**MX Feature Cache 命中率 Gauge** 等已集中在：`Trading Radar — L2 引擎室（TTT & 特征缓存）`（uid **trading-radar-l2-engine-room**）。平时无需滚动到此；**L0 亮红灯或排障**时再打开。\n\n与 `trading-radar-latency.json` 可并列排查细项延迟。",
+        "mode": "markdown"
+      },
+      "pluginVersion": "10.0.0",
+      "title": "",
+      "transparent": true,
+      "type": "text"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["trading-radar", "three-realms", "l0"],
+  "templating": {"list": []},
+  "time": {"from": "now-3h", "to": "now"},
+  "timepicker": {},
+  "timezone": "Asia/Shanghai",
+  "title": "Trading Radar — 三层视界",
+  "uid": "trading-radar-three-realms",
+  "version": 1,
+  "weekStart": ""
+}

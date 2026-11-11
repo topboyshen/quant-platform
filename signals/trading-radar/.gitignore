@@ -1,0 +1,103 @@
+# 本地回收站（勿提交）
+.trash/
+
+venv/
+__pycache__/
+*.pyc
+.env
+.env.local
+config.local.json
+*.local.json
+portfolio.local.json
+*.log
+*.log.*
+*.log-*
+*.gz
+rl_feature_cache/
+*.db
+*.db.bak
+*.db-shm
+*.db-wal
+# 显式命名（*.db 已覆盖；便于检索）
+battlefield_state.db
+/radar_cache.json
+# 妙想日配额本地计数
+.radar_mx_quota.json
+# 模型权重（manifest.json 纳入版本管理）
+models/*.pkl
+models/*_features.json
+data/akshare/
+# 容器化运行时数据（prometheus TSDB / redis 持久化）
+data/prometheus/
+data/redis/
+# 本地 K 线 Parquet 缓存（RADAR_KLINE_PARQUET_DIR，默认可在 data/kline_parquet）
+data/kline_parquet/
+# AkShare 自动更新的 A 股交易日历运行时缓存
+data/trading_calendar.json
+data/.trading_calendar.json.update.lock
+data/.telegram_route_health.lock
+data/reports/report_*.md
+
+.venv/
+
+# ---- Secrets store (never commit) ----
+/secrets/
+# Live approved-signals TLS material: preserve in place, never git-add it.
+/deploy/approved-signals/tls/
+
+# ---- Local runtime / venvs / releases / deploy temp ----
+/runtime/
+/releases/
+/deployments/
+/.codex-deploy/
+
+# ---- Local backups & dated deploy snapshots ----
+/backups/
+/deploy/personal-*/
+
+# ---- Runtime work dirs & state ----
+/data/factor_import_batches/
+/data/factor_import_work/
+/data/radar_risk_state.json
+
+# ---- Iteration-only deployment candidates ----
+/docker-compose.quantdinger.radarflow.*.candidate.yml
+/deploy-radarflow.*.sh
+/docker-compose.quantdinger.yml.*-candidate
+/docker-compose.quantdinger.yml.bak-*
+/docker-compose.quantdinger.yml.codex-backup-*
+rollback/
+docker-compose.quantdinger.yml.pre-codex-*
+docker-compose.quantdinger.yml.codex-backup-*
+
+# ---- Runtime artifacts & state (2026-10-17; never commit) ----
+/data/index_closes_latest.json
+/data/index_closes_latest.json.*
+/data/.index_closes_latest.json.*
+/data/research_digest.json
+/.production-release.lock
+/data/alertmanager/
+/data/approved-signals/
+/data/daily-research-summary/
+/data/eod_daily_report.json
+/data/hermes-workbench-allowlist/
+/data/notification-outbox.sqlite3
+/data/profit-execution-control/
+/data/profit-input-evidence/
+/data/profit-research-diagnostics/
+/data/prometheus-textfile/*.prom
+/data/prometheus-textfile/.*.lock
+/data/research-validation/
+/data/research_market_session_evidence.json
+/data/runtime-locks/
+/data/swing_eod_watchdog.json
+/data/swing_eod_watchdog_run.json
+/data/swing_notification_health.json
+/data/swing_outcome_evidence_v1/
+/data/swing_macro.db.pre-*
+
+# ---- One-off backups / pre-change snapshots ----
+*.bak-*
+*.bak.*
+*.pre-2026*
+/scripts/.pre-restore/

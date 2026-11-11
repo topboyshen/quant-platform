@@ -1,0 +1,13 @@
+[Unit]
+Description=Trading Radar SQLite databases → Tencent COS backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+ExecStart=/bin/bash /home/ubuntu/scripts/backup_sqlite_to_cos.sh
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true

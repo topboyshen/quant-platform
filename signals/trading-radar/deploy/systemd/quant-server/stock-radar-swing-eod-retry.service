@@ -1,0 +1,23 @@
+[Unit]
+Description=Trading Radar — Quant Swing EOD same-day data_unavailable retry
+After=network-online.target stock-radar-swing-eod.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/trading-radar
+Environment=PYTHONPATH=/home/ubuntu/trading-radar
+Environment=RADAR_LOCK_DIR=/home/ubuntu/trading-radar/data/runtime-locks
+ExecCondition=/usr/bin/python3 /home/ubuntu/trading-radar/scripts/check_swing_eod_window.py
+ExecCondition=/usr/bin/python3 /home/ubuntu/trading-radar/scripts/check_swing_eod_retry.py
+ExecStart=/home/ubuntu/trading-radar/scripts/run_swing_eod.sh
+TimeoutStartSec=50min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/trading-radar/data /home/ubuntu/trading-radar/logs
+
+[Install]
+WantedBy=multi-user.target

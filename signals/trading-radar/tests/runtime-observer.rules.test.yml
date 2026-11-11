@@ -1,0 +1,308 @@
+rule_files:
+  - ../deploy/prometheus/alerts.yml
+
+evaluation_interval: 30s
+
+tests:
+  - name: index cache staleness waits for the full 30 minute repair window
+    interval: 30s
+    input_series:
+      - series: 'radar_runtime_expected_date_known{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '1x70'
+      - series: 'radar_runtime_index_cache_stale{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '1x70'
+    alert_rule_test:
+      - eval_time: 29m30s
+        alertname: QuantIndexCacheStale
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: QuantIndexCacheStale
+        exp_alerts:
+          - exp_labels:
+              job: quant-runtime-freshness
+              instance: runtime-observer:9116
+              severity: warning
+            exp_annotations:
+              summary: "Quant 指数缓存连续 30 分钟未达到应有交易日"
+              description: "交易日 15:30 切换期望日期，保留 15:35/45/55 自然 repair 窗口；不补跑。"
+
+  - name: digest input staleness waits for the full 35 minute refresh window
+    interval: 30s
+    input_series:
+      - series: 'radar_runtime_expected_date_known{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '1x80'
+      - series: 'radar_runtime_digest_inputs_stale{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '1x80'
+    alert_rule_test:
+      - eval_time: 34m30s
+        alertname: QuantResearchDigestInputsStale
+        exp_alerts: []
+      - eval_time: 35m
+        alertname: QuantResearchDigestInputsStale
+        exp_alerts:
+          - exp_labels:
+              job: quant-runtime-freshness
+              instance: runtime-observer:9116
+              severity: warning
+            exp_annotations:
+              summary: "Quant 摘要中的指数输入未达到应有交易日"
+              description: "摘要生成时间与输入数据日期分别校验，保留 16:00 自然摘要更新窗口。"
+
+  - name: unknown expected date suppresses date staleness alerts
+    interval: 30s
+    input_series:
+      - series: 'radar_runtime_expected_date_known{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '0x90'
+      - series: 'radar_runtime_index_cache_stale{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '1x90'
+      - series: 'radar_runtime_digest_inputs_stale{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '1x90'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: QuantIndexCacheStale
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantResearchDigestInputsStale
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: QuantTradingCalendarUnknown
+        exp_alerts:
+          - exp_labels:
+              job: quant-runtime-freshness
+              instance: runtime-observer:9116
+              severity: warning
+            exp_annotations:
+              summary: "Quant 交易日历缺失、损坏或覆盖已到期"
+
+  - name: old calendar age is independent from known usable coverage
+    interval: 30s
+    input_series:
+      - series: 'radar_runtime_expected_date_known{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '1x20'
+      - series: 'radar_runtime_calendar_age_seconds{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '1209601x20'
+    alert_rule_test:
+      - eval_time: 4m30s
+        alertname: QuantTradingCalendarRefreshOverdue
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: QuantTradingCalendarRefreshOverdue
+        exp_alerts:
+          - exp_labels:
+              job: quant-runtime-freshness
+              instance: runtime-observer:9116
+              severity: warning
+            exp_annotations:
+              summary: "Quant 交易日历已超过 14 天未更新"
+              description: "更新年龄与覆盖失效分别判定；独立维护 timer 按计划刷新，本告警不触发更新或补跑。"
+      - eval_time: 6m
+        alertname: QuantTradingCalendarUnknown
+        exp_alerts: []
+
+  - name: unknown calendar does not imply an age warning
+    interval: 30s
+    input_series:
+      - series: 'radar_runtime_expected_date_known{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '0x20'
+      - series: 'radar_runtime_calendar_age_seconds{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '60x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: QuantTradingCalendarUnknown
+        exp_alerts:
+          - exp_labels:
+              job: quant-runtime-freshness
+              instance: runtime-observer:9116
+              severity: warning
+            exp_annotations:
+              summary: "Quant 交易日历缺失、损坏或覆盖已到期"
+      - eval_time: 6m
+        alertname: QuantTradingCalendarRefreshOverdue
+        exp_alerts: []
+
+  - name: one failed probe alerts without claiming target coverage is missing
+    interval: 30s
+    input_series:
+      - series: 'up{job="quant-runtime-http",instance="backend",service="backend"}'
+        values: '1x10'
+      - series: 'up{job="quant-runtime-http",instance="frontend",service="frontend"}'
+        values: '1x10'
+      - series: 'up{job="quant-runtime-http",instance="grafana",service="grafana"}'
+        values: '1x10'
+      - series: 'probe_success{job="quant-runtime-http",instance="backend",service="backend"}'
+        values: '0x10'
+      - series: 'probe_success{job="quant-runtime-http",instance="frontend",service="frontend"}'
+        values: '1x10'
+      - series: 'probe_success{job="quant-runtime-http",instance="grafana",service="grafana"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 1m30s
+        alertname: QuantBusinessEndpointUnavailable
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: QuantBusinessEndpointUnavailable
+        exp_alerts:
+          - exp_labels:
+              job: quant-runtime-http
+              instance: backend
+              service: backend
+              severity: warning
+            exp_annotations:
+              summary: "Quant 业务端点连续不可用：backend"
+      - eval_time: 3m
+        alertname: QuantBusinessProbeCoverageMissing
+        exp_alerts: []
+
+  - name: missing one of three probe targets alerts on coverage only
+    interval: 30s
+    input_series:
+      - series: 'up{job="quant-runtime-http",instance="backend",service="backend"}'
+        values: '1x10'
+      - series: 'up{job="quant-runtime-http",instance="frontend",service="frontend"}'
+        values: '1x10'
+      - series: 'probe_success{job="quant-runtime-http",instance="backend",service="backend"}'
+        values: '1x10'
+      - series: 'probe_success{job="quant-runtime-http",instance="frontend",service="frontend"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 1m30s
+        alertname: QuantBusinessProbeCoverageMissing
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: QuantBusinessProbeCoverageMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Quant 三个业务端点的监控覆盖缺失"
+      - eval_time: 3m
+        alertname: QuantBusinessEndpointUnavailable
+        exp_alerts: []
+
+  - name: explicit freshness scrape failure alerts after two minutes
+    interval: 30s
+    input_series:
+      - series: 'up{job="quant-runtime-freshness",instance="runtime-observer:9116",service="radar_runtime_freshness"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 1m30s
+        alertname: QuantRuntimeObserverDown
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: QuantRuntimeObserverDown
+        exp_alerts:
+          - exp_labels:
+              job: quant-runtime-freshness
+              instance: runtime-observer:9116
+              service: radar_runtime_freshness
+              severity: warning
+            exp_annotations:
+              summary: "Quant 只读监控采集器不可用"
+
+  - name: no observer samples raises only observer and coverage alarms
+    interval: 30s
+    input_series: []
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: QuantRuntimeObserverDown
+        exp_alerts:
+          - exp_labels:
+              job: quant-runtime-freshness
+              severity: warning
+            exp_annotations:
+              summary: "Quant 只读监控采集器不可用"
+      - eval_time: 5m
+        alertname: QuantBusinessProbeCoverageMissing
+        exp_alerts:
+          - exp_labels:
+              job: quant-runtime-http
+              severity: warning
+            exp_annotations:
+              summary: "Quant 三个业务端点的监控覆盖缺失"
+      - eval_time: 5m
+        alertname: QuantBusinessEndpointUnavailable
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: QuantTradingCalendarUnknown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: QuantIndexCacheInvalid
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: QuantTradingCalendarRefreshOverdue
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantIndexCacheStale
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: QuantResearchDigestInvalid
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: QuantResearchDigestNotRefreshed
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantResearchDigestInputsStale
+        exp_alerts: []
+
+  - name: healthy complete observer series remain quiet
+    interval: 30s
+    input_series:
+      - series: 'up{job="quant-runtime-freshness",instance="runtime-observer:9116",service="radar_runtime_freshness"}'
+        values: '1x90'
+      - series: 'radar_runtime_expected_date_known{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '1x90'
+      - series: 'radar_runtime_index_cache_valid{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '1x90'
+      - series: 'radar_runtime_index_cache_stale{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '0x90'
+      - series: 'radar_runtime_calendar_age_seconds{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '3600x90'
+      - series: 'radar_runtime_digest_valid{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '1x90'
+      - series: 'radar_runtime_digest_age_seconds{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '60x90'
+      - series: 'radar_runtime_digest_inputs_stale{job="quant-runtime-freshness",instance="runtime-observer:9116"}'
+        values: '0x90'
+      - series: 'up{job="quant-runtime-http",instance="backend",service="backend"}'
+        values: '1x90'
+      - series: 'up{job="quant-runtime-http",instance="frontend",service="frontend"}'
+        values: '1x90'
+      - series: 'up{job="quant-runtime-http",instance="grafana",service="grafana"}'
+        values: '1x90'
+      - series: 'probe_success{job="quant-runtime-http",instance="backend",service="backend"}'
+        values: '1x90'
+      - series: 'probe_success{job="quant-runtime-http",instance="frontend",service="frontend"}'
+        values: '1x90'
+      - series: 'probe_success{job="quant-runtime-http",instance="grafana",service="grafana"}'
+        values: '1x90'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: QuantRuntimeObserverDown
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantBusinessEndpointUnavailable
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantBusinessProbeCoverageMissing
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantTradingCalendarUnknown
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantIndexCacheInvalid
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantTradingCalendarRefreshOverdue
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantIndexCacheStale
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantResearchDigestInvalid
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantResearchDigestNotRefreshed
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: QuantResearchDigestInputsStale
+        exp_alerts: []

@@ -1,0 +1,31 @@
+{
+  "release": "personal-2026.09.16-etf-diagnostics.1",
+  "base_git": "b7e5c7b5fe4a07f278ef9ad34ab198b9b49c43b8",
+  "source_files": {
+    "radar/swing/trend_strategy.py": "ba341122b0223a383b0b90c0cacad8a7abc67251fd1836940a3647e13389f876",
+    "radar_swing_eod.py": "7a94e0879e9b16903d5c4cfd49ee9e1bbd62a8d3020a3eb4995644e39dafcde2",
+    "dashboard/etf_pool.py": "cfe2e68bc3cd220893e89c23979dd2cb2b117232376346b79657f4fb132c3828",
+    "tests/test_swing_trigger_diagnostics.py": "1cd82b2080d592b7b17b1647a6d0234895db895306b58895c1c2f17fe9424b97",
+    "tests/test_etf_pool_diagnostics.py": "52879aaef4e1ec282050d48bbceef7e1a841bdd22943286b68cb9c8664ce7fc1"
+  },
+  "images": {
+    "radar-integration-api": {
+      "image": "trading-radar-integration:personal-2026.09.16-etf-diagnostics.1",
+      "image_id": "sha256:cee744177230063731d75097832586d661be77dc1d61e9a0418864246dc8bc27",
+      "rollback_image": "trading-radar-integration:personal-2026.09.12-etf-pool.2",
+      "rollback_image_id": "sha256:96813d01ea51cbdbb1ad5f4151281ef2c8f55a87423c382a83e5375c89675b16"
+    },
+    "radar-quantdinger-frontend": {
+      "image": "trading-radar-quantdinger-frontend:personal-2026.09.16-etf-diagnostics.1",
+      "image_id": "sha256:6aaa0024fad5e5ad26af458bfcfa0ae2899fcce1e444a25c8cf79d845057032a",
+      "rollback_image": "trading-radar-quantdinger-frontend:personal-2026.09.12-etf-pool.2",
+      "rollback_image_id": "sha256:11efc8438993062010d9115fe6c36e0ed924643a2780de2a7320b73b1b8b526e"
+    }
+  },
+  "frontend_source_archive": "releases/etf-diagnostics-20260916.1/frontend-source.tar.gz",
+  "frontend_source_sha256": "b89131302fb69fdedeeb014ac3e66e852db4d4b5e8e4fa6c5d1615da7fced315",
+  "frontend_dist_sha256": "c60baacd48490de2fd022d987cfdd3f1fc52c6e8a0b70fa7c42ea988461bc428",
+  "index_html_sha256": "f31752997430fd2a808f0db10e84f21fab5c3806ce290abf04d07692bee6fce9",
+  "policy": "NO_BACKUP; no replay/backfill/strategy/timer/proxy/notification changes",
+  "natural_acceptance": "pending next natural EOD; historical diagnostics intentionally not_recorded"
+}

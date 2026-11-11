@@ -1,0 +1,21 @@
+[Unit]
+Description=Trading Radar — Quant Swing total_amount stale-only repair
+After=network-online.target stock-radar-swing-eod.service
+Wants=network-online.target
+ConditionPathExists=/home/ubuntu/trading-radar/data/swing_macro.db
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/trading-radar
+Environment=PYTHONPATH=/home/ubuntu/trading-radar
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=RADAR_LOCK_DIR=/home/ubuntu/trading-radar/data/runtime-locks
+ExecStart=/home/ubuntu/trading-radar/scripts/run_swing_total_amount_repair.sh
+TimeoutStartSec=90s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/trading-radar/data /home/ubuntu/trading-radar/logs

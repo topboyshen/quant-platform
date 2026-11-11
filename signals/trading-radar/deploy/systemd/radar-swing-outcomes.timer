@@ -1,0 +1,12 @@
+[Unit]
+Description=Trading Radar — collect matured Swing outcomes daily
+
+[Timer]
+OnCalendar=Mon..Fri 16:10
+Persistent=true
+AccuracySec=1min
+RandomizedDelaySec=0
+Unit=radar-swing-outcomes.service
+
+[Install]
+WantedBy=timers.target

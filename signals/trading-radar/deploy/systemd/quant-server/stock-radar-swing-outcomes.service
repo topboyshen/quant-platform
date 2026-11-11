@@ -1,0 +1,17 @@
+[Unit]
+Description=Trading Radar — Quant Swing forward outcome collector
+After=network-online.target stock-radar-swing-eod.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/trading-radar
+Environment=PYTHONPATH=/home/ubuntu/trading-radar
+ExecStart=/home/ubuntu/trading-radar/scripts/run_swing_outcomes.sh
+TimeoutStartSec=35min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/trading-radar/data /home/ubuntu/trading-radar/logs

@@ -1,0 +1,211 @@
+x-quantdinger-logging: &quantdinger-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  quantdinger-postgres:
+    image: docker.1ms.run/library/postgres:16-alpine
+    container_name: radar-quantdinger-postgres
+    restart: unless-stopped
+    logging: *quantdinger-logging
+    environment:
+      POSTGRES_DB: quantdinger
+      POSTGRES_USER: quantdinger
+      POSTGRES_PASSWORD: ${QUANTDINGER_POSTGRES_PASSWORD:?set QUANTDINGER_POSTGRES_PASSWORD in .env}
+      TZ: Asia/Shanghai
+    command:
+      - postgres
+      - -c
+      - max_connections=80
+      - -c
+      - shared_buffers=128MB
+    volumes:
+      - quantdinger_postgres_data:/var/lib/postgresql/data
+      - ${QUANTDINGER_ROOT:-./QuantDinger}/backend_api_python/migrations/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - quantdinger-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quantdinger -d quantdinger"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    mem_limit: 512m
+    cpus: 0.75
+    pids_limit: 256
+
+  quantdinger-redis:
+    image: docker.1ms.run/library/redis:7-alpine
+    container_name: radar-quantdinger-redis
+    restart: unless-stopped
+    logging: *quantdinger-logging
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+    volumes:
+      - quantdinger_redis_data:/data
+    networks:
+      - quantdinger-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 192m
+    cpus: 0.35
+    pids_limit: 128
+
+  quantdinger-backend:
+    # Frozen backend + 2026-09-14 compatibility overlay. See deploy/PRODUCTION_PIN.md
+    image: trading-radar-quantdinger-backend:security-hardening-20261029.1
+    pull_policy: never
+    container_name: radar-quantdinger-backend
+    restart: unless-stopped
+    init: true
+    logging: *quantdinger-logging
+    env_file:
+      - ${QUANTDINGER_ROOT:-./QuantDinger}/config/backend.env
+    extra_hosts:
+      nng8-operations.internal: "10.0.0.3"
+    environment:
+      RESEARCH_DATA_EVIDENCE_FILE: "/app/research-market-session-evidence.json"
+      RESEARCH_DATA_EVIDENCE_SHA256: "27c352d986d578b50317741b57a02db656e97de5be79cfb501d3ccd3de21d30f"
+      RESEARCH_VALIDATION_CAPTURE_DIR: "/app/research-validation"
+      NNG8_OPERATIONS_ENABLED: "1"
+      NNG8_OPERATIONS_URL: "https://nng8-operations.internal"
+      NNG8_OPERATIONS_TOKEN_FILE: "/run/secrets/nng8_operations_token"
+      NNG8_OPERATIONS_CA_FILE: "/run/secrets/nng8_operations_ca.pem"
+      ENABLE_OFFLINE_AI_CALIBRATION: "false"
+      RESEARCH_LAB_V2_MODE: "run"
+      RESEARCH_LAB_V2_USER_IDS: "1"
+      PYTHON_API_HOST: 0.0.0.0
+      PYTHON_API_PORT: "5000"
+      SETTINGS_ENV_FILE_PATH: /app/config/backend.env
+      TZ: Asia/Shanghai
+      DATABASE_URL: postgresql://quantdinger:${QUANTDINGER_POSTGRES_PASSWORD}@quantdinger-postgres:5432/quantdinger
+      DB_TYPE: postgresql
+      REDIS_HOST: quantdinger-redis
+      REDIS_PORT: "6379"
+      CACHE_ENABLED: "true"
+      DB_POOL_MIN: "2"
+      DB_POOL_MAX: "12"
+      DB_POOL_ACQUIRE_TIMEOUT: "10"
+      DB_POOL_HEALTH_CHECK: "true"
+      MARKET_EXECUTOR_WORKERS: "3"
+      PORTFOLIO_EXECUTOR_WORKERS: "2"
+      GUNICORN_WORKERS: "1"
+      GUNICORN_THREADS: "4"
+      PERSONAL_MODE: "true"
+      QUANTDINGER_DEPLOYMENT_MODE: personal
+      AGENT_LIVE_TRADING_ENABLED: "false"
+      ENABLE_PENDING_ORDER_WORKER: "false"
+      ENABLE_GRID_FILL_POLLER: "false"
+      ENABLE_PORTFOLIO_MONITOR: "false"
+      BILLING_ENABLED: "false"
+      USDT_PAY_ENABLED: "false"
+      DISABLE_RESTORE_RUNNING_STRATEGIES: "true"
+      ALLOW_LOCAL_DESKTOP_BROKERS: "false"
+      ENABLE_REGISTRATION: "false"
+      PROXY_URL: http://mihomo:7890
+      NO_PROXY: 127.0.0.1,localhost,quantdinger-postgres,quantdinger-redis,integration-api,mihomo
+      RADAR_CONTEXT_URL: http://integration-api:8092/integration/v1/market-context
+      RADAR_CONTEXT_TOKEN_FILE: /run/secrets/radar_integration_token
+      RADAR_CONTEXT_TIMEOUT_SECONDS: "4"
+      RADAR_WORKBENCH_URL: http://integration-api:8092/integration/v1/workbench
+      RADAR_WORKBENCH_TOKEN_FILE: /run/secrets/radar_workbench_token
+      RADAR_WORKBENCH_TIMEOUT_SECONDS: "4"
+      NNG8_READONLY_ENABLED: "true"
+      NNG8_READONLY_USER_IDS: "1"
+    depends_on:
+      quantdinger-postgres:
+        condition: service_healthy
+      quantdinger-redis:
+        condition: service_healthy
+      mihomo:
+        condition: service_healthy
+    volumes:
+      - ./data/research-validation:/app/research-validation:ro
+      - ./data/research_market_session_evidence.json:/app/research-market-session-evidence.json:ro
+      - ./secrets/nng8_operations_token:/run/secrets/nng8_operations_token:ro
+      - ./secrets/nng8_operations_ca.pem:/run/secrets/nng8_operations_ca.pem:ro
+      - ${QUANTDINGER_ROOT:-./QuantDinger}/config:/app/config
+      - quantdinger_backend_logs:/app/logs
+      - quantdinger_backend_data:/app/data
+    secrets:
+      - radar_integration_token
+      - radar_workbench_token
+    ports:
+      - "${QUANTDINGER_BACKEND_BIND:-127.0.0.1:5000}:5000"
+    networks:
+      - quantdinger-internal
+      - radar-net
+      - integration-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:5000/api/health"]
+      interval: 20s
+      timeout: 8s
+      retries: 5
+      start_period: 90s
+    mem_limit: 1g
+    cpus: 1.25
+    pids_limit: 384
+
+  quantdinger-frontend:
+    # Frozen 8/07 frontend source + audited ETF pool UI; never use the divergent checkout.
+    image: trading-radar-quantdinger-frontend:etf-named-triggers-20261106.1
+    pull_policy: never
+    container_name: radar-quantdinger-frontend
+    restart: unless-stopped
+    logging: *quantdinger-logging
+    environment:
+      BACKEND_URL: http://quantdinger-backend:5000
+    depends_on:
+      quantdinger-backend:
+        condition: service_healthy
+    ports:
+      - "${QUANTDINGER_FRONTEND_BIND:-127.0.0.1:8888}:80"
+    networks:
+      - quantdinger-internal
+      - radar-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "--max-time", "5", "http://127.0.0.1/api/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 128m
+    cpus: 0.35
+    pids_limit: 128
+
+    cap_drop:
+      - MKNOD
+    volumes:
+      - type: bind
+        source: /run/qd-frontend-log-private/syslog.sock
+        target: /run/qd-frontend-log/syslog.sock
+        read_only: true
+        bind:
+          create_host_path: false
+volumes:
+  quantdinger_postgres_data:
+  quantdinger_redis_data:
+  quantdinger_backend_logs:
+  quantdinger_backend_data:
+
+networks:
+  quantdinger-internal:
+    driver: bridge
+    internal: true
+
+secrets:
+  radar_integration_token:
+    file: ./secrets/radar_integration_token
+  radar_workbench_token:
+    file: ./secrets/radar_workbench_token

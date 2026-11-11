@@ -1,0 +1,13 @@
+[Unit]
+Description=Trading Radar — Quant Swing total_amount repair at 15:47 and 15:57
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 15:47:00 Asia/Shanghai
+OnCalendar=Mon..Fri *-*-* 15:57:00 Asia/Shanghai
+Persistent=false
+AccuracySec=30s
+RandomizedDelaySec=0
+Unit=stock-radar-swing-total-amount-repair.service
+
+[Install]
+WantedBy=timers.target

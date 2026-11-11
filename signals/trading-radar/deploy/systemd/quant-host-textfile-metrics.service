@@ -1,0 +1,13 @@
+[Unit]
+Description=Export Quant host textfile metrics (disk + datasource)
+After=network.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+ExecStart=/usr/bin/python3 /home/ubuntu/trading-radar/scripts/export_host_textfile_metrics.py
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

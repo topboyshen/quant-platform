@@ -1,0 +1,53 @@
+数据管道约定（缓解训练 / 回测 / 实盘分叉）
+========================================
+
+1. 日 K（训练、回测、离线特征）
+   - 统一走 data_schema.DataNormalizer 列名与 OHLCV 校验。
+   - 任意返回 DataFrame 的拉数逻辑，应在落地后调用
+     radar.data.unified_history.normalize_history_df(...)，或等价地使用
+     MarketDataFetcher.get_historical_data（内部已 normalize + 血缘）。
+   - 血缘：df.attrs['radar_lineage'] 含 source / pipeline / adjustment / bars，
+     日志中请配合 unified_history.log_history_lineage。
+
+2. 推荐收敛路径（减轻分布漂移）
+   - ml_training.get_stock_history_mkt 默认已使用 MarketDataFetcher.get_historical_data
+     （与 run_backtest_comparison 等一致）。仅当设置 RADAR_ML_HISTORY_FALLBACK=1 时
+     才在东财失败后走妙想 → akshare → baostock。
+   - 若必须保留多源 fallback：每个分支在返回前仍须 normalize_history_df，
+     并在 lineage 中标明真实 source，禁止静默混用。
+
+3. 实盘实时快照（MonitorEngine）
+   - 接口为「当前价 + 量 + OHLC + 昨收」dict，非日 K，复权口径与历史 K 可能不一致。
+   - 进入 process_target 前使用 Pydantic LiveQuoteSnapshot 校验（radar/schemas/live_quote.py）；
+     失败则跳过该标的本轮策略。调试可设 RADAR_SKIP_LIVE_QUOTE_PYDANTIC=1。
+   - ML/RL 若用日 K 训练、用实时 dict 推理，属于已知产品层差异；排障时先看
+     lineage 与实时源是否一致，再查策略。
+
+4. 妙想（MX）API
+   - 日调用约 500 次上限：见项目根目录 mx_quota.py，在 mx_client.MXDataClient.query
+     前统一扣减。配置：MX_DAILY_CALL_LIMIT、MX_QUOTA_SOFT_RESERVE、MX_QUOTA_STATE_FILE、
+     MX_QUOTA_DISABLED（不推荐生产开启）。
+   - rl_features.ExternalFeatureProvider 对北向/指数/融资融券/情绪/资金流/行业等结果做
+     进程内 TTL 缓存（radar/data/mx_feature_cache.py）：MX_FEATURE_CACHE_TTL_SEC、
+     MX_FEATURE_CACHE_MAX_ENTRIES、MX_FEATURE_CACHE_DISABLED。
+   - mx_client.get_stock_sector_mx / get_sector_change_mx 亦走同一缓存（namespace mx_sector），
+     多标的同属一行业时共用行业涨幅 query。
+
+5. K 线 Parquet「物理防洪坝」（训练/回测本地层）
+   - 模块：radar/data/ohlcv_parquet_store.py。
+   - 写入前 normalize_dataframe + validate_dataframe；读入后再 validate，不通过则拒绝。
+   - 文件：RADAR_KLINE_PARQUET_DIR（默认 data/kline_parquet）下 {6位code}.parquet；
+     schema metadata 含 radar_lineage（JSON）。
+   - MarketDataFetcher.get_historical_data：同上（回测 run_backtest_comparison、
+     run_benchmark、radar_pro 等凡走东财日 K 的入口均受益）。
+   - ml_training.get_stock_history_mkt：优先读盘逻辑与上一致；东财成功路径的落盘
+     已由 MarketDataFetcher 完成，fallback（妙想/akshare/baostock）仍在本模块写盘。
+     RADAR_KLINE_PARQUET_AUTO_WRITE=0 可关全局自动写；
+     RADAR_KLINE_PARQUET_MAX_AGE_DAYS 限制优先读盘时的文件时效（未设则不限制）。
+
+6. 环境变量（可选）
+   - 将来可扩展 RADAR_HISTORY_SOURCE 强制单一源；当前以代码入口统一为主。
+
+7. 实时行情推送与指标（运维说明）
+   - WebSocket 数据源调研、富途/新浪对比、Prometheus+Grafana 与日志关系：见 radar/ops/PUSH_AND_OBSERVABILITY.txt。
+   - /metrics 扩展指标：安装 prometheus-client 后见 radar/core/prometheus_extra.py。

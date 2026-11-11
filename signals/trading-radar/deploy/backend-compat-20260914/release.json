@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "release": "backend-compat-20260914.1",
+  "recorded_on": "2026-09-16",
+  "deployed_at_utc": "2026-09-14T03:05:24.080775+00:00",
+  "image": "trading-radar-quantdinger-backend:personal-2026.09.14-compat.1",
+  "image_id": "sha256:509acb40e3087c9c0c1a56ac91e12bcdbb7d2b3941bbe1e8802981fb54f9d9ac",
+  "base_image_id": "sha256:0fb958dd9d7ab220ddf961600c838140f985e11f0de35976ac1dabb255c22e9c",
+  "upstream_references": [
+    "cb78a62",
+    "25eaf36"
+  ],
+  "files": {
+    "app/data_sources/cn_stock.py": {
+      "base_sha256": "c6c025883ef72065e58b0e063cb6f4bb5c19be533986a2d0e6e1f411a2ed105a",
+      "patched_sha256": "b927df1d95f8a056bc83e1001bb9835cf9e87877e144bcf6572851eaa4ed902e"
+    },
+    "app/data_sources/tencent.py": {
+      "base_sha256": "e266d9ac01c7c7641fa4885af542f3b4527639a0c557c55781d5c8efc170fee7",
+      "patched_sha256": "e3e60a4cf02ad7116ab13b135bde03f85f99c7e657b714e590844ec5533987d1"
+    },
+    "app/services/backtest.py": {
+      "base_sha256": "cbe81bf3fa42722fc563cd8bb3e55ed85f4e3ede91ee75efba5da0e01a386ccb",
+      "patched_sha256": "2d5b84d292f5cd06029d1941a53e61282256f8f784e7a2891f68d44aac5e96e8"
+    }
+  },
+  "dependency_freeze_sha256": "9862b525147f948952d12699cd4b2d1196fd72bf605b0841651827f68efab7ee",
+  "historical_tests": {
+    "count": 35,
+    "executed_on": "2026-09-14",
+    "evidence": "releases/backend-compat-20260914.1/evidence/native-tests.txt"
+  },
+  "historical_rollout_evidence": "releases/backend-compat-20260914.1/evidence/deployed.json",
+  "backup_policy": "NO_BACKUP; no future database dump/restore prerequisite",
+  "limitations": [
+    "No new container deployment on 2026-09-16",
+    "Not a full A-share execution-model fix",
+    "Exact base image plus this source patch; not host QuantDinger HEAD"
+  ]
+}

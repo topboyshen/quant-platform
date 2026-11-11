@@ -1,0 +1,89 @@
+{
+  "_meta": {
+    "doc": "Trading Radar 配置示例。复制为 config.json 后按需修改。JSON 不支持注释，本字段仅用于自描述，运行时被忽略。",
+    "config_sources": {
+      "config.json": [
+        "telegram", "radar", "market", "health", "alerts",
+        "ml_model_dir", "rl_model_dir", "rl_mode", "initial_cash",
+        "data_sources", "targets"
+      ],
+      "dashboard/config/monitors.json": ["UI 列表/卡片/系统状态展示 schema（与运行时无关）"],
+      "环境变量（覆盖 config.json）": {
+        "TELEGRAM_BOT_TOKEN": "覆盖 telegram.bot_token",
+        "TELEGRAM_CHAT_ID": "覆盖 telegram.chat_id",
+        "LLM_API_KEY": "覆盖 llm.api_key（推荐）",
+        "LLM_BASE_URL": "覆盖 llm.base_url",
+        "LLM_MODEL": "覆盖 llm.model",
+        "HEALTH_HOST": "覆盖 health.host",
+        "HEALTH_PORT": "覆盖 health.port",
+        "DASHBOARD_PRICES_TTL": "Dashboard 价格缓存 TTL 秒，默认 3.0",
+        "DASHBOARD_PRICES_CACHE_MAX": "Dashboard 价格缓存最大条目，默认 512"
+      },
+      "硬性必填": ["telegram.bot_token", "telegram.chat_id", "radar.*", "market.*", "targets[]"],
+      "软性建议": ["ml_model_dir", "rl_model_dir", "rl_mode", "initial_cash", "alerts.priorities"]
+    }
+  },
+  "telegram": {
+    "bot_token": "REPLACE_OR_USE_ENV_TELEGRAM_BOT_TOKEN",
+    "chat_id": "REPLACE_OR_USE_ENV_TELEGRAM_CHAT_ID"
+  },
+  "radar": {
+    "cooldown_minutes": 30,
+    "scan_interval_seconds": 60,
+    "cache_file": "radar_cache.json",
+    "log_file": "radar.log",
+    "data_history_file": "price_history.db"
+  },
+  "market": {
+    "morning_start": "09:30",
+    "morning_end": "11:30",
+    "afternoon_start": "13:00",
+    "afternoon_end": "15:00",
+    "timezone": "Asia/Shanghai"
+  },
+  "health": {
+    "host": "0.0.0.0",
+    "port": 8080
+  },
+  "alerts": {
+    "ml_prediction": {
+      "enabled": true,
+      "probability_threshold": 0.7,
+      "min_history_bars": 30
+    },
+    "batch_alerts": true,
+    "priorities": {
+      "price": "HIGH",
+      "ml": "MEDIUM",
+      "rl": "MEDIUM"
+    }
+  },
+  "ml_model_dir": "models",
+  "rl_model_dir": "rl_models",
+  "rl_mode": "confirm",
+  "initial_cash": 100000.0,
+  "llm": {
+    "enabled": false,
+    "provider": "deepseek",
+    "model": "deepseek-v4-pro",
+    "api_key": "USE_ENV_LLM_API_KEY",
+    "base_url": "https://api.deepseek.com/v1",
+    "max_tokens": 4096,
+    "temperature": 0.7
+  },
+  "data_sources": {
+    "primary": "eastmoney",
+    "backup": "tencent"
+  },
+  "targets": [
+    {
+      "code": "000001",
+      "name": "示例",
+      "trigger_price": 10.0,
+      "direction": "below",
+      "ml_enabled": true,
+      "rl_enabled": true,
+      "strategy_tag": "Strategy_Example"
+    }
+  ]
+}

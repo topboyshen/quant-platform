@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh research digest after A-share close and hourly
+
+[Timer]
+OnCalendar=*-*-* 15:50:00 Asia/Shanghai
+OnCalendar=hourly
+Persistent=true
+AccuracySec=1min
+Unit=research-digest.service
+
+[Install]
+WantedBy=timers.target

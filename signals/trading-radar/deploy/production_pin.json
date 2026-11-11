@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "services": {
+    "radar-integration-api": {
+      "image": "trading-radar-integration:etf-named-triggers-20261106.1",
+      "image_id": "sha256:ce8f9029fca346ab19f5c6efb7bfd79471be7af6d05551be22002ae25368a81b"
+    },
+    "radar-quantdinger-backend": {
+      "image": "trading-radar-quantdinger-backend:security-hardening-20261029.1",
+      "image_id": "sha256:61aa2748ebf7981b3450ce23c4d402a75d999768d328e49fda51144ae276748f"
+    },
+    "radar-quantdinger-frontend": {
+      "image": "trading-radar-quantdinger-frontend:etf-named-triggers-20261106.1",
+      "image_id": "sha256:ca0ccdf2e5cd8d495c53022c1f1f902bac8dabd76f2af05d7212aa6ce89531fb"
+    }
+  },
+  "source": "deploy/PRODUCTION_PIN.md"
+}

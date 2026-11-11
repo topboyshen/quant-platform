@@ -1,0 +1,67 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: watchdog crash in the current session fires critical after 5m
+    interval: 1m
+    input_series:
+      - series: 'radar_swing_eod_watchdog_run_failed{job="node-exporter",instance="quant-host:9100"}'
+        values: '1x9'
+      - series: 'radar_swing_eod_watchdog_run_valid{job="node-exporter",instance="quant-host:9100"}'
+        values: '1x9'
+      - series: 'radar_swing_eod_watchdog_run_current{job="node-exporter",instance="quant-host:9100"}'
+        values: '1x9'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: QuantSwingEodWatchdogRunFailed
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: QuantSwingEodWatchdogRunFailed
+        exp_alerts:
+          - exp_labels:
+              job: node-exporter
+              instance: quant-host:9100
+              severity: critical
+              service: swing_eod
+            exp_annotations:
+              summary: "Swing EOD watchdog/日报程序自身崩溃"
+              description: "watchdog 或日报生成在当日会话内崩溃（由 watchdog 自写的 swing_eod_watchdog_run.json 经 textfile 导出，独立于其业务产物）；日报可能未生成、未发送。查看 journalctl -u stock-radar-swing-watchdog 与该 JSON 的 error_type/error_location；不会自动补发。"
+  - name: completed run does not fire
+    interval: 1m
+    input_series:
+      - series: 'radar_swing_eod_watchdog_run_failed{job="node-exporter",instance="quant-host:9100"}'
+        values: '0x9'
+      - series: 'radar_swing_eod_watchdog_run_valid{job="node-exporter",instance="quant-host:9100"}'
+        values: '1x9'
+      - series: 'radar_swing_eod_watchdog_run_current{job="node-exporter",instance="quant-host:9100"}'
+        values: '1x9'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: QuantSwingEodWatchdogRunFailed
+        exp_alerts: []
+  - name: previous-session failure, invalid artifact, or unknown (NaN) do not fire
+    interval: 1m
+    input_series:
+      - series: 'radar_swing_eod_watchdog_run_failed{job="node-exporter",instance="quant-host:9100"}'
+        values: '1x9'
+      - series: 'radar_swing_eod_watchdog_run_valid{job="node-exporter",instance="quant-host:9100"}'
+        values: '1x9'
+      - series: 'radar_swing_eod_watchdog_run_current{job="node-exporter",instance="quant-host:9100"}'
+        values: '0x9'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: QuantSwingEodWatchdogRunFailed
+        exp_alerts: []
+  - name: invalid artifact (valid=0, failed=NaN) does not fire
+    interval: 1m
+    input_series:
+      - series: 'radar_swing_eod_watchdog_run_failed{job="node-exporter",instance="quant-host:9100"}'
+        values: "NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN"
+      - series: 'radar_swing_eod_watchdog_run_valid{job="node-exporter",instance="quant-host:9100"}'
+        values: '0x9'
+      - series: 'radar_swing_eod_watchdog_run_current{job="node-exporter",instance="quant-host:9100"}'
+        values: '1x9'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: QuantSwingEodWatchdogRunFailed
+        exp_alerts: []

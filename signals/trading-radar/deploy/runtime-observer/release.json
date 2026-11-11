@@ -1,0 +1,114 @@
+{
+  "version": "2026.09.10-digest.1",
+  "built_on": "2026-09-10",
+  "image_tag": "trading-radar-runtime-observer:2026.09.10-digest.1",
+  "image_id": "sha256:c56adcd18fb70c3b7ee20c5d47d027eeba7d615be26d47e0bdfe9dec2b554c62",
+  "base_image_id": "sha256:a116514e19457bcb7af7efe9c3dd0b9b71e85b317694e7882a1c52aa15a78134",
+  "python_version": "3.12.14",
+  "healthcheck": "minimal socket HTTP 200; digest valid vs inputs-stale split",
+  "exporter_sha256": "e9211f9be1ac3ee0fc5c1d76fc9d0fc709246c862250928387346f03c34e4724",
+  "deployment_parent_commit": "537e27500f6fdb9f44d9b0e4f27519040f897e98",
+  "unit_tests": {
+    "passed": 69,
+    "failed": 0,
+    "runtime": "Linux amd64 Python 3.12, network none"
+  },
+  "promtool_rules_tests": {
+    "groups": 10,
+    "assertions": 40,
+    "status": "PASS",
+    "version": "2.53.0"
+  },
+  "production_boundary": "monitoring only; no host ports; no business restart, trigger, notification routing, proxy change, backup or Phase2 mutation",
+  "linux_memory_gate": {
+    "container_id": "50031c0a54d8b871a03fdb441ec6a9981f17f984a33f7994c7e60478c9e26186",
+    "summary": {
+      "cgroup_event_delta": {
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "checks": {
+        "all_requests_correct": true,
+        "duration_completed": true,
+        "effective_health_count": true,
+        "effective_metrics_count": true,
+        "effective_probe_count": true,
+        "late_cgroup_has_8mib_headroom": true,
+        "late_cgroup_stable": true,
+        "late_pss_stable": true,
+        "late_rss_stable": true,
+        "linux_cgroup_64mib": true,
+        "no_cgroup_pressure_event_growth": true,
+        "no_network_attempt": true,
+        "no_swap_growth": true,
+        "not_cancelled": true,
+        "workers_finished": true
+      },
+      "counts": {
+        "health": 300,
+        "metrics": 300,
+        "probe": 1800,
+        "reserved": 2400
+      },
+      "elapsed_seconds": 600.0031219497323,
+      "errors": [],
+      "limits": {
+        "cgroup_last_half_slope_max_bytes_per_minute": 1048576,
+        "cgroup_noise_allowance_bytes": 6291456,
+        "late_cgroup_median_max_bytes": 58720256,
+        "memory_max_bytes": 67108864,
+        "pss_rss_last_half_slope_max_bytes_per_minute": 524288,
+        "pss_rss_noise_allowance_bytes": 4194304
+      },
+      "measurement_limits": [
+        "Synthetic fixtures, frozen business clock, fake transport; not upstream availability",
+        "Ten-minute bounded regression gate, not a long-term leak proof",
+        "cgroup includes interpreter, test runner, tmpfs, and file cache",
+        "No listener sockets; actual request parser and handler are exercised"
+      ],
+      "mode": "production_memory_gate",
+      "network_attempts": [],
+      "production_gate_pass": true,
+      "requested_seconds": 600,
+      "signals": [],
+      "smoke_pass": false,
+      "source_sha256": "26065295b70b91fced00b8e27548b42cd9d2d4ba883893e76159729323af543f",
+      "swap_baseline_bytes": 0,
+      "swap_max_sampled_bytes": 0,
+      "swap_peak_available": true,
+      "swap_peak_baseline_bytes": 0,
+      "swap_peak_final_bytes": 0,
+      "trends": {
+        "cgroup": {
+          "available": true,
+          "last_half_sample_count": 32,
+          "last_half_slope_bytes_per_minute": 67455.77009944501,
+          "late_median_bytes": 18268160,
+          "late_minus_middle_bytes": 438272,
+          "middle_median_bytes": 17829888
+        },
+        "pss": {
+          "available": true,
+          "last_half_sample_count": 32,
+          "last_half_slope_bytes_per_minute": 83368.4979854148,
+          "late_median_bytes": 21548032,
+          "late_minus_middle_bytes": 454656,
+          "middle_median_bytes": 21093376
+        },
+        "rss": {
+          "available": true,
+          "last_half_sample_count": 32,
+          "last_half_slope_bytes_per_minute": 85510.922220669,
+          "late_median_bytes": 28643328,
+          "late_minus_middle_bytes": 454656,
+          "middle_median_bytes": 28188672
+        }
+      },
+      "type": "summary"
+    }
+  },
+  "rollback_image_id": "sha256:c89c97727f073eaca06cd572e69a4a894e566931495d991401c53064cbdd50df"
+}

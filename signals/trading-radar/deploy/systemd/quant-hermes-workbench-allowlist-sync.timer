@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Hermes workbench allowlist staging every 15s
+
+[Timer]
+OnBootSec=10s
+OnUnitActiveSec=15s
+AccuracySec=1s
+Unit=quant-hermes-workbench-allowlist-sync.service
+
+[Install]
+WantedBy=timers.target

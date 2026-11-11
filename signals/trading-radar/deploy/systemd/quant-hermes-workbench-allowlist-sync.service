@@ -1,0 +1,12 @@
+[Unit]
+Description=Sync Hermes allowlist files into QuantDinger workbench staging
+After=network.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+Environment=HERMES_HOME=/home/ubuntu/.hermes
+Environment=HERMES_WORKBENCH_ALLOWLIST_DIR=/home/ubuntu/trading-radar/data/hermes-workbench-allowlist
+ExecStart=/usr/bin/python3 /home/ubuntu/trading-radar/scripts/sync_hermes_workbench_allowlist.py
+Nice=10

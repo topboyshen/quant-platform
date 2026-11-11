@@ -1,0 +1,32 @@
+[Unit]
+Description=Refresh validated A-share trading calendar cache
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/trading-radar
+# Pin the existing, already provisioned AkShare runtime. Do not install packages.
+ExecStart=/home/ubuntu/trading-radar/runtime/venvs/swing-20260802/bin/python -I -B -u /home/ubuntu/trading-radar/scripts/update_trading_calendar.py --output /home/ubuntu/trading-radar/data/trading_calendar.json --max-age-days 7 --min-ahead-days 30
+Environment=TZ=Asia/Shanghai
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1
+Environment=MKL_NUM_THREADS=1
+TimeoutStartSec=150s
+TimeoutStopSec=30s
+KillMode=control-group
+Restart=no
+Nice=10
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+# Atomic replacement needs a writable parent, not merely the final JSON file.
+ReadWritePaths=/home/ubuntu/trading-radar/data
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=research-trading-calendar-refresh

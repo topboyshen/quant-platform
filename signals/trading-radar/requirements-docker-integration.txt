@@ -1,0 +1,5 @@
+# Quant -> AI-Filter 只读集成 API 的最小运行依赖。
+# 不安装 pandas / numpy / pyarrow / akshare；该进程只读取 SQLite 与 JSON。
+Flask>=3.0.0,<4.0
+gunicorn>=26.0.0,<27.0
+pytz>=2023.3

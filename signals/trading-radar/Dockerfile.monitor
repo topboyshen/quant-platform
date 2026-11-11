@@ -1,0 +1,20 @@
+# 监控主进程（radar_monitor_v3.py，含 PyTorch / SB3，支持进程内 RL）
+# 镜像较大。日常/Compose 推荐: Dockerfile.monitor-slim + 独立 ml-serve
+# 构建: docker build -f Dockerfile.monitor -t trading-radar-monitor .
+# 运行需挂载 config.json、可选 portfolio、models 等:
+#   docker run --rm -v $(pwd)/config.json:/app/config.json:ro -v $(pwd)/models:/app/models trading-radar-monitor
+ARG PYTHON_BASE_IMAGE=docker.1ms.run/library/python:3.12-slim-bookworm
+FROM ${PYTHON_BASE_IMAGE}
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+COPY . .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir ".[monitor-full]"
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)" || exit 1
+
+CMD ["python", "radar_monitor_v3.py"]

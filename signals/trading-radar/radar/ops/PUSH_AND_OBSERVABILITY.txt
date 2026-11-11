@@ -1,0 +1,68 @@
+================================================================================
+7. 真 WebSocket 行情：调研结论与替换 PushAdapter HTTP 轮询的路线
+================================================================================
+
+当前实现（见 radar/core/push_adapter.py）
+  - 东财 push2 clist HTTP 批量拉全市场，线程内 sleep 自适应间隔，属「轮询 + 本地 diff 再 emit」。
+  - EventBus / MarketDataEvent 已与数据源解耦，替换时保留事件形状即可。
+
+────────────────────────────────────────────────────────────────────────────
+富途 Futu OpenAPI（优先作为「真推送」候选）
+────────────────────────────────────────────────────────────────────────────
+  - 能力：官方 Python SDK（futu-api）通过本地 OpenD 连接；支持 subscribe 实时报价，
+    推送回调（如 UpdateBasicQot），本质为长连接推送，而非业务进程轮询 HTTP。
+  - 文档入口：https://openapi.futunn.com/futu-api-doc/quote/overview.html
+    订阅：https://openapi.futunn.com/futu-api-doc/quote/sub.html
+  - 前置条件：
+      * 本机或同网络运行 Futu OpenD，牛牛账户 + 行情权限（LV1 等，依标的与市场而定）。
+      * A 股标的需使用 SDK 规定的 market + code 形式（如 SH.600000）。
+  - 集成要点：
+      * 新建 QuotePushSource 实现：在推送回调里把字段映射为 MarketDataEvent，
+        再 event_bus.emit("market_data", event)；与现有 MonitorEngine 消费端对齐。
+      * 鉴权、重连、订阅上限以官方文档为准；勿在开源仓库中提交密钥。
+  - OpenD 侧亦可开 WebSocket 口给非官方客户端（见社区 OpenD WebSocket 说明），
+    但生产更推荐官方 futu-api，减少协议兼容成本。
+
+────────────────────────────────────────────────────────────────────────────
+新浪财经
+────────────────────────────────────────────────────────────────────────────
+  - 公开、稳定、无密钥：多为 HTTP，例如 hq.sinajs.cn/list=sh600000（见社区整理的字段说明）。
+  - WebSocket：
+      * 面向公众的「页面级 WS」无统一、稳定的官方开发者文档；部分文章称财经接口支持 WS，
+        实际 URL、协议版本可能变更，合规与稳定性风险高于富途官方通道。
+      * 新浪 Level2 / 机构类 WS 一般为商业合同 + 独立认证，非通用开源集成路径。
+  - 结论：若必须「免富途」且可接受轮询，可继续 HTTP；若必须「真推送」且要可维护，
+    优先考虑富途 OpenD + 官方 SDK，而非逆向新浪 WS。
+
+────────────────────────────────────────────────────────────────────────────
+建议落地顺序
+────────────────────────────────────────────────────────────────────────────
+  1) 定义协议：async/sync 均可，接口类似 start(stop) + 输出 MarketDataEvent。
+  2) 实现 FutuQuotePushSource（依赖 futu-api，仅在有配置时加载）。
+  3) MonitorEngine 事件模式：按配置选择 PushAdapter（HTTP）或 FutuQuotePushSource（推送）。
+  4) 保留 PushAdapter 作为默认/回退，便于无 OpenD 环境跑通 CI 与演示。
+
+================================================================================
+8. Prometheus + Grafana：与「仅靠日志轮转」的关系
+================================================================================
+
+现状
+  - radar_monitor 已内置 HealthHTTPServer（aiohttp）：/health、/ready、/live、/metrics。
+  - /metrics 原为手写 Prometheus 文本（扫描次数、错误数等）。
+  - radar/core/prometheus_extra.py（若安装 prometheus_client）会额外注册 PushAdapter 相关指标，
+    并由同一 /metrics 端点一并暴露。
+
+推荐分工
+  - 指标（SLI/SLO、延迟、错误率、推送频率）：Prometheus 定时 scrape /metrics → Grafana 仪表盘。
+  - 日志（排障、审计）：仍可用文件 + logrotate；或与 Loki / 云日志联动，在 Grafana 里和指标关联。
+  - 「替代文件日志轮转」的实质是：运维主视角从「翻日志」转为「看指标面板 + 必要时查日志」，
+    而非删除日志。
+
+Prometheus scrape 配置示例（见同目录 prometheus-scrape-example.yml）
+
+Grafana
+  - 添加 Prometheus 数据源，指向 Prometheus 服务 URL。
+  - 自建面板：radar_uptime_seconds、radar_scan_total、radar_pushadapter_*、探针状态等。
+
+环境变量
+  - HEALTH_HOST / HEALTH_PORT：监听地址（与 config health 段一致时可不重复设置，以代码为准）。

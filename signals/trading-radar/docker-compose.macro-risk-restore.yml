@@ -1,0 +1,55 @@
+services:
+  # Restore override: bring back macro-risk-producer (risk state producer for
+  # integration-api / VIX gate) after the 2026-08-18 runtime consolidation
+  # stripped its definition. Definition restored from git HEAD
+  # (docker-compose.runtime-cleanup.yml @ 0afa2dd).
+  macro-risk-producer:
+    image: trading-radar-macro-risk:2026.08.02-headless.1
+    build:
+      context: .
+      dockerfile: Dockerfile.macro-risk
+      args:
+        BASE_IMAGE: docker.1ms.run/library/python:3.12-slim-bookworm
+    container_name: radar-macro-risk
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "1000:1000"
+    environment:
+      RADAR_RISK_STATE_FILE: /app/data/radar_risk_state.json
+      RADAR_RISK_OVERRIDE_FILE: /app/data/radar_risk_override.json
+      RADAR_RISK_FETCH_INTERVAL_SEC: "300"
+      RADAR_RISK_OBSERVATION_TTL_SEC: "900"
+      RADAR_RISK_MAX_STATE_AGE_SEC: "900"
+      RADAR_RISK_HEALTH_PORT: "8093"
+      RADAR_ALL_PROXY: http://mihomo:7890
+      RADAR_HTTP_PROXY: http://mihomo:7890
+      RADAR_HTTPS_PROXY: http://mihomo:7890
+      NO_PROXY: 127.0.0.1,localhost,mihomo,macro-risk-producer
+    volumes:
+      - ./data:/app/data
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    depends_on:
+      mihomo:
+        condition: service_healthy
+    networks:
+      - radar-net
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 96m
+    cpus: 0.20
+    stop_grace_period: 20s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - /app/run_macro_risk_producer.py
+        - --healthcheck
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s

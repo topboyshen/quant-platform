@@ -1,0 +1,34 @@
+# unify-phase1 2026-11-11 (nnG8 shell unification): single host mihomo.
+# Containers reach the host mihomo via host.docker.internal -> host-gateway (docker0 172.17.0.1:7890,
+# mihomo "listeners" entry; ufw allows only 172.19.0.0/16 -> 172.17.0.1:7890).
+# radar-mihomo is retired (stopped, not removed): moved to the retired profiles so `compose up` never starts it.
+# Rollback: drop this file from COMPOSE_FILE in .env, `docker update --restart=unless-stopped radar-mihomo`,
+# `docker start radar-mihomo`, then `docker compose up -d --no-deps alertmanager macro-risk-producer quantdinger-backend`.
+services:
+  mihomo:
+    profiles: [retired, legacy-ui]
+  alertmanager:
+    environment:
+      HTTP_PROXY: http://host.docker.internal:7890
+      HTTPS_PROXY: http://host.docker.internal:7890
+    extra_hosts:
+      host.docker.internal: "host-gateway"
+    depends_on: !reset []
+  macro-risk-producer:
+    environment:
+      RADAR_ALL_PROXY: http://host.docker.internal:7890
+      RADAR_HTTP_PROXY: http://host.docker.internal:7890
+      RADAR_HTTPS_PROXY: http://host.docker.internal:7890
+    extra_hosts:
+      host.docker.internal: "host-gateway"
+    depends_on: !reset []
+  quantdinger-backend:
+    environment:
+      PROXY_URL: http://host.docker.internal:7890
+    extra_hosts:
+      host.docker.internal: "host-gateway"
+    depends_on: !override
+      quantdinger-postgres:
+        condition: service_healthy
+      quantdinger-redis:
+        condition: service_healthy

@@ -1,0 +1,30 @@
+# Prometheus scrape 示例：监控 radar_monitor 暴露的 /metrics
+# 将 targets 中的 host:port 换成实际 HEALTH 监听地址（默认见 config health 段）
+#
+# 用法：复制到 Prometheus 配置目录，并在 prometheus.yml 中：
+#   scrape_configs:
+#     - job_name: trading-radar
+#       scrape_interval: 15s
+#       static_configs:
+#         - targets: ['127.0.0.1:8080']
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: trading-radar-monitor
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 127.0.0.1:8080
+        labels:
+          service: radar_monitor
+
+  # 独立 ML 推理服务（python serve_ml.py，默认 8090）暴露 radar_ml_serve_*
+  - job_name: trading-radar-ml-serve
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 127.0.0.1:8090
+        labels:
+          service: radar_ml_serve

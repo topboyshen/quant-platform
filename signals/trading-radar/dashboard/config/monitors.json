@@ -1,0 +1,39 @@
+{
+  "stock_table": {
+    "name": "监控股票列表",
+    "data_key": "code",
+    "columns": [
+      {"field": "name", "title": "股票", "sortable": true, "width": "120px"},
+      {"field": "current_price", "title": "当前价", "sortable": true, "type": "price", "color": "change", "width": "80px"},
+      {"field": "change_pct", "title": "涨跌幅", "sortable": true, "type": "percent", "color": "self", "width": "90px"},
+      {"field": "direction", "title": "触发方向", "type": "tag", "tag_class": "direction", "width": "80px"},
+      {"field": "trigger_price", "title": "触发价", "type": "price", "width": "80px"},
+      {"field": "distance_pct", "title": "距离触发", "type": "percent", "color": "inverse", "width": "90px"},
+      {"field": "volume", "title": "成交量", "type": "volume", "width": "100px"},
+      {"field": "strategy", "title": "策略", "type": "tags", "tags_field": ["ml_enabled", "rl_enabled"], "width": "80px"}
+    ]
+  },
+  "stock_cards": {
+    "name": "实时行情卡片",
+    "data_key": "code",
+    "fields": [
+      {"field": "name", "type": "title"},
+      {"field": "code", "type": "subtitle"},
+      {"field": "current_price", "type": "price_large"},
+      {"field": "change_pct", "type": "percent_badge", "color": "self"},
+      {"field": "volume", "type": "volume"},
+      {"field": "trigger_price", "type": "price"}
+    ]
+  },
+  "system_stats": {
+    "name": "系统状态",
+    "cards": [
+      {"id": "service", "title": "服务状态", "icon": "fa-server", "color": "blue", "api": "/api/status", "path": "service.status"},
+      {"id": "memory", "title": "内存使用", "icon": "fa-memory", "color": "green", "api": "/api/status", "path": "process.mem_percent", "suffix": "%"},
+      {"id": "cpu", "title": "CPU 使用", "icon": "fa-microchip", "color": "yellow", "api": "/api/status", "path": "process.cpu_percent", "suffix": "%"},
+      {"id": "disk", "title": "磁盘使用", "icon": "fa-hdd", "color": "purple", "api": "/api/status", "path": "disk.percent"},
+      {"id": "alerts", "title": "今日告警", "icon": "fa-bell", "color": "red", "api": "/api/status", "path": "cooldown.today_alerts"},
+      {"id": "targets", "title": "监控目标", "icon": "fa-crosshairs", "color": "cyan", "api": "/api/status", "path": "cooldown.total_stocks"}
+    ]
+  }
+}

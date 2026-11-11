@@ -1,0 +1,606 @@
+diff --git a/src/components/DecisionContextBar/index.vue b/src/components/DecisionContextBar/index.vue
+index 45a6b15..1a306b6 100644
+--- a/src/components/DecisionContextBar/index.vue
++++ b/src/components/DecisionContextBar/index.vue
+@@ -39 +39 @@ export default {
+-        ? 'Radar ETF 信号（系统池）'
++        ? 'Radar ETF 研究（系统池）'
+diff --git a/src/utils/decisionContext.js b/src/utils/decisionContext.js
+index 95f0efd..e3731b1 100644
+--- a/src/utils/decisionContext.js
++++ b/src/utils/decisionContext.js
+@@ -305,0 +306,3 @@ export function normalizeDecisionContext (value = {}, options = {}) {
++    evidenceState: input.evidenceState == null || input.evidenceState === ''
++? ''
++      : (['current', 'historical', 'unavailable'].includes(input.evidenceState) ? input.evidenceState : 'unavailable'),
+@@ -315,0 +319 @@ export function isDecisionContextStale (
++  if (context.evidenceState && context.evidenceState !== 'current') return true
+@@ -500,0 +505 @@ export function buildDecisionResearchBrief (contextValue = {}, options = {}) {
++    `context.evidenceState=${researchValue(context.evidenceState, 24)}`,
+diff --git a/src/utils/etfPool.js b/src/utils/etfPool.js
+new file mode 100644
+index 0000000..c4a963a
+--- /dev/null
++++ b/src/utils/etfPool.js
+@@ -0,0 +1,129 @@
++// Membership is a configuration contract, not a count of historical signals.
++export const ETF_STATES = {
++  no_trigger: { label: '未触发信号', color: '' },
++  allowed: { label: '含放行信号', color: 'blue' },
++  blocked: { label: '风控拦截', color: 'orange' },
++  data_failed: { label: '行情不足', color: 'red' },
++  missing: { label: '缺少评估证据', color: 'orange' },
++  unknown: { label: '证据待核实', color: 'orange' },
++  stale: { label: '历史批次', color: 'orange' },
++  running: { label: '评估进行中', color: 'blue' }
++}
++
++const record = value => value && typeof value === 'object' && !Array.isArray(value)
++const date = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
++  Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value
++const code = value => typeof value === 'string' && /^(?:15|16|18|50|51|52|56|58)\d{4}$/.test(value)
++const text = value => typeof value === 'string' ? value.slice(0, 120) : ''
++const empty = () => ({
++  available: false,
++  configuredCount: null,
++  expectedDate: '',
++  decisionDate: '',
++  observedAt: '',
++  items: [],
++  counts: {},
++  pendingCount: 0
++})
++
++export function etfPoolView (value, options = {}) {
++  const now = options.now === undefined ? Date.now() : options.now
++  const fetched = Date.parse(options.generatedAt)
++  const snapshotCurrent = !Object.prototype.hasOwnProperty.call(options, 'generatedAt') ||
++    (Number.isFinite(fetched) && fetched <= now + 300000 && now - fetched < 300000)
++  if (!record(value) || value.schema_version !== 'quant.etf-pool.v1' ||
++      !Number.isInteger(value.configured_count) || value.configured_count < 1 || value.configured_count > 200 ||
++      !Array.isArray(value.items) || value.items.length !== value.configured_count) return empty()
++  const codes = new Set()
++  const items = []
++  for (const raw of value.items) {
++    if (!record(raw) || !code(raw.code) || codes.has(raw.code) || !Object.prototype.hasOwnProperty.call(ETF_STATES, raw.state)) return empty()
++    codes.add(raw.code)
++    const validPrice = typeof raw.reference_close === 'number' && Number.isFinite(raw.reference_close) && raw.reference_close > 0
++    const current = snapshotCurrent && raw.is_current === true && value.calendar_available === true &&
++      ['success', 'partial'].includes(value.run_status) && date(value.expected_date) &&
++      raw.decision_date === value.expected_date && raw.data_date === value.expected_date &&
++      raw.data_status === 'ok' && validPrice && ['no_trigger', 'allowed', 'blocked'].includes(raw.state)
++    const state = ['no_trigger', 'allowed', 'blocked'].includes(raw.state) && !current ? 'unknown' : raw.state
++    items.push({
++      code: raw.code,
++      name: text(raw.name) || raw.code,
++      sector: text(raw.sector),
++      market: 'CNStock',
++      state,
++      current,
++      decision_date: date(raw.decision_date) ? raw.decision_date : '',
++      data_date: date(raw.data_date) ? raw.data_date : '',
++      reference_close: validPrice ? raw.reference_close : null,
++      reason_code: text(raw.reason_code),
++      risk_level: text(raw.risk_level),
++      ...ETF_STATES[state]
++    })
++  }
++  const counts = Object.fromEntries(Object.keys(ETF_STATES).map(state => [state, items.filter(item => item.state === state).length]))
++  return {
++    available: true,
++    configuredCount: value.configured_count,
++    expectedDate: date(value.expected_date) ? value.expected_date : '',
++    decisionDate: date(value.decision_date) ? value.decision_date : '',
++    observedAt: text(value.observed_at),
++    items,
++    counts,
++    pendingCount: items.filter(item => !item.current).length
++  }
++}
++
++export function filterEtfPool (items, query = '', state = 'all') {
++  const needle = String(query).trim().toLowerCase()
++  return items.filter(item => (state === 'all' || item.state === state) &&
++    [item.code, item.name, item.sector].some(value => value.toLowerCase().includes(needle)))
++}
++
++export function etfResearchContext (item, payload = {}, options = {}) {
++  const pool = etfPoolView(payload.research_pool, { ...options, generatedAt: payload.generated_at })
++  const row = pool.items.find(candidate => candidate.code === item.code)
++  if (!row) return null
++  // The legacy signal list has no run_id/per-signal gating provenance. Never
++  // promote a date+code match to proof that THIS attempt allowed that signal.
++  return {
++    origin: 'radar',
++    market: 'CNStock',
++    symbol: row.code,
++    name: row.name,
++    signal: { summary: `研究池评估：${row.label}；具体信号需核对本次审计，不代表买卖建议。`, decision_date: row.decision_date },
++    risk: row.current ? payload.risk : {},
++    marketContext: row.current ? payload.market : {},
++    asOf: row.data_date || row.decision_date,
++    source: 'Trading Radar ETF 研究池（只读审计）',
++    evidenceState: row.current ? 'current' : 'unavailable',
++    evidenceUpdatedAt: payload.generated_at
++  }
++}
++
++export function historicalEtfContext (row, payload = {}) {
++  if (!record(row) || !code(row.code) || !date(row.decision_date)) return null
++  return {
++    origin: 'radar',
++    market: 'CNStock',
++    symbol: row.code,
++    name: text(row.name),
++    signal: row,
++    // Current global risk must not masquerade as risk at the historical signal date.
++    risk: {},
++    marketContext: {},
++    asOf: row.decision_date,
++    source: 'Trading Radar 历史信号（仅回看）',
++    evidenceState: 'historical',
++    evidenceUpdatedAt: payload.generated_at
++  }
++}
++
++// Coalesce overlapping refreshes; responses cannot arrive out of order and revive stale data.
++export function singleFlight (owner, key, task) {
++  if (owner[key]) return owner[key]
++  const pending = Promise.resolve().then(task).finally(() => {
++    if (owner[key] === pending) owner[key] = null
++  })
++  owner[key] = pending
++  return pending
++}
+diff --git a/src/utils/radarPresentation.js b/src/utils/radarPresentation.js
+index 498bcc9..e32b7b2 100644
+--- a/src/utils/radarPresentation.js
++++ b/src/utils/radarPresentation.js
+@@ -115,0 +116,11 @@ const REASON_LABELS = {
++  signal_not_triggered: '已评估，技术条件未触发',
++  signal_allowed: '已触发并通过风控',
++  signal_blocked: '已触发但未获风控放行',
++  macro_risk_blocked: '已触发，被宏观风控拦截',
++  trend_data_unavailable: '所需行情尚不可用',
++  eod_evidence_missing: '本次运行缺少逐标的证据',
++  eod_evidence_invalid: '证据不完整或相互矛盾',
++  etf_pool_evidence_incomplete: 'ETF 研究池证据需核实',
++  etf_universe_invalid: 'ETF 研究池配置不可判定',
++  market_calendar_unavailable: '交易日历不可判定',
++  eod_running: '收盘评估进行中',
+diff --git a/src/views/personal-home/index.vue b/src/views/personal-home/index.vue
+index 54de0f2..e7e310a 100644
+--- a/src/views/personal-home/index.vue
++++ b/src/views/personal-home/index.vue
+@@ -58 +58 @@
+-          <div class="metric-label">今日终态审计</div>
++          <div class="metric-label">最近收盘审计</div>
+@@ -73 +73 @@
+-      <a-col :xs="24" :xl="14">
++      <a-col :xs="24" :xl="16">
+@@ -79,19 +79,59 @@
+-          <p class="source-note">这是 Trading Radar 维护的 ETF 研究池，不是您的个人观察名单。下表展示近期信号，系统池总量以每日审计目标数为准。</p>
+-          <a-table
+-            :columns="signalColumns"
+-            :data-source="recentSignals"
+-            :loading="loading"
+-            :pagination="{ pageSize: 6, hideOnSinglePage: true }"
+-            :row-key="(row, index) => `${row.code || 'signal'}-${row.decision_date || index}`"
+-            :locale="{ emptyText: error ? 'Radar 数据不可用' : '当前没有近期信号' }"
+-            size="small"
+-            :scroll="{ x: 660 }"
+-          >
+-            <template slot="signal" slot-scope="value"><a-tag :color="signalColor(value)">{{ signalLabel(value) }}</a-tag></template>
+-            <template slot="confidence" slot-scope="value">{{ value == null ? '--' : number(value) }}</template>
+-            <template slot="radarAction" slot-scope="value, row">
+-              <a-button size="small" :type="isSelected('radar', row) ? 'primary' : 'default'" @click="selectRadar(row)">
+-                {{ isSelected('radar', row) ? '已选中' : '选中研究' }}
+-              </a-button>
+-            </template>
+-          </a-table>
++          <p class="source-note">完整展示配置中的 ETF，不以是否触发信号决定是否入池。收盘价仅为审计参考，不是实时行情；选中研究不代表买卖建议。</p>
++          <div class="pool-meta">应验收 {{ pool.expectedDate || '--' }} · 最近批次 {{ pool.decisionDate || '--' }} · 刷新仅重读证据，不补跑策略</div>
++          <a-alert v-if="!pool.available && !loading" type="warning" show-icon message="研究池清单不可用；不从历史信号推测池规模" class="inline-alert" />
++          <a-tabs v-model="poolTab">
++            <a-tab-pane key="universe" :tab="`完整研究池（${radarPoolCount}）`">
++              <div v-if="pool.available" class="pool-summary" data-testid="etf-pool-summary">
++                <a-tag>未触发 {{ pool.counts.no_trigger }}</a-tag>
++                <a-tag color="blue">含放行 {{ pool.counts.allowed }} 只</a-tag>
++                <a-tag color="orange">全拦截 {{ pool.counts.blocked }} 只</a-tag>
++                <a-tag :color="pool.pendingCount ? 'orange' : ''">待核实 {{ pool.pendingCount }}</a-tag>
++              </div>
++              <div class="pool-filters">
++                <a-input-search v-model="poolQuery" placeholder="搜索代码、名称、类别" aria-label="搜索ETF" allow-clear />
++                <a-select v-model="poolStateFilter" aria-label="筛选评估状态" style="min-width: 150px">
++                  <a-select-option value="all">全部状态</a-select-option>
++                  <a-select-option v-for="(state, key) in poolStates" :key="key" :value="key">{{ state.label }}</a-select-option>
++                </a-select>
++              </div>
++              <a-table
++                data-testid="etf-universe"
++                :columns="poolColumns"
++                :data-source="filteredPool"
++                :loading="loading"
++                :pagination="{ pageSize: 10, hideOnSinglePage: true }"
++                row-key="code"
++                :locale="{ emptyText: pool.available ? '没有匹配的 ETF' : '研究池清单不可用' }"
++                size="small"
++                :scroll="{ x: 900 }">
++                <template slot="poolState" slot-scope="value, row"><a-tag :color="row.color">{{ row.label }}</a-tag></template>
++                <template slot="poolPrice" slot-scope="value">{{ value == null ? '--' : value.toFixed(3) }}</template>
++                <template slot="poolReason" slot-scope="value">{{ reasonLabel(value) }}</template>
++                <template slot="poolDate" slot-scope="value">{{ value || '--' }}</template>
++                <template slot="poolAction" slot-scope="value, row">
++                  <a-button size="small" :type="isSelected('radar', row) ? 'primary' : 'default'" @click="selectPool(row)">
++                    {{ isSelected('radar', row) ? '已选中' : '选中研究' }}
++                  </a-button>
++                </template>
++              </a-table>
++            </a-tab-pane>
++            <a-tab-pane key="history" :tab="`历史信号（${recentSignals.length}）`">
++              <a-alert type="info" show-icon message="历史触发，仅供回看；不代表当前仍有信号或仍获风控放行。" class="inline-alert" />
++              <a-table
++                :columns="signalColumns"
++                :data-source="recentSignals"
++                :loading="loading"
++                :pagination="{ pageSize: 6, hideOnSinglePage: true }"
++                :row-key="(row, index) => `${row.code || 'signal'}-${row.decision_date || index}`"
++                :locale="{ emptyText: error ? 'Radar 数据不可用' : '当前没有近期信号' }"
++                size="small"
++                :scroll="{ x: 660 }"
++              >
++                <template slot="signal" slot-scope="value"><a-tag :color="signalColor(value)">{{ signalLabel(value) }}</a-tag></template>
++                <template slot="confidence" slot-scope="value">{{ value == null ? '--' : number(value) }}</template>
++                <template slot="radarAction" slot-scope="value, row">
++                  <a-button size="small" @click="selectRadar(row)">研究历史</a-button>
++                </template>
++              </a-table>
++            </a-tab-pane>
++          </a-tabs>
+@@ -100 +140 @@
+-      <a-col :xs="24" :xl="10">
++      <a-col :xs="24" :xl="8">
+@@ -135 +175 @@
+-      message="请选择一只 Radar ETF 信号或个人 A 股"
++      message="请选择一只 Radar ETF 研究标的或个人 A 股"
+@@ -208,0 +249 @@ import { getWatchlist } from '@/api/market'
++import { ETF_STATES, etfPoolView, filterEtfPool, etfResearchContext, historicalEtfContext, singleFlight } from '@/utils/etfPool'
+@@ -244,0 +286,15 @@ export default {
++      clockNow: Date.now(),
++      poolTab: 'universe',
++      poolQuery: '',
++      poolStateFilter: 'all',
++      poolStates: ETF_STATES,
++      poolColumns: [
++        { title: '代码', dataIndex: 'code', width: 85 },
++        { title: '名称', dataIndex: 'name', width: 120 },
++        { title: '类别', dataIndex: 'sector', width: 90 },
++        { title: '评估状态', dataIndex: 'state', scopedSlots: { customRender: 'poolState' }, width: 120 },
++        { title: '行情日期', dataIndex: 'data_date', scopedSlots: { customRender: 'poolDate' }, width: 110 },
++        { title: '参考收盘(元)', dataIndex: 'reference_close', scopedSlots: { customRender: 'poolPrice' }, width: 110 },
++        { title: '原因', dataIndex: 'reason_code', scopedSlots: { customRender: 'poolReason' }, width: 140 },
++        { title: '操作', key: 'action', scopedSlots: { customRender: 'poolAction' }, width: 100 }
++      ],
+@@ -291,7 +347,3 @@ export default {
+-    radarPoolCount () {
+-      const audited = Number(this.coverage.target_count)
+-      if (Number.isFinite(audited) && audited > 0) return audited
+-      const current = Array.isArray(this.signals.current) ? this.signals.current : []
+-      const codes = [...current, ...this.recentSignals].map(item => item && (item.code || item.symbol)).filter(Boolean)
+-      return new Set(codes).size
+-    },
++    pool () { return etfPoolView(this.context.research_pool, { generatedAt: this.context.generated_at, now: this.clockNow }) },
++    filteredPool () { return filterEtfPool(this.pool.items, this.poolQuery, this.poolStateFilter) },
++    radarPoolCount () { return this.pool.configuredCount == null ? '--' : this.pool.configuredCount },
+@@ -311 +363 @@ export default {
+-      })
++      }, { now: this.clockNow })
+@@ -333 +385 @@ export default {
+-    selectedOriginLabel () { return this.selectedContext && this.selectedContext.origin === 'radar' ? 'Radar ETF 信号' : '个人 A 股观察名单' },
++    selectedOriginLabel () { return this.selectedContext && this.selectedContext.origin === 'radar' ? 'Radar ETF 研究' : '个人 A 股观察名单' },
+@@ -338 +390 @@ export default {
+-    selectedContextStale () { return this.selectedContext ? isDecisionContextStale(this.selectedContext) : true }
++    selectedContextStale () { return this.selectedContext ? isDecisionContextStale(this.selectedContext, undefined, this.clockNow) : true }
+@@ -342 +394 @@ export default {
+-    this.loadContext()
++    this.loadAll()
+@@ -346,0 +399 @@ export default {
++    this._clockTimer = window.setInterval(() => { this.clockNow = Date.now() }, 60000)
+@@ -350,0 +404 @@ export default {
++    this.loadContext()
+@@ -352,0 +407,2 @@ export default {
++    this._disposed = true
++    window.clearInterval(this._clockTimer)
+@@ -366,0 +423,3 @@ export default {
++      return singleFlight(this, '_radarLoadPromise', () => this.fetchContext())
++    },
++    async fetchContext () {
+@@ -371,0 +431 @@ export default {
++        if (this._disposed) return
+@@ -374,0 +435,2 @@ export default {
++        this.reconcileRadarSelection()
++        this.clockNow = Date.now()
+@@ -375,0 +438 @@ export default {
++        if (this._disposed) return
+@@ -404,0 +468,3 @@ export default {
++      return singleFlight(this, '_watchlistLoadPromise', () => this.fetchWatchlist())
++    },
++    async fetchWatchlist () {
+@@ -408,0 +475 @@ export default {
++        if (this._disposed) return
+@@ -440,13 +507,18 @@ export default {
+-      const selected = writeDecisionContext({
+-        origin: 'radar',
+-        market: this.resolveMarket(row),
+-        symbol: row.symbol || row.code,
+-        name: row.name || row.title,
+-        signal: row,
+-        risk: this.risk,
+-        marketContext: this.market,
+-        asOf: row.decision_date || this.market.as_of || this.context.generated_at,
+-        source: row.source || this.radarSource,
+-        evidenceUpdatedAt: this.context.generated_at
+-      })
+-      this.applySelectedContext(selected)
++      const input = historicalEtfContext(row, this.context)
++      if (input) this.applySelectedContext(writeDecisionContext(input))
++    },
++    selectPool (row) {
++      const input = etfResearchContext(row, this.context)
++      if (input) this.applySelectedContext(writeDecisionContext(input))
++    },
++    reconcileRadarSelection () {
++      const stored = readDecisionContext({ allowStale: true })
++      if (!stored || stored.origin !== 'radar') return
++      const signalDate = stored.radar && stored.radar.signal && stored.radar.signal.decisionDate
++      if (stored.evidenceState === 'historical' || (signalDate && signalDate !== this.pool.decisionDate)) {
++        this.selectedContext = writeDecisionContext({ ...stored, evidenceState: 'historical' })
++        return
++      }
++      const input = etfResearchContext({ code: stored.symbol }, this.context)
++      if (input) this.selectedContext = writeDecisionContext({ ...input, selectedAt: stored.selectedAt })
++      else { clearDecisionContext(); this.selectedContext = null }
+@@ -486,0 +559 @@ export default {
++      if (origin === 'radar' && this.selectedContext.evidenceState === 'historical') return false
+@@ -551,0 +625,4 @@ export default {
++.pool-meta { margin-bottom: 10px; color: #7b8494; font-size: 12px; }
++.pool-summary { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
++.pool-filters { display: flex; gap: 10px; margin-bottom: 12px; }
++@media (max-width: 600px) { .pool-filters { flex-direction: column; } }
+diff --git a/tests/browser/etf-pool.html b/tests/browser/etf-pool.html
+new file mode 100644
+index 0000000..26e0ec0
+--- /dev/null
++++ b/tests/browser/etf-pool.html
+@@ -0,0 +1,18 @@
++<!doctype html>
++<html lang="zh-CN"><head><meta charset="utf-8"><title>ETF 研究池 · 隔离 UI 验证</title></head>
++<body><div id="app"></div><script type="module">
++import Vue from 'vue'
++import Vuex from 'vuex'
++import VueRouter from 'vue-router'
++import Antd from 'ant-design-vue'
++import 'ant-design-vue/dist/antd.css'
++import PersonalHome from '../../src/views/personal-home/index.vue'
++Vue.use(Vuex); Vue.use(VueRouter); Vue.use(Antd)
++const store = new Vuex.Store({ state: { app: { theme: 'light' } } })
++const router = new VueRouter({ mode: 'abstract', routes: [
++  { path: '/personal-home', component: PersonalHome },
++  { path: '/indicator-ide', component: { render: h => h('div', '隔离导航验证') } }
++] })
++const root = new Vue({ store, router, render: h => h(PersonalHome) }).$mount('#app')
++window.__etfQA = { root, store, router }
++</script></body></html>
+diff --git a/tests/browser/etf-pool.mjs b/tests/browser/etf-pool.mjs
+new file mode 100644
+index 0000000..ba95f72
+--- /dev/null
++++ b/tests/browser/etf-pool.mjs
+@@ -0,0 +1,74 @@
++// No user profile/login: isolated Chrome, all API calls intercepted, external traffic blocked.
++// PLAYWRIGHT_MODULE=/absolute/path/to/playwright-core/index.mjs CHROME_PATH=... node tests/browser/etf-pool.mjs
++import assert from 'node:assert/strict'
++import fs from 'node:fs'
++const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright-core')
++const pool = JSON.parse(fs.readFileSync(process.env.POOL_FIXTURE, 'utf8'))
++const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true })
++const context = await browser.newContext({ viewport: { width: 1500, height: 1100 } })
++const page = await context.newPage()
++const errors = []; page.on('pageerror', error => errors.push(error.message))
++let fail = false; let requests = 0
++await page.route('**/*', async route => {
++  const url = new URL(route.request().url())
++  if (url.pathname.startsWith('/api/')) {
++    let data = { code: 1, data: [] }
++    if (url.pathname.includes('radar/market-context')) {
++      requests++
++      if (fail) return route.fulfill({ status: 503, json: { code: 0, error: { type: 'radar_unavailable' } } })
++      data = { code: 1, data: { generated_at: new Date().toISOString(), status: 'degraded',
++        research_pool: pool, market: { available: true, as_of: pool.decision_date, expected_as_of: pool.expected_date, factors: [] },
++        risk: { available: true, level: 'critical', missing_fields: [] },
++        signals: { current: [], recent: [{ code: '512000', name: '券商ETF', decision_date: '2026-08-27', signal_type: 'volume_breakout_ma60' }] } } }
++    }
++    return route.fulfill({ json: data })
++  }
++  if (url.hostname !== '127.0.0.1') return route.abort()
++  return route.continue()
++})
++try {
++  await page.goto('http://127.0.0.1:5181/tests/browser/etf-pool.html')
++  await page.waitForSelector('[data-testid="etf-universe"] .ant-table-row')
++  assert.equal(await page.locator('[data-testid="etf-universe"] .ant-table-row').count(), 10)
++  assert.match(await page.locator('[data-testid="etf-pool-summary"]').innerText(), /未触发 10/)
++  assert.equal(requests, 1)
++  assert.equal(await page.locator('[data-testid="etf-universe"] .ant-tag-has-color').count(), 0)
++  await page.getByPlaceholder('搜索代码、名称、类别').fill('513180')
++  assert.equal(await page.locator('[data-testid="etf-universe"] .ant-table-row').count(), 1)
++  assert.match(await page.locator('[data-testid="etf-universe"]').innerText(), /0\.547/)
++  await page.locator('[data-testid="etf-universe"] button').click()
++  let selection = await page.evaluate(() => JSON.parse(sessionStorage.getItem('qd:decision-context')).context)
++  assert.equal(selection.symbol, '513180'); assert.equal(selection.radar.signal.type, '')
++  await page.getByPlaceholder('搜索代码、名称、类别').fill('')
++  await page.getByRole('tab', { name: /历史信号/ }).click()
++  await page.getByRole('button', { name: '研究历史' }).click()
++  selection = await page.evaluate(() => JSON.parse(sessionStorage.getItem('qd:decision-context')).context)
++  assert.equal(selection.evidenceState, 'historical'); assert.equal(selection.radar.risk.available, null)
++  await page.getByRole('tab', { name: /完整研究池/ }).click()
++  await page.locator('[data-testid="etf-universe"] .ant-table-row').first().locator('button').click()
++  await page.getByRole('button', { name: /继续到指标研究/ }).click()
++  assert.equal(await page.evaluate(() => window.__etfQA.router.currentRoute.path), '/indicator-ide')
++  await page.waitForTimeout(3500) // Let selection toast messages finish before the visual evidence.
++  await page.screenshot({ path: process.env.QA_SCREENSHOT, fullPage: true })
++  await page.evaluate(() => { window.__etfQA.store.state.app.theme = 'realdark' })
++  await page.screenshot({ path: process.env.QA_SCREENSHOT.replace('.png', '-dark.png'), fullPage: true })
++  await page.setViewportSize({ width: 390, height: 844 })
++  assert.equal(await page.locator('[data-testid="etf-universe"] .ant-table-row').count(), 10)
++  await page.evaluate(async () => { const vm = window.__etfQA.root.$children[0]; await Promise.all([vm.loadAll(), vm.loadAll()]) })
++  assert.equal(requests, 2)
++  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2))
++  await page.screenshot({ path: process.env.QA_SCREENSHOT.replace('.png', '-mobile.png'), fullPage: true })
++  fail = true
++  await page.evaluate(() => window.__etfQA.root.$children[0].loadAll())
++  assert.equal(await page.locator('[data-testid="etf-universe"] .ant-table-row').count(), 0)
++  assert.equal(await page.evaluate(() => sessionStorage.getItem('qd:decision-context')), null)
++  fail = false
++  await page.evaluate(() => window.__etfQA.root.$children[0].loadAll())
++  assert.equal(await page.locator('[data-testid="etf-universe"] .ant-table-row').count(), 10)
++  assert.deepEqual(errors, [])
++  console.log('UI PASS: 10 rows, filters, 3-decimal price, no-signal selection, historical isolation, navigation, mobile, coalescing, failure/recovery')
++} catch (error) {
++  console.error('page errors:', errors)
++  console.error((await page.locator('body').innerText()).slice(0, 2000))
++  throw error
++} finally { await browser.close() }
+diff --git a/tests/unit/decisionContext.test.mjs b/tests/unit/decisionContext.test.mjs
+index ea08d86..7a13e68 100644
+--- a/tests/unit/decisionContext.test.mjs
++++ b/tests/unit/decisionContext.test.mjs
+@@ -157,0 +158 @@ test('crops unknown and sensitive fields instead of persisting arbitrary objects
++    'evidenceState',
+diff --git a/tests/unit/etfPool.test.mjs b/tests/unit/etfPool.test.mjs
+new file mode 100644
+index 0000000..bcbc7b7
+--- /dev/null
++++ b/tests/unit/etfPool.test.mjs
+@@ -0,0 +1,114 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { etfPoolView, filterEtfPool, etfResearchContext, historicalEtfContext, singleFlight } from '../../src/utils/etfPool.js'
++import { normalizeDecisionContext, isDecisionContextStale, buildDecisionResearchBrief, writeDecisionContext, readDecisionContext } from '../../src/utils/decisionContext.js'
++
++const now = Date.parse('2026-09-12T16:00:00+08:00')
++const day = '2026-09-11'
++function payload () {
++  return { generated_at: new Date(now).toISOString(), market: { available: true }, risk: { available: true, level: 'critical' },
++    signals: { current: [], recent: [] }, research_pool: {
++      schema_version: 'quant.etf-pool.v1', configured_count: 10, status: 'ok', run_status: 'success',
++      calendar_available: true, expected_date: day, decision_date: day,
++      items: Array.from({ length: 10 }, (_, index) => ({ code: String(510300 + index), name: `ETF ${index}`, sector: '宽基',
++        state: 'no_trigger', is_current: true, data_status: 'ok', decision_date: day, data_date: day,
++        reference_close: .547, reason_code: 'signal_not_triggered' }))
++    } }
++}
++
++test('zero recent signals does not erase ten configured and evaluated ETFs', () => {
++  const p = payload(); const view = etfPoolView(p.research_pool)
++  assert.equal(view.configuredCount, 10)
++  assert.equal(view.items.length, 10)
++  assert.equal(view.counts.no_trigger, 10)
++  assert.equal(view.pendingCount, 0)
++  assert.equal(view.items[0].reference_close, .547)
++})
++
++for (const value of [null, {}, { configured_count: '10' }, { schema_version: 'quant.etf-pool.v1', configured_count: 10, items: [] }]) {
++  test(`missing/malformed universe is unknown, not inferred: ${JSON.stringify(value)}`, () => {
++    assert.equal(etfPoolView(value).configuredCount, null)
++    assert.deepEqual(etfPoolView(value).items, [])
++  })
++}
++
++test('duplicate codes reject an ambiguous universe', () => {
++  const p = payload(); p.research_pool.items[1].code = '510300'
++  assert.equal(etfPoolView(p.research_pool).available, false)
++})
++
++for (const [field, value] of [['is_current', 'true'], ['data_date', '2026-09-10'], ['decision_date', '2026-09-14'],
++  ['data_status', 'failed'], ['reference_close', null], ['reference_close', Infinity], ['reference_close', 0]]) {
++  test(`invalid row cannot look successfully evaluated: ${field}`, () => {
++    const p = payload(); p.research_pool.items[0][field] = value
++    const view = etfPoolView(p.research_pool)
++    assert.equal(view.items[0].state, 'unknown'); assert.equal(view.counts.unknown, 1)
++  })
++}
++
++test('search and status filters do not change total membership', () => {
++  const p = payload(); p.research_pool.items[1].state = 'data_failed'; p.research_pool.items[1].is_current = false
++  const view = etfPoolView(p.research_pool)
++  assert.equal(filterEtfPool(view.items, 'ETF 1').length, 1)
++  assert.equal(filterEtfPool(view.items, '510300')[0].code, '510300')
++  assert.equal(filterEtfPool(view.items, '', 'data_failed').length, 1)
++  assert.equal(filterEtfPool(view.items, '宽基').length, 10)
++  assert.equal(view.configuredCount, 10)
++})
++
++test('untriggered ETF remains researchable without manufacturing a signal', () => {
++  const p = payload()
++  p.signals.recent = [{ code: '510300', decision_date: '2026-08-27', signal_type: 'buy' }]
++  const context = normalizeDecisionContext(etfResearchContext({ code: '510300' }, p, { now }), { now })
++  assert.equal(context.symbol, '510300')
++  assert.equal(context.radar.signal.type, '')
++  assert.match(context.radar.signal.summary, /未触发信号/)
++  assert.equal(context.radar.risk.level, 'critical')
++  assert.equal(isDecisionContextStale(context, undefined, now), false)
++})
++
++test('legacy date+code signal match lacks run provenance and cannot become a current allowed signal', () => {
++  const p = payload(); p.research_pool.items[0].state = 'allowed'
++  p.signals.current = [{ code: '510301', decision_date: day, signal_type: 'buy' },
++    { code: '510300', decision_date: '2026-08-27', signal_type: 'buy' }]
++  assert.equal(normalizeDecisionContext(etfResearchContext({ code: '510300' }, p, { now }), { now }).radar.signal.type, '')
++  p.signals.current.push({ code: '510300', decision_date: day, signal_type: 'volume_breakout_ma60' })
++  assert.equal(normalizeDecisionContext(etfResearchContext({ code: '510300' }, p, { now }), { now }).radar.signal.type, '')
++})
++
++test('historical signal cannot be refreshed into live evidence or mixed with current risk', () => {
++  const p = payload()
++  const historical = historicalEtfContext({ code: '510300', name: 'ETF', decision_date: '2026-08-27', signal_type: 'buy' }, p)
++  const context = normalizeDecisionContext(historical, { now })
++  assert.equal(isDecisionContextStale(context, undefined, now), true)
++  assert.equal(context.radar.risk.available, null)
++  assert.equal(context.asOf, '2026-08-27')
++  assert.match(buildDecisionResearchBrief(context, { now }), /context.evidenceState="historical"/)
++  assert.match(buildDecisionResearchBrief(context, { now }), /context.stale=true/)
++  const storage = { value: '', setItem (_key, value) { this.value = value }, getItem () { return this.value } }
++  writeDecisionContext(historical, { storage, now })
++  assert.equal(readDecisionContext({ storage, now, allowStale: true }).evidenceState, 'historical')
++})
++
++test('expired response cannot stay green or propagate stale global risk', () => {
++  const p = payload()
++  const later = now + 300001
++  const view = etfPoolView(p.research_pool, { generatedAt: p.generated_at, now: later })
++  assert.equal(view.counts.unknown, 10)
++  const context = normalizeDecisionContext(etfResearchContext({ code: '510300' }, p, { now: later }), { now: later })
++  assert.equal(context.radar.risk.available, null)
++  assert.equal(isDecisionContextStale(context, undefined, later), true)
++})
++
++test('overlapping refresh requests coalesce and failure allows another attempt', async () => {
++  const owner = {}; let calls = 0; let finish
++  const pending = new Promise(resolve => { finish = resolve })
++  const run = () => { calls++; return pending }
++  const a = singleFlight(owner, 'request', run); const b = singleFlight(owner, 'request', run)
++  assert.equal(a, b)
++  await Promise.resolve(); assert.equal(calls, 1)
++  finish('ok'); assert.equal(await a, 'ok'); assert.equal(owner.request, null)
++  await assert.rejects(singleFlight(owner, 'request', () => Promise.reject(new Error('offline'))), /offline/)
++  assert.equal(owner.request, null)
++  assert.equal(await singleFlight(owner, 'request', () => 2), 2)
++})
+diff --git a/tests/unit/personalResearchShellContract.test.mjs b/tests/unit/personalResearchShellContract.test.mjs
+index 9a375e2..585ea7e 100644
+--- a/tests/unit/personalResearchShellContract.test.mjs
++++ b/tests/unit/personalResearchShellContract.test.mjs
+@@ -265 +265 @@ test('Radar macro card renders completeness and missing metrics without fabricat
+-    personalHome.indexOf('<div class="metric-label">今日终态审计</div>')
++    personalHome.indexOf('<div class="metric-label">最近收盘审计</div>')
