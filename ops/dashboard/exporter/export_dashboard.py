@@ -1218,20 +1218,52 @@ def audited_contract_evidence(health, errors):
     return result
 
 
+def legacy_full_contract_verified(health):
+    """A schema-less payload must prove its own full-audit identity.
+
+    data_health writes a read-only unknown record (reason/errorType only) when
+    evidence cannot be read. That record, or any other partial object, must
+    never be promoted to the original full contract by default.
+    """
+    if health.get("schemaVersion") != 1 or health.get("readOnly") is not True:
+        return False
+    if health.get("status") not in {"ok", "warning", "critical"}:
+        return False
+    stamp = parse_instant(health.get("generatedAt"))
+    if stamp is None or stamp.tzinfo is None:
+        return False
+    snapshot = health.get("snapshot")
+    if not isinstance(snapshot, dict):
+        return False
+    count = snapshot.get("rowCount")
+    if type(count) is not int or count < 0:
+        return False
+    latest = snapshot.get("latestValidDate")
+    return latest is None or is_iso_date(latest)
+
+
 def contract_evidence(health, errors):
     """Full-snapshot history and core-market observations must never be merged."""
     if "activeRunDecision" in health:
         return audited_contract_evidence(health, errors)
     declared = health.get("activeContract")
     # Older audit schemas are explicitly interpreted as the original full
-    # contract. Merely encountering coreMarket never activates it.
-    active = FULL_CONTRACT if declared is None else declared if isinstance(declared, str) and declared in {FULL_CONTRACT, CORE_CONTRACT} else None
+    # contract only when their own fields establish a full audit. Merely
+    # encountering coreMarket never activates it, and an unknown/error record
+    # stays unknown instead of claiming a legacy snapshot.
+    if declared is None:
+        active = FULL_CONTRACT if legacy_full_contract_verified(health) else None
+        source = "legacy_schema" if active else "unknown"
+    elif isinstance(declared, str) and declared in {FULL_CONTRACT, CORE_CONTRACT}:
+        active, source = declared, "audit"
+    else:
+        active, source = None, "audit"
     if active is None:
-        errors.append("active_contract_invalid")
+        errors.append("active_contract_invalid" if declared is not None else "legacy_full_contract_unverified")
     effective = health.get("effectiveTradeDate") if is_iso_date(health.get("effectiveTradeDate")) else None
     legacy = health.get("legacyFullSnapshot")
     legacy = legacy if isinstance(legacy, dict) else {}
-    result = {"activeContract": active, "contractSource": "legacy_schema" if declared is None else "audit",
+    result = {"activeContract": active, "contractSource": source,
               "effectiveTradeDate": effective, "activeLastRun": contract_run(health.get("activeLastRun")),
               "legacyFullSnapshot": {"contract": FULL_CONTRACT,
                   "status": "historical_only" if active == CORE_CONTRACT else "active" if active == FULL_CONTRACT else "unknown",

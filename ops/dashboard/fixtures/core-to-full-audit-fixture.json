@@ -1,0 +1,243 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-09T23:00:00+08:00",
+  "readOnly": true,
+  "activeContract": "research.full-snapshot.v1",
+  "effectiveTradeDate": "2026-10-08",
+  "contractPolicy": {
+    "schema": "research.contract-policy.v2",
+    "transitions": [
+      {
+        "activeContract": "research.core-market.v1",
+        "effectiveTradeDate": "2026-10-08"
+      },
+      {
+        "activeContract": "research.full-snapshot.v1",
+        "effectiveTradeDate": "2026-10-09"
+      }
+    ]
+  },
+  "contractIntervals": [
+    {
+      "activeContract": "research.core-market.v1",
+      "fromInclusive": "2026-10-08",
+      "untilExclusive": "2026-10-09"
+    },
+    {
+      "activeContract": "research.full-snapshot.v1",
+      "fromInclusive": "2026-10-09",
+      "untilExclusive": null
+    }
+  ],
+  "activeLastRun": {
+    "status": "inserted",
+    "timestamp": "2026-10-09T22:31:00+08:00",
+    "target": "2026-10-09",
+    "qlibTag": null,
+    "hasWarnings": false,
+    "stageUnavailable": false,
+    "startedAt": "2026-10-09T22:30:00+08:00",
+    "runId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "payloadSha256": "c6d7d1f804a801136d794a5a5eb6b9ab09bb9eae33ae4645f00c9c6aed3c6f9d"
+  },
+  "activeRunDecision": {
+    "schema": "research.active-run-decision.v1",
+    "contract": "research.full-snapshot.v1",
+    "scope": "full_snapshot",
+    "fullSnapshot": true,
+    "artifactKind": "full_snapshot",
+    "scheduledDate": "2026-10-09",
+    "scheduledFor": "2026-10-09T22:30:00+08:00",
+    "deadlineAt": "2026-10-09T22:45:00+08:00",
+    "evaluatedAt": "2026-10-09T23:00:00+08:00",
+    "expectedTargetDate": "2026-10-09",
+    "run": {
+      "runId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "status": "inserted",
+      "targetDate": "2026-10-09",
+      "startedAt": "2026-10-09T22:30:00+08:00",
+      "completedAt": "2026-10-09T22:31:00+08:00"
+    },
+    "verification": {
+      "status": "pass",
+      "reasons": [],
+      "scope": "local_run_artifact_calendar_identity",
+      "currentIssueCodes": [],
+      "materialWarningCodes": [],
+      "historicalIssueCodes": [
+        "stage_before_calendar_coverage"
+      ]
+    },
+    "artifact": {
+      "payloadSha256": "c6d7d1f804a801136d794a5a5eb6b9ab09bb9eae33ae4645f00c9c6aed3c6f9d",
+      "rowState": "valid",
+      "quality": null
+    },
+    "calendar": {
+      "status": "open",
+      "targetDate": "2026-10-09",
+      "previousTradingDate": "2026-10-08",
+      "nextTradingDate": "2026-10-10",
+      "evidenceSha256": "a739e3c1f29928aa8759ecd6c815a944fb0300f34d65ede2a6355883f7d3a982",
+      "sourceEvidenceSha256": "a739e3c1f29928aa8759ecd6c815a944fb0300f34d65ede2a6355883f7d3a982",
+      "sourceDate": "2026-10-09",
+      "observedAt": "2026-10-09T07:50:00+08:00",
+      "proofKind": "sealed_archive"
+    }
+  },
+  "legacyFullSnapshot": {
+    "contract": "research.full-snapshot.v1",
+    "scheduledBefore": null,
+    "intervals": [
+      {
+        "fromInclusive": null,
+        "untilExclusive": "2026-10-08"
+      },
+      {
+        "fromInclusive": "2026-10-09",
+        "untilExclusive": null
+      }
+    ],
+    "status": "active"
+  },
+  "coreMarket": {
+    "contract": "research.core-market.v1",
+    "fullSnapshot": false,
+    "artifactKind": "qlib_market_summary",
+    "includesCompletePriceArchive": false,
+    "readState": "checked",
+    "rowCount": 1,
+    "latestValidDate": "2026-10-08",
+    "rowHashes": {
+      "2026-10-08": "ab1cadd913a6cdf36b04d5f87352f48b903f5515ef2b77180151227f5e3f4b50"
+    },
+    "lastRun": {
+      "status": "unknown",
+      "reason": "core_last_run_not_configured"
+    },
+    "ledger": [
+      {
+        "tradeDate": "2026-10-08",
+        "coreState": "valid",
+        "pendingWindow": false,
+        "contract": "research.core-market.v1",
+        "fullSnapshot": false,
+        "payloadSha256": "ab1cadd913a6cdf36b04d5f87352f48b903f5515ef2b77180151227f5e3f4b50"
+      }
+    ],
+    "expectedFrom": "2026-10-08",
+    "quality": null
+  },
+  "status": "warning",
+  "scope": "local_evidence_only",
+  "businessMode": "FROZEN",
+  "auditSince": "2026-09-30",
+  "monitorSince": "2026-10-07",
+  "schedule": {
+    "expectedLastRunDate": "2026-10-09",
+    "todayDeadline": "2026-10-09T22:45:00+08:00"
+  },
+  "independentExpectedMarketDate": "2026-10-09",
+  "independentCalendarStatus": "verified",
+  "qlib": {
+    "releaseTag": "2026-10-10",
+    "calendarLastDate": "2026-10-09",
+    "referenceCompleteDate": "2026-10-09",
+    "dataGeneration": "release",
+    "dataQuality": "unknown",
+    "incremental": null,
+    "upstreamFreshness": "not_independently_verified",
+    "pendingObservedStage": false,
+    "fullMarketCoverage": "not_scanned"
+  },
+  "snapshot": {
+    "rowCount": 2,
+    "latestValidDate": "2026-10-09",
+    "quickCheck": "ok",
+    "baseline": "not_provided",
+    "rowHashes": {
+      "2026-09-30": "79fe619017fd7cbe08e5cdc3491db6d81e2060133c365f9f00f06b0778849d67",
+      "2026-10-09": "c6d7d1f804a801136d794a5a5eb6b9ab09bb9eae33ae4645f00c9c6aed3c6f9d"
+    }
+  },
+  "lastRun": {
+    "status": "inserted",
+    "timestamp": "2026-10-09T22:31:00+08:00",
+    "target": "2026-10-09",
+    "qlibTag": null,
+    "hasWarnings": false,
+    "stageUnavailable": false,
+    "startedAt": "2026-10-09T22:30:00+08:00",
+    "runId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "payloadSha256": "c6d7d1f804a801136d794a5a5eb6b9ab09bb9eae33ae4645f00c9c6aed3c6f9d"
+  },
+  "stages": {
+    "2026-09-04": {
+      "state": "valid",
+      "payloadSha256": "8f875756aaea039ca13bdb8fc849d3c2a187c59aa16d8a349c719cf23a252a76",
+      "recordSha256": "26b5fd79bc8f566d56031b511fa17bf19ce1a511fe52ce1c99858a579d07d8fe",
+      "observedAt": "2026-09-04T16:00:01+08:00"
+    },
+    "2026-10-09": {
+      "state": "valid",
+      "payloadSha256": "eb412dd531e3608c9d3e5cb5227f8de6b9837cc74fec1f75138ef22583356522",
+      "recordSha256": "037662ae6bdd80a19435ce4991b50a228fe5b4b63d2fe4353920f527797862e3",
+      "observedAt": "2026-10-09T16:00:01+08:00"
+    }
+  },
+  "issues": [
+    {
+      "code": "stage_before_calendar_coverage",
+      "severity": "warning",
+      "dates": [
+        "2026-09-04"
+      ]
+    }
+  ],
+  "ledger": [
+    {
+      "tradeDate": "2026-09-30",
+      "snapshotState": "valid",
+      "stageState": "missing",
+      "contract": "research.full-snapshot.v1",
+      "fullSnapshot": true,
+      "expectedUnderContract": true,
+      "classification": "legacy",
+      "pendingWindow": false,
+      "qlibAvailability": "calendar_and_reference_evidence_only",
+      "recoveryReadiness": "not_applicable",
+      "payloadSha256": "79fe619017fd7cbe08e5cdc3491db6d81e2060133c365f9f00f06b0778849d67"
+    },
+    {
+      "tradeDate": "2026-10-08",
+      "snapshotState": "missing",
+      "stageState": "missing",
+      "contract": "research.full-snapshot.v1",
+      "fullSnapshot": true,
+      "expectedUnderContract": false,
+      "classification": "monitored",
+      "pendingWindow": false,
+      "qlibAvailability": "calendar_and_reference_evidence_only",
+      "recoveryReadiness": "missing_or_invalid_market_evidence"
+    },
+    {
+      "tradeDate": "2026-10-09",
+      "snapshotState": "valid",
+      "stageState": "valid",
+      "contract": "research.full-snapshot.v1",
+      "fullSnapshot": true,
+      "expectedUnderContract": true,
+      "classification": "monitored",
+      "pendingWindow": false,
+      "qlibAvailability": "calendar_and_reference_evidence_only",
+      "recoveryReadiness": "not_applicable",
+      "payloadSha256": "c6d7d1f804a801136d794a5a5eb6b9ab09bb9eae33ae4645f00c9c6aed3c6f9d"
+    }
+  ],
+  "automaticRecoveryAuthorized": false,
+  "limitations": [
+    "No independent exchange calendar or release API lookup.",
+    "Valid market stage alone cannot reconstruct historical observed_at sources.",
+    "Stored rows receive strict JSON/date/error checks, not a full market revalidation."
+  ]
+}

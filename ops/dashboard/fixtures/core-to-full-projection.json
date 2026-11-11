@@ -1,0 +1,145 @@
+{
+  "activeContract": "research.full-snapshot.v1",
+  "contractSource": "audit_decision",
+  "effectiveTradeDate": "2026-10-08",
+  "activeLastRun": {
+    "status": "inserted",
+    "targetDate": "2026-10-09",
+    "timestamp": "2026-10-09T22:31:00+08:00",
+    "startedAt": "2026-10-09T22:30:00+08:00",
+    "payloadSha256": "c6d7d1f804a801136d794a5a5eb6b9ab09bb9eae33ae4645f00c9c6aed3c6f9d",
+    "runId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stageTradeDate": null,
+    "usedStageTradeDate": null,
+    "stagePayloadSha256": null,
+    "usedStagePayloadSha256": null,
+    "stageUnavailable": false,
+    "calendarClosedVerified": false,
+    "calendarTargetDate": null,
+    "previousTradingDate": null,
+    "calendarEvidenceSha256": null
+  },
+  "activeRunDecision": {
+    "schema": "research.active-run-decision.v1",
+    "contract": "research.full-snapshot.v1",
+    "scope": "full_snapshot",
+    "fullSnapshot": true,
+    "artifactKind": "full_snapshot",
+    "scheduledDate": "2026-10-09",
+    "scheduledFor": "2026-10-09T22:30:00+08:00",
+    "deadlineAt": "2026-10-09T22:45:00+08:00",
+    "evaluatedAt": "2026-10-09T23:00:00+08:00",
+    "expectedTargetDate": "2026-10-09",
+    "run": {
+      "runId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "status": "inserted",
+      "targetDate": "2026-10-09",
+      "startedAt": "2026-10-09T22:30:00+08:00",
+      "completedAt": "2026-10-09T22:31:00+08:00"
+    },
+    "verification": {
+      "status": "pass",
+      "scope": "local_run_artifact_calendar_identity",
+      "reasons": [],
+      "currentIssueCodes": [],
+      "materialWarningCodes": [],
+      "historicalIssueCodes": [
+        "stage_before_calendar_coverage"
+      ]
+    },
+    "artifact": {
+      "payloadSha256": "c6d7d1f804a801136d794a5a5eb6b9ab09bb9eae33ae4645f00c9c6aed3c6f9d",
+      "rowState": "valid",
+      "quality": null
+    },
+    "calendar": {
+      "status": "open",
+      "targetDate": "2026-10-09",
+      "previousTradingDate": "2026-10-08",
+      "nextTradingDate": "2026-10-10",
+      "evidenceSha256": "a739e3c1f29928aa8759ecd6c815a944fb0300f34d65ede2a6355883f7d3a982",
+      "sourceEvidenceSha256": "a739e3c1f29928aa8759ecd6c815a944fb0300f34d65ede2a6355883f7d3a982",
+      "sourceDate": "2026-10-09",
+      "observedAt": "2026-10-09T07:50:00+08:00",
+      "proofKind": "sealed_archive"
+    }
+  },
+  "legacyFullSnapshot": {
+    "contract": "research.full-snapshot.v1",
+    "status": "active",
+    "scheduledBefore": null,
+    "intervals": [
+      {
+        "fromInclusive": null,
+        "untilExclusive": "2026-10-08"
+      },
+      {
+        "fromInclusive": "2026-10-09",
+        "untilExclusive": null
+      }
+    ]
+  },
+  "coreMarket": {
+    "contract": "research.core-market.v1",
+    "fullSnapshot": false,
+    "artifactKind": "qlib_market_summary",
+    "includesCompletePriceArchive": false,
+    "historicalOnly": true,
+    "readState": "checked",
+    "status": "insufficient",
+    "expectedFrom": "2026-10-08",
+    "rowCount": 1,
+    "latestValidDate": "2026-10-08",
+    "lastRun": {
+      "status": "unknown",
+      "targetDate": null,
+      "timestamp": null,
+      "startedAt": null,
+      "payloadSha256": null,
+      "runId": null,
+      "stageTradeDate": null,
+      "usedStageTradeDate": null,
+      "stagePayloadSha256": null,
+      "usedStagePayloadSha256": null,
+      "stageUnavailable": null,
+      "calendarClosedVerified": false,
+      "calendarTargetDate": null,
+      "previousTradingDate": null,
+      "calendarEvidenceSha256": null
+    },
+    "quality": null,
+    "knownDates": 1,
+    "validDates": 1,
+    "ledger": [
+      {
+        "date": "2026-10-08",
+        "state": "valid",
+        "pendingWindow": false,
+        "payloadSha256": "ab1cadd913a6cdf36b04d5f87352f48b903f5515ef2b77180151227f5e3f4b50",
+        "contract": "research.core-market.v1",
+        "fullSnapshot": false
+      }
+    ],
+    "evidenceProblems": [
+      "historical_core_not_current_run"
+    ],
+    "blockingReasons": []
+  },
+  "contractIntervals": [
+    {
+      "activeContract": "research.core-market.v1",
+      "fromInclusive": "2026-10-08",
+      "untilExclusive": "2026-10-09"
+    },
+    {
+      "activeContract": "research.full-snapshot.v1",
+      "fromInclusive": "2026-10-09",
+      "untilExclusive": null
+    }
+  ],
+  "contractPolicy": {
+    "activeContract": "research.full-snapshot.v1",
+    "effectiveTradeDate": "2026-10-08"
+  },
+  "sourceTime": "2026-10-09T23:00:00+08:00"
+}
