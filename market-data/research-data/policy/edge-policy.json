@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "decided_at": "2026-08-18",
+  "decided_by": "human",
+  "system_mode": "EDGE_DISCOVERY",
+  "active_capital_fraction": 0,
+  "candidate_generation_enabled": false,
+  "random_rule_search_enabled": false,
+  "historical_parameter_search_enabled": false,
+  "execution_enabled": false,
+  "reactivation_requires_human_approved_edge_thesis": true,
+  "old_forecast_chain": {
+    "frozen": true,
+    "frozen_forecast_count": 120,
+    "frozen_outcome_count": 90,
+    "frozen_pending_review_count": 90,
+    "tombstone_metric_cohort_count": 60,
+    "post_tombstone_pre_freeze_outcome_count": 30,
+    "forecast_without_outcome_count": 30,
+    "outcomes_permanent_status": "PENDING_REVIEW",
+    "no_revision_no_settlement_no_evaluation": true,
+    "scheduler_timers_disabled": [
+      "research-system-phase2-producer.timer",
+      "research-system-phase2-settler.timer",
+      "research-ledger-phase2-import.timer",
+      "research-ledger-worker.timer"
+    ],
+    "long_running_services_left_untouched": [
+      "research-system-phase2.service",
+      "research-ledger.service"
+    ],
+    "astock_data_collection_continues": true,
+    "astock_auto_promote_to_candidate_prohibited": true
+  },
+  "candidate_schema_in_production_db": false,
+  "candidate_schema_status": "validated on disposable test DB only; DDL retained only on VPS-local legacy branch, not pushed or deployed",
+  "first_family_test": {
+    "rule_family_id": "rf-momentum-overnight-v1",
+    "status": "PROVISIONAL_REJECT",
+    "capital_eligible": false,
+    "conclusion": "DO_NOT_TRADE",
+    "reason": "negative_point_estimate_with_incomplete_small_sample",
+    "n_stock_sessions_scanned": 360,
+    "n_silence_rule_not_triggered": 350,
+    "n_generated": 10,
+    "n_settled": 7,
+    "n_unsettled_data_gap": 3,
+    "n_no_prior_bars": 0,
+    "win_rate": 0.286,
+    "mean_net_return": -0.00735,
+    "mean_net_R": -0.178,
+    "sum_net_return": -0.0514,
+    "ci_95_net_return": [-0.0181, 0.0034],
+    "ci_includes_zero": true,
+    "display_note": "earlier run header said 'first 8' but only 7 settled rows exist; display artifact, not a data inconsistency"
+  },
+  "basis": {
+    "sharpe_1991": "William F. Sharpe, 'The Arithmetic of Active Management', Financial Analysts Journal, Jan/Feb 1991. https://web.stanford.edu/~wfsharpe/art/active/active.htm",
+    "sharpe_point": "before costs active average == passive average; after costs active average < passive average",
+    "old_chain_tombstone_computed_from_first_60_pending_outcomes": "Brier 0.2807 > 0.25 random; win 0.65 < 0.683 majority-class baseline; mean forecast prob 0.165 vs mean outcome 0.317, bias -0.152; not formally settled. A further 30 outcomes arrived before scheduler freeze and are excluded from these statistics; all 90 outcomes remain PENDING_REVIEW. The chain also contains 30 sealed next-session forecasts without outcomes",
+    "edge_source_assessment": "current assets (public OHLC/news, public Qlib/AkShare/LLM, single-machine daily) are research tools, not a unique advantage; discipline/patience/audit reduce errors but do not generate alpha"
+  },
+  "reactivation_criteria": {
+    "requires_human_approved_commit_with": [
+      "who ignores what (the specific mispriced thing)",
+      "why it persists (why the market has not arbitraged it)",
+      "how to falsify (the prospective test that would kill it)"
+    ],
+    "then": "seal + prospective validation via preserved sealing/settlement/calibration apparatus"
+  }
+}

@@ -1,0 +1,20 @@
+HISTORICAL INITIAL DESIGN ONLY: superseded by Qlib-only contract/cutover work.
+See BATCH3_FINAL_TEST_RESULT.md for final branch results and remaining blocker.
+Isolated macOS fixed-fixture full offline suite, baseline d83c42d.
+No remote test execution; no production data.
+Existing offline runner executed in memory with only host-harness adaptations:
+  Linux /proc/self/fd resolution -> macOS F_GETPATH for dir_fd audit.
+  pathlib.Path.home mocked to disposable test scratch (mootdx import config).
+  verbosity 1. Network/subprocess/production-path/write guards retained.
+Cached local dependencies reused; no installation.
+......................................................................................................................usage: -c [-h] [--db DB] [--state-dir STATE_DIR] [--stage-dir STAGE_DIR]
+-c: error: unrecognized arguments: 2026-09-22
+..usage: -c [-h] [--db DB] [--state-dir STATE_DIR] [--stage-dir STAGE_DIR]
+-c: error: core status must not overwrite full snapshot last-run
+.....................................{"akshareStage":{"reason":"SnapshotDeferredError: current AkShare market staging failed: RuntimeError: network unavailable","sourceFailure":{"attemptCount":2,"attempts":[{"attempt":1,"errorType":"RuntimeError"},{"attempt":2,"errorType":"RuntimeError"}],"provider":"akshare"},"status":"unavailable","usedPayloadSha256":"c2c25c9324ccbde2ac1c97c93382d7041297d7881552e854f27b51126fbf1b07","usedTradeDate":"2026-09-02"},"assemblyKind":"delayed_observation","coverage":{"eligible":5501,"invalid":1,"ratio":0.9998,"valid":5500},"durationSeconds":1.019,"generatedAt":"2026-09-28T00:09:30.677038+08:00","payloadSha256":"953ed28d6c1fc2320281e4405c2cb23f245e9be9ae87f02a799e7c78992c91ad","qlibTag":"release-2026-09-02","quickCheck":"ok","runId":"day-two","sourceDates":{"akshareActivity":"2026-09-02","qlib":"2026-09-02"},"status":"inserted","target":"2026-09-02","timestamp":"2026-09-28T00:09:30.678303+08:00","warnings":["SnapshotDeferredError: current AkShare market staging failed: RuntimeError: network unavailable"]}
+.....................................................................................................................................................................................................................................................................................
+----------------------------------------------------------------------
+Ran 434 tests in 4.405s
+
+OK
+OFFLINE_TESTS=434 success=True

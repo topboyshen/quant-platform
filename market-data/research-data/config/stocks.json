@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "1.0",
+  "timezone": "Asia/Shanghai",
+  "corePool": [
+    {
+      "code": "002617",
+      "exchange": "SZ",
+      "symbol": "002617.SZ",
+      "name": "露笑科技",
+      "researchTags": ["第三代半导体", "新能源汽车", "高弹性"],
+      "tagStatus": "user_hypothesis_to_verify",
+      "monitor": ["主营业务与订单变化", "盈利质量与现金流", "重大公告与监管信息", "量价及流动性异常"],
+      "invalidationSignals": ["核心增长假设缺乏公告或财务数据支持", "经营现金流持续弱于利润表现", "出现重大合规或治理风险"]
+    },
+    {
+      "code": "600875",
+      "exchange": "SH",
+      "symbol": "600875.SH",
+      "name": "东方电气",
+      "researchTags": ["高端能源装备", "新能源", "氢能与核电"],
+      "tagStatus": "user_hypothesis_to_verify",
+      "monitor": ["订单与交付节奏", "毛利率和现金流", "行业招标与政策", "重大公告与监管信息"],
+      "invalidationSignals": ["订单不能转化为收入和现金流", "盈利能力持续低于研究假设", "行业景气或政策逻辑出现反转"]
+    },
+    {
+      "code": "300033",
+      "exchange": "SZ",
+      "symbol": "300033.SZ",
+      "name": "同花顺",
+      "researchTags": ["金融科技", "AI+证券", "市场活跃度弹性"],
+      "tagStatus": "user_hypothesis_to_verify",
+      "monitor": ["市场成交活跃度", "用户与商业化指标", "AI 产品进展的可核验证据", "合规与监管信息"],
+      "invalidationSignals": ["市场活跃度未能转化为业绩", "AI 商业化假设缺少经营数据验证", "监管或合规风险显著上升"]
+    }
+  ]
+}
+

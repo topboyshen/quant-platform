@@ -1,0 +1,26 @@
+[Unit]
+Description=Read-only research data coverage and evidence health
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/research-data
+ExecStart=/usr/bin/python3 -B /home/ubuntu/research-data/data_health.py --db /home/ubuntu/research-data/snapshot.db --qlib /home/ubuntu/qlib/data/cn_data --stages /home/ubuntu/.local/state/research-data/akshare-market --last-run /home/ubuntu/.local/state/research-data/last-run.json --mode /etc/research-ledger/runtime-health.mode --since 2026-08-21 --monitor-since 2026-09-07 --baseline /home/ubuntu/research-data/config/data-health-row-baseline.json --contract-policy /home/ubuntu/research-data/config/snapshot-contract.json --core-db /home/ubuntu/research-data/core-market.db --core-last-run /home/ubuntu/.local/state/research-data/core-market/last-run.json
+TimeoutStartSec=30
+MemoryMax=128M
+CPUQuota=25%
+UMask=0077
+NoNewPrivileges=true
+PrivateNetwork=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=research-data-health

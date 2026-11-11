@@ -1,0 +1,11 @@
+[Unit]
+Description=Reconcile an unconfirmed research-data health delivery, then run the same classifier; never resend an unknown delivery
+
+[Timer]
+OnCalendar=*-*-* 23:00:00 Asia/Shanghai
+Persistent=false
+AccuracySec=1s
+Unit=research-data-health-alert-review.service
+
+[Install]
+WantedBy=timers.target

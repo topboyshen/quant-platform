@@ -1,0 +1,9 @@
+# Direct runtime dependencies verified against the production venv on 2026-08-24.
+akshare==1.18.81
+baostock==0.9.3
+mootdx==0.11.7
+numpy==2.5.1
+pandas==3.0.5
+requests==2.34.2
+curl_cffi==0.16.3
+beautifulsoup4==4.15.0

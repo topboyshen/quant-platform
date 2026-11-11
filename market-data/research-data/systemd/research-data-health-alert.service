@@ -1,0 +1,15 @@
+[Unit]
+Description=Telegram-alert when the research-data health audit is critical
+After=research-data-health.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/research-data
+Environment=RESEARCH_DATA_HEALTH_JSON=/var/lib/research-data-health/last.json
+ExecStart=/home/ubuntu/research-data/scripts/run_health_alert.sh
+TimeoutStartSec=90
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

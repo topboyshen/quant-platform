@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Explicit, evidence-backed list of audit dates already confirmed as retained historical facts. Used only to word the health alert; it never changes audit severity, never hides an issue from the audit, and never implies the dates were repaired. Any date not listed here is reported as not confirmed (possibly new).",
+  "originalBaseline": {
+    "confirmedOn": "2026-09-20",
+    "anchor": "research-data-health 2026-09-19 22:45 audit, read and user-confirmed on 2026-09-20",
+    "anchorSha256": "79fc2927e988b227a5c1f2a18700c319a7c433889ce3b61cd268d54c3ee140bc",
+    "sameAnchorAs": "ops/dashboard/exporter/export_dashboard.py RETAINED_ISSUES",
+    "unresolved_trading_day_gaps": [
+      "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-11",
+      "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17"
+    ],
+    "legacy_gaps_or_invalid_rows": [
+      "2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27",
+      "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"
+    ]
+  },
+  "laterRegistrations": [
+    {
+      "code": "unresolved_trading_day_gaps",
+      "date": "2026-09-22",
+      "fact": "snapshot deferred (No tables found); no sealed market stage and no snapshot row for 2026-09-22; kept as a gap, not backfilled",
+      "firstObservedAt": "2026-09-22T22:45:00.813661+08:00",
+      "firstObservedSource": "research-data-health.service journal_reconstruction",
+      "reconstructedJournalPayloadSha256": "226b85d0c84c683faeee39757ecdda6f9723441bf1379070a8f0613f6ed935f2",
+      "sameAnchorAs": "ops/dashboard/exporter/export_dashboard.py RETAINED_ADDENDA",
+      "note": "Separately listed later fact; not merged into the original 8+10 baseline."
+    }
+  ]
+}
