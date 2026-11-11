@@ -103,7 +103,9 @@ def new_token(body: TokenIn, req: Request, p: Principal = Depends(require_auth),
         raise HTTPException(status_code=409, detail="name exists")
     tok = create_service_token(db, body.name, body.scopes)
     db.add(AuditEvent(actor=p.name, action="service_token.create", ok=True, detail={"name": body.name, "scopes": body.scopes}))
-    return {"name": body.name, "token": tok, "note": "shown once; only its sha256 is stored"}
+    db.flush()
+    tid = db.execute(select(ServiceToken.id).where(ServiceToken.name == body.name)).scalar_one()
+    return {"id": tid, "name": body.name, "token": tok, "note": "shown once; only its sha256 is stored"}
 
 
 @router.delete("/ops/tokens/{token_id}")

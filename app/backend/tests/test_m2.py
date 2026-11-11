@@ -151,7 +151,7 @@ def test_tokens(authed):
     from fastapi.testclient import TestClient
     from qp.api.main import app
     r = authed.post("/api/ops/tokens", json={"name": "probe-m2", "scopes": ["ops:read"]})
-    assert r.status_code == 200 and r.json()["token"].startswith("qpst_")
+    assert r.status_code == 200 and r.json()["token"].startswith("qpst_") and isinstance(r.json()["id"], int)
     tok = r.json()["token"]
     assert authed.post("/api/ops/tokens", json={"name": "probe-m2"}).status_code == 409
     assert authed.post("/api/ops/tokens", json={"name": "bad", "scopes": ["root"]}).status_code == 422
