@@ -32,10 +32,22 @@ if [[ "${ALERT_DRY_RUN:-0}" == "1" ]]; then
   exit 0
 fi
 [[ -x "$HERMES_PYTHON" ]] || { printf 'Hermes Python unavailable\n' >&2; exit 1; }
-if ! printf '%s\n' "$message" | timeout 60 "$HERMES_PYTHON" -m hermes_cli.main send --to telegram --file - --quiet >/dev/null; then
+send_out="$STATE_ROOT/.$safe_unit.send.json"
+if ! printf '%s\n' "$message" | timeout 60 "$HERMES_PYTHON" -m hermes_cli.main send --to telegram --file - --json >"$send_out"; then
+  rm -f -- "$send_out"
   printf 'Hermes alert delivery failed\n' >&2
   exit 1
 fi
+# 2026-10-17: record Telegram message_id from the send result (extra field only).
+message_id="$(python3 -c 'import json,sys
+try:
+    v = json.load(open(sys.argv[1])).get("message_id")
+    print(v if str(v).isdigit() else "unknown")
+except Exception:
+    print("unknown")' "$send_out" 2>/dev/null || printf 'unknown')"
+rm -f -- "$send_out"
+printf '%s message_id=%s\n' "$now" "$message_id" >> "$STATE_ROOT/$safe_unit.receipts" || true
+printf 'research-ledger alert sent unit=%s message_id=%s\n' "$UNIT" "$message_id"
 tmp="$STATE_ROOT/.$safe_unit.last.tmp"
 printf '%s\n' "$now" > "$tmp"
 chmod 0600 "$tmp"
