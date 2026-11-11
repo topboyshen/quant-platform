@@ -1,0 +1,37 @@
+name: Backend Tests and Security
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend_api_python/requirements.txt
+      - name: Install dependencies
+        working-directory: backend_api_python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pytest-cov pip-audit
+      - name: Run tests with coverage ratchet
+        working-directory: backend_api_python
+        run: >-
+          pytest -q -p no:cacheprovider
+          --cov=app --cov-report=term --cov-fail-under=28
+      - name: Run structural quality gate
+        working-directory: backend_api_python
+        run: python scripts/backend_quality_check.py
+      - name: Audit dependencies
+        working-directory: backend_api_python
+        # ecdsa is pulled in by bip-utils. PYSEC-2026-1325 concerns P-256
+        # signing/ECDH; QuantDinger uses bip-utils for wallet derivation and
+        # does not use that P-256 API. Reassess on every dependency upgrade.
+        run: pip-audit --local --ignore-vuln PYSEC-2026-1325
