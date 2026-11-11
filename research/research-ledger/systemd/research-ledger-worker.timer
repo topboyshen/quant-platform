@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Research Ledger calibration snapshot
+
+[Timer]
+OnCalendar=*-*-* 16:10:00 Asia/Shanghai
+Persistent=true
+Unit=research-ledger-worker.service
+
+[Install]
+WantedBy=timers.target

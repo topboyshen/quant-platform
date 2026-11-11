@@ -1,0 +1,19 @@
+[Unit]
+Description=Research Ledger Telegram alert for %i
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+ExecStart=/opt/research-ledger/scripts/research-ledger-alert.sh %i
+StateDirectory=research-ledger-alert
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/research-ledger-alert /home/ubuntu/.hermes
+MemoryMax=160M
+CPUQuota=25%
+TasksMax=64
