@@ -10,7 +10,9 @@ from pathlib import Path
 
 def _alembic_cfg():
     from alembic.config import Config
-    here = Path(__file__).resolve().parent.parent
+    # alembic.ini + migrations/ live in the app dir (QP_APP_DIR, else CWD, else the source checkout)
+    cands = [os.getenv("QP_APP_DIR"), os.getcwd(), str(Path(__file__).resolve().parent.parent)]
+    here = next(Path(c) for c in cands if c and (Path(c) / "alembic.ini").is_file())
     cfg = Config(str(here / "alembic.ini"))
     cfg.set_main_option("script_location", str(here / "migrations"))
     return cfg
