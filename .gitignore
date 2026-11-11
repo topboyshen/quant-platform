@@ -1,0 +1,19 @@
+# never commit secrets / runtime data
+.env
+.env.*
+**/secrets/
+*.pem
+*.key
+*.htpasswd
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+node_modules/
+**/dist/
+!web/workbench/**
+__pycache__/
+.venv/
+venv/
