@@ -1,0 +1,172 @@
+import copy
+import io
+import json
+import sys
+from datetime import datetime, timedelta, timezone
+
+import bcrypt
+import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+PW = "m2 password"
+
+
+def snap(now=None, **over):
+    now = now or datetime.now(timezone.utc)
+    s = {
+        "schema": "qp.legacy.v1", "collected_at": now.isoformat(), "duration_s": 3.2, "host": "nnG8",
+        "systemd_system": {"ok": True, "units": [
+            {"name": "stock-radar-swing-eod.service", "load": "loaded", "active": "inactive", "sub": "dead",
+             "description": "EOD", "result": "success", "exit_status": "0", "last_exit": now.isoformat()},
+            {"name": "stock-radar-swing-eod.timer", "load": "loaded", "active": "active", "sub": "waiting", "description": "t"},
+            {"name": "qd-redacted-log-root-health.service", "load": "loaded", "active": "failed", "sub": "failed",
+             "description": "x", "result": "exit-code", "exit_status": "1"},
+            {"name": "apt-daily.service", "load": "loaded", "active": "failed", "sub": "failed", "result": "exit-code"},
+        ], "timers": [{"timer": "stock-radar-swing-eod.timer", "activates": "stock-radar-swing-eod.service",
+                       "next": (now + timedelta(hours=2)).isoformat(), "last": (now - timedelta(hours=20)).isoformat()}]},
+        "systemd_user": {"ok": True, "units": [
+            {"name": "astock-cninfo-precollect.service", "load": "loaded", "active": "inactive", "sub": "dead",
+             "result": "success", "exit_status": "0"}], "timers": []},
+        "containers": [{"name": "radar-quantdinger-backend", "state": "running", "health": "healthy"},
+                       {"name": "radar-mihomo", "state": "exited", "health": None},
+                       {"name": "radar-grafana", "state": "running", "health": "unhealthy"}],
+        "ports": [{"addr": "127.0.0.1", "port": 18800}],
+        "certs": [{"target": "443", "ok": True, "hours_left": 30.0, "not_after": "x"},
+                  {"target": "8443", "ok": True, "hours_left": 88.0}],
+        "egress": [{"target": "telegram_api", "via_proxy": True, "ok": True, "ms": 900},
+                   {"target": "gstatic_204", "via_proxy": True, "ok": False, "error": "URLError"},
+                   {"target": "telegram_direct", "via_proxy": False, "ok": False}],
+        "logs": {"system": {"ok": True, "window_min": 15, "counts": {"ssh.service": 3, "noisy.service": 80}, "total": 83},
+                 "user": {"ok": True, "window_min": 15, "counts": {}, "total": 0}},
+        "host": {"disk_root": {"free_gb": 11.2}, "mem_mb": {"MemAvailable": 2000}},
+        "dashboard": {"coverage": {"coverage": {"dates": [{"date": "2026-11-10", "classification": "complete"}],
+                                                "qlibCoverage": {"ratio": 0.98}}},
+                      "services": {"units": []}, "projects": {"versions": []}},
+    }
+    s.update(over)
+    return s
+
+
+@pytest.fixture()
+def inbox(tmp_path, monkeypatch):
+    f = tmp_path / "legacy.json"
+    import qp.jobs.inventory as inv
+    monkeypatch.setattr(inv, "INBOX", f)
+    return f
+
+
+def test_categorize():
+    from qp.jobs.inventory import categorize
+    assert categorize("apt-daily.service") == "os"
+    assert categorize("astock-cninfo-precollect.service") == "morning_chain"
+    assert categorize("stock-radar-swing-eod.timer") == "radar"
+    assert categorize("research-ledger.service") == "research"
+    assert categorize("qp-api.service") == "qp"
+
+
+def test_collector_helpers():
+    from qp.collect.legacy import _unix_ts, us_to_iso
+    assert us_to_iso(1794376800969723).startswith("2026-11-1")
+    assert us_to_iso(0) is None and _unix_ts("@1794376800").startswith("2026") and _unix_ts("") is None
+
+
+def test_inventory_alert_lifecycle(engine, inbox):
+    from qp.jobs import run_job
+    from qp.models.notify import Outbox
+    from qp.models.ops import Alert, Inventory, LegacyUnit
+    inbox.write_text(json.dumps(snap()))
+    r = run_job(engine, "ops.inventory", trigger="test")
+    assert r.status == "succeeded", r.error
+    with Session(engine) as s:
+        keys = {a.key: a.severity for a in s.execute(select(Alert).where(Alert.state == "firing")).scalars()}
+        assert "unit:system:qd-redacted-log-root-health.service" in keys
+        assert "unit:system:apt-daily.service" not in keys          # OS units ignored
+        assert "container:radar-mihomo" not in keys                 # retired
+        assert keys["container:radar-grafana"] == "warning"
+        assert keys["cert:443"] == "warning" and "cert:8443" not in keys
+        assert "egress:gstatic_204" in keys and "egress:telegram_direct" not in keys
+        assert "logs:system:noisy.service" in keys and "logs:system:ssh.service" not in keys
+        eod = s.get(LegacyUnit, ("system", "stock-radar-swing-eod.service"))
+        assert eod.triggered_by == "stock-radar-swing-eod.timer" and eod.category == "radar"
+        assert s.get(LegacyUnit, ("user", "astock-cninfo-precollect.service")).category == "morning_chain"
+        assert s.get(Inventory, "dash.coverage").data["coverage"]["qlibCoverage"]["ratio"] == 0.98
+        n_out = len(s.execute(select(Outbox).where(Outbox.dedup_key.like("alert:%"))).scalars().all())
+        assert n_out == len(keys) and all(o.mode == "shadow" for o in s.execute(select(Outbox)).scalars())
+    # second run: same state -> no new outbox rows; then fix grafana -> resolved
+    run_job(engine, "ops.inventory", trigger="test")
+    fixed = snap()
+    fixed["containers"][2]["health"] = "healthy"
+    inbox.write_text(json.dumps(fixed))
+    run_job(engine, "ops.inventory", trigger="test")
+    with Session(engine) as s:
+        assert len(s.execute(select(Outbox).where(Outbox.dedup_key.like("alert:%"))).scalars().all()) == n_out
+        g = s.execute(select(Alert).where(Alert.key == "container:radar-grafana")).scalar_one()
+        assert g.state == "resolved" and g.resolved_at is not None
+    sent = run_job(engine, "notify.send", trigger="test")
+    assert sent.result["sent"] == 0
+
+
+def test_inventory_stale_and_missing(engine, inbox):
+    from qp.jobs import run_job
+    from qp.models.ops import Alert
+    assert run_job(engine, "ops.inventory").status == "failed"  # no file yet
+    old = datetime.now(timezone.utc) - timedelta(hours=2)
+    inbox.write_text(json.dumps(snap(now=old)))
+    assert run_job(engine, "ops.inventory").status == "succeeded"
+    with Session(engine) as s:
+        assert s.execute(select(Alert).where(Alert.key == "collector:stale", Alert.state == "firing")).first()
+
+
+@pytest.fixture()
+def authed(engine, monkeypatch):
+    from fastapi.testclient import TestClient
+    from qp.api.main import app
+    from qp.cli import main
+    b = bcrypt.hashpw(PW.encode(), bcrypt.gensalt(rounds=4)).decode()
+    monkeypatch.setattr(sys, "stdin", io.StringIO(f"admin\t{b}\n"))
+    main(["user", "import-legacy", "--stdin", "--force"])
+    c = TestClient(app, base_url="https://testserver")
+    r = c.post("/api/auth/login", json={"username": "admin", "password": PW})
+    assert r.status_code == 200, r.text
+    c.cookies.set("qp_session", r.cookies.get("qp_session"))
+    return c
+
+
+def test_m2_api(authed, engine, inbox):
+    from qp.jobs import run_job
+    inbox.write_text(json.dumps(snap()))
+    run_job(engine, "ops.inventory")
+    u = authed.get("/api/ops/units").json()
+    assert all(x["category"] != "os" for x in u) and any(x["name"] == "stock-radar-swing-eod.timer" for x in u)
+    assert any(x["category"] == "os" for x in authed.get("/api/ops/units?include_os=true").json())
+    inv = authed.get("/api/ops/inventory").json()
+    assert inv["certs"]["data"][0]["target"] == "443" and inv["pg"]["data"]["connections"] >= 1
+    assert len(authed.get("/api/ops/alerts").json()) >= 1
+    assert authed.get("/api/dash/coverage").json()["data"]["coverage"]["dates"][0]["date"] == "2026-11-10"
+    assert "unit_states" in authed.get("/api/dash/services").json()
+
+
+def test_tokens(authed):
+    from fastapi.testclient import TestClient
+    from qp.api.main import app
+    r = authed.post("/api/ops/tokens", json={"name": "probe-m2", "scopes": ["ops:read"]})
+    assert r.status_code == 200 and r.json()["token"].startswith("qpst_")
+    tok = r.json()["token"]
+    assert authed.post("/api/ops/tokens", json={"name": "probe-m2"}).status_code == 409
+    assert authed.post("/api/ops/tokens", json={"name": "bad", "scopes": ["root"]}).status_code == 422
+    lst = authed.get("/api/ops/tokens").json()
+    assert all("token" not in t and "token_sha256" not in t for t in lst)
+    svc = TestClient(app, base_url="https://testserver")
+    h = {"authorization": f"Bearer {tok}"}
+    assert svc.get("/api/ops/units", headers=h).status_code == 200
+    assert svc.get("/api/ops/tokens", headers=h).status_code == 403   # tokens can't manage tokens
+    tid = next(t["id"] for t in lst if t["name"] == "probe-m2")
+    assert authed.delete(f"/api/ops/tokens/{tid}").status_code == 200
+    assert svc.get("/api/ops/units", headers=h).status_code == 401
+
+
+def test_m2_unauth(client):
+    for p in ("/api/ops/units", "/api/ops/inventory", "/api/ops/alerts", "/api/dash/services", "/api/dash/coverage",
+              "/api/ops/tokens"):
+        assert client.get(p).status_code == 401

@@ -1,0 +1,54 @@
+<template>
+  <n-space vertical size="large">
+    <n-card title="旧服务状态（按分类，不含系统单元）"><EChart :option="barOpt" height="320px" /></n-card>
+    <n-grid :cols="2" :x-gap="16" responsive="screen" item-responsive>
+      <n-gi span="2 m:1"><n-card title="容器健康"><EChart :option="pieOpt" height="260px" /></n-card></n-gi>
+      <n-gi span="2 m:1"><n-card title="项目版本（来自旧看板导出）">
+        <n-data-table size="small" :bordered="false" :data="versions" :columns="vCols" :max-height="240" />
+        <div class="muted">导出时间：{{ fmt(data?.projects?.data?.exportedAt) }}</div>
+      </n-card></n-gi>
+    </n-grid>
+  </n-space>
+</template>
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { NCard, NDataTable, NGi, NGrid, NSpace } from 'naive-ui'
+import EChart from '../components/EChart.vue'
+import { api } from '../api/client'
+import { fmt } from '../util'
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const data = ref<any>(null)
+const STATES = ['active', 'inactive', 'activating', 'failed']
+const COLORS: Record<string, string> = { active: '#18a058', inactive: '#a0a0a0', activating: '#2080f0', failed: '#d03050' }
+const barOpt = computed(() => {
+  const rows: { category: string; active_state: string; n: number }[] = (data.value?.unit_states || []).filter((r: { category: string }) => r.category !== 'os')
+  const cats = [...new Set(rows.map((r) => r.category))].sort()
+  return {
+    tooltip: { trigger: 'axis' }, legend: {}, grid: { left: 40, right: 20, bottom: 30, top: 40 },
+    xAxis: { type: 'category', data: cats }, yAxis: { type: 'value' },
+    series: STATES.map((s) => ({ name: s, type: 'bar', stack: 'x', itemStyle: { color: COLORS[s] },
+      data: cats.map((c) => rows.filter((r) => r.category === c && r.active_state === s).reduce((a, r) => a + r.n, 0)) })),
+  }
+})
+const pieOpt = computed(() => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cs: any[] = data.value?.containers?.data || []
+  const cnt: Record<string, number> = {}
+  for (const c of cs) { const k = c.state !== 'running' ? c.state : (c.health || 'running'); cnt[k] = (cnt[k] || 0) + 1 }
+  return { tooltip: { trigger: 'item' }, legend: { bottom: 0 },
+    series: [{ type: 'pie', radius: ['40%', '70%'], data: Object.entries(cnt).map(([name, value]) => ({ name, value })) }] }
+})
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const versions = computed<any[]>(() => {
+  const v = data.value?.projects?.data?.versions
+  if (Array.isArray(v)) return v
+  if (v && typeof v === 'object') return Object.entries(v).map(([name, val]) => ({ name, value: typeof val === 'object' ? JSON.stringify(val) : String(val) }))
+  return []
+})
+const vCols = computed(() => {
+  const first = versions.value[0]
+  return first ? Object.keys(first).slice(0, 4).map((k) => ({ title: k, key: k, ellipsis: { tooltip: true } })) : []
+})
+onMounted(async () => { data.value = await api('/dash/services') })
+</script>
+<style scoped>.muted { color: #888; font-size: 12px; margin-top: 6px; }</style>

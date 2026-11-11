@@ -174,3 +174,8 @@ def ops_health(p: Principal = Depends(require_auth), db: Session = Depends(get_d
     pending = db.execute(select(func.count()).select_from(Outbox).where(Outbox.status == "pending")).scalar_one()
     shadowed = db.execute(select(func.count()).select_from(Outbox).where(Outbox.status == "shadowed")).scalar_one()
     return {"checks": checks, "outbox": {"pending": pending, "shadowed": shadowed, "mode": "shadow"}}
+
+
+from qp.api.ops_m2 import router as _m2_router  # noqa: E402
+
+app.include_router(_m2_router)

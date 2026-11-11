@@ -31,3 +31,10 @@ def db_url():
 def engine(db_url):
     from qp.db import get_engine
     return get_engine()
+
+
+@pytest.fixture()
+def client(engine):
+    from fastapi.testclient import TestClient
+    from qp.api.main import app
+    return TestClient(app, base_url="https://testserver")

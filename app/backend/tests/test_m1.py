@@ -40,7 +40,7 @@ def seeded(engine, monkeypatch):
 
 
 @pytest.fixture()
-def client(engine):
+def client(engine):  # noqa: F811
     from fastapi.testclient import TestClient
     from qp.api.main import app
     return TestClient(app, base_url="https://testserver")

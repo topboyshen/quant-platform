@@ -64,6 +64,8 @@ class Alert(TimestampMixin, Base):
     state: Mapped[str] = mapped_column(String(16), nullable=False, default="firing")
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     resolved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    detail: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict)
 
 
 class MetricSnapshot(Base):
@@ -74,3 +76,39 @@ class MetricSnapshot(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)
     labels: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+
+class LegacyUnit(Base):
+    """Read-only register of legacy systemd units/timers (task center). qp never controls these."""
+    __tablename__ = "legacy_unit"
+    __table_args__ = {"schema": "ops"}
+    scope: Mapped[str] = mapped_column(String(16), primary_key=True)  # system|user
+    name: Mapped[str] = mapped_column(String(256), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # service|timer
+    description: Mapped[str | None] = mapped_column(Text)
+    load_state: Mapped[str | None] = mapped_column(String(32))
+    active_state: Mapped[str | None] = mapped_column(String(32))
+    sub_state: Mapped[str | None] = mapped_column(String(32))
+    result: Mapped[str | None] = mapped_column(String(32))
+    exit_status: Mapped[str | None] = mapped_column(String(16))
+    run_user: Mapped[str | None] = mapped_column(String(64))
+    fragment: Mapped[str | None] = mapped_column(Text)
+    activates: Mapped[str | None] = mapped_column(String(256))
+    triggered_by: Mapped[str | None] = mapped_column(String(256))
+    last_trigger: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    next_elapse: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    last_start: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    last_exit: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    category: Mapped[str] = mapped_column(String(32), nullable=False, default="other")
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    present: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Inventory(Base):
+    """Latest snapshot per kind (containers, ports, certs, egress, logs, host, pg, coverage, services, projects)."""
+    __tablename__ = "inventory"
+    __table_args__ = {"schema": "ops"}
+    kind: Mapped[str] = mapped_column(String(64), primary_key=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    data: Mapped[Any] = mapped_column(JSONB, nullable=False)

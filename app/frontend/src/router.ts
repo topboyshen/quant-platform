@@ -5,6 +5,13 @@ import Login from './views/Login.vue'
 import Placeholder from './views/Placeholder.vue'
 import Ops from './views/Ops.vue'
 import Overview from './views/Overview.vue'
+import OpsLayout from './views/OpsLayout.vue'
+import Monitors from './views/Monitors.vue'
+import Tasks from './views/Tasks.vue'
+import Alerts from './views/Alerts.vue'
+import Services from './views/Services.vue'
+import Coverage from './views/Coverage.vue'
+import Tokens from './views/Tokens.vue'
 
 export const NAV = [
   { path: '/', name: 'overview', label: '总览' },
@@ -26,7 +33,17 @@ export const router = createRouter({
         { path: 'research', name: 'research', component: Placeholder, props: { title: '研究' } },
         { path: 'signals', name: 'signals', component: Placeholder, props: { title: '信号' } },
         { path: 'reports', name: 'reports', component: Placeholder, props: { title: '报告' } },
-        { path: 'ops', name: 'ops', component: Ops },
+        {
+          path: 'ops', component: OpsLayout, children: [
+            { path: '', name: 'ops', component: Ops },
+            { path: 'monitors', name: 'ops-monitors', component: Monitors },
+            { path: 'tasks', name: 'ops-tasks', component: Tasks },
+            { path: 'alerts', name: 'ops-alerts', component: Alerts },
+            { path: 'services', name: 'ops-services', component: Services },
+            { path: 'coverage', name: 'ops-coverage', component: Coverage },
+            { path: 'tokens', name: 'ops-tokens', component: Tokens },
+          ],
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

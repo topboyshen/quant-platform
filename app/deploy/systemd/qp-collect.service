@@ -1,0 +1,25 @@
+[Unit]
+Description=quant-platform read-only legacy collector (systemd/docker/ports/certs/egress/log counts)
+# Read-only: never starts/stops/edits legacy units, containers or files; no Telegram messages (GET probe only).
+After=network-online.target docker.service
+OnSuccess=qp-job@ops.inventory.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+UMask=0027
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/qp/current/venv/bin/python -m qp.collect.legacy --out /var/lib/qp-inbox/legacy.json
+TimeoutStartSec=120
+MemoryMax=150M
+CPUQuota=50%
+Nice=15
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/qp-inbox
