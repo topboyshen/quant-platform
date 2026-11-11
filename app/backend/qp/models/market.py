@@ -142,7 +142,7 @@ class CompareResult(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     run_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     item: Mapped[str] = mapped_column(String(64), nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False)  # match | mismatch | skipped
+    status: Mapped[str] = mapped_column(String(16), nullable=False)  # match | mismatch | skipped | insufficient
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     detail: Mapped[dict[str, Any]] = _json_col()
 

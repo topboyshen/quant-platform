@@ -5,6 +5,7 @@
       <n-button size="small" @click="load">刷新</n-button>
     </n-space>
     <n-data-table size="small" :bordered="false" :data="data?.checks || []" :columns="cols" />
+    <div class="muted">状态含正常、告警、严重、未知。未知表示证据不足（例如日历覆盖不够、比较未完成或数据读取失败），不能当作已恢复或全部通过。</div>
     <n-grid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
       <n-gi span="2 m:1"><n-card title="数据源连通（最近一次探测）">
         <n-data-table size="small" :bordered="false" :data="srcRows" :columns="srcCols" />
@@ -37,9 +38,10 @@ const cat = computed(() => data.value?.qlib?.catalog?.data)
 const srcq = computed(() => data.value?.qlib?.source?.data)
 const lh = computed(() => data.value?.legacy_health?.data)
 const ST: Record<string, string> = { ok: 'success', warning: 'warning', critical: 'error', unknown: 'default' }
+const SL: Record<string, string> = { ok: '正常', warning: '告警', critical: '严重', unknown: '未知' }
 const cols = [
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  { title: '状态', key: 'status', width: 90, render: (r: any) => h(NTag, { size: 'small', type: ST[r.status] as any }, { default: () => r.status }) },
+  { title: '状态', key: 'status', width: 90, render: (r: any) => h(NTag, { size: 'small', type: ST[r.status] as any }, { default: () => SL[r.status] || r.status }) },
   { title: '检查项', key: 'check', width: 220 }, { title: '说明', key: 'summary' },
 ]
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

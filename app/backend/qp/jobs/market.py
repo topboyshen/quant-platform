@@ -65,9 +65,54 @@ def open_days(s: Session, origin: str = "qp") -> list[dt.date]:
                           .order_by(TradingDay.date)).scalars())
 
 
-def calendar_for_expectation(s: Session) -> list[dt.date]:
-    days = open_days(s, "qp")
-    return days if days else open_days(s, "legacy")
+def calendar_span(s: Session, origin: str) -> tuple[list[dt.date], dt.date | None]:
+    rows = s.execute(select(TradingDay.date, TradingDay.is_open).where(TradingDay.origin == origin)).all()
+    if not rows:
+        return [], None
+    opens = sorted(d for d, o in rows if o)
+    return opens, max(d for d, _ in rows)
+
+
+def _gap_only_weekends(max_date: dt.date, today: dt.date) -> bool:
+    d = max_date + dt.timedelta(days=1)
+    while d <= today:
+        if d.weekday() < 5:  # Mon-Fri; A-share never trades Sat/Sun
+            return False
+        d += dt.timedelta(days=1)
+    return True
+
+
+def calendar_covers(opens: list[dt.date], max_date: dt.date | None, today: dt.date) -> bool:
+    """True only when session status through today can be determined.
+
+    A calendar that stores days through today is sufficient. An open-days-only calendar
+    that ends on Friday is accepted on Sat/Sun. Any weekday after the last stored date
+    means coverage is insufficient (the calendar may be stale).
+    """
+    if not opens or max_date is None:
+        return False
+    return max_date >= today or _gap_only_weekends(max_date, today)
+
+
+def calendar_for_expectation(s: Session, today: dt.date | None = None) -> tuple[list[dt.date] | None, dict]:
+    """Prefer the qp calendar when it covers today; otherwise a covering legacy calendar.
+
+    A non-empty but stale calendar is not used. If no calendar covers today, return
+    (None, meta) so callers keep the expected date unknown.
+    """
+    today = today or now_cst().date()
+    meta: dict[str, Any] = {"today": today.isoformat()}
+    for origin in ("qp", "legacy"):
+        days, max_date = calendar_span(s, origin)
+        usable = calendar_covers(days, max_date, today)
+        meta[origin] = {"open_days": len(days), "max_date": max_date.isoformat() if max_date else None,
+                        "covers_today": usable}
+        if usable:
+            meta["origin"] = origin
+            return days, meta
+    meta["origin"] = None
+    meta["reason"] = "no calendar covers today"
+    return None, meta
 
 
 def expected_trade_date(days: list[dt.date], now: dt.datetime, cutoff: dt.time) -> dt.date | None:
@@ -361,6 +406,24 @@ def ingest_job(ctx: JobContext) -> dict:
 
 
 # ---------------------------------------------------------------- compare (new vs legacy) + health
+def _cov(expected: int, compared: int, missing: int, diffs: int, **extra: Any) -> dict:
+    return {"expected": expected, "compared": compared, "missing": missing, "diffs": diffs, **extra}
+
+
+def _item_verdict(expected: int, missing: int, diffs: int) -> str:
+    if diffs:
+        return "mismatch"
+    if expected <= 0:
+        return "skipped"
+    if missing:
+        return "insufficient"
+    return "match"
+
+
+def _cov_summary(expected: int, compared: int, missing: int, diffs: int) -> str:
+    return f"应比 {expected}，实比 {compared}，缺失 {missing}，差异 {diffs}"
+
+
 def compare(s: Session) -> list[tuple[str, str, str, dict]]:
     out: list[tuple[str, str, str, dict]] = []
     qp_days = open_days(s, "qp")
@@ -368,42 +431,52 @@ def compare(s: Session) -> list[tuple[str, str, str, dict]]:
     for other in ("legacy", "qlib"):
         od = open_days(s, other)
         if not qp_all or not od:
-            out.append((f"calendar.{other}_vs_qp", "skipped", "missing data", {"qp": len(qp_all), other: len(od)}))
+            out.append((f"calendar.{other}_vs_qp", "skipped", "missing data",
+                        _cov(0, 0, 0, 0, qp=len(qp_all), **{other: len(od)})))
             continue
         lo, hi = max(min(qp_all), od[0]), min(max(qp_all), od[-1])
         a = {x for x in od if lo <= x <= hi}
         b = {x for x in qp_days if lo <= x <= hi}
         only_o, only_q = sorted(a - b), sorted(b - a)
-        st = "match" if not only_o and not only_q else "mismatch"
-        out.append((f"calendar.{other}_vs_qp", st, f"{lo}..{hi}: {other}-only {len(only_o)}, qp-only {len(only_q)}",
-                    {"range": [lo.isoformat(), hi.isoformat()], "days": len(a), f"{other}_only": [x.isoformat() for x in only_o[:20]],
-                     "qp_only": [x.isoformat() for x in only_q[:20]]}))
+        expected = len(a | b)
+        diffs_n = len(only_o) + len(only_q)
+        st = _item_verdict(expected, 0, diffs_n)
+        det = _cov(expected, expected, 0, diffs_n, range=[lo.isoformat(), hi.isoformat()], days=len(a),
+                   **{f"{other}_only": [x.isoformat() for x in only_o[:20]],
+                      "qp_only": [x.isoformat() for x in only_q[:20]]})
+        out.append((f"calendar.{other}_vs_qp", st,
+                    f"{lo}..{hi}: {_cov_summary(expected, expected, 0, diffs_n)}；{other}-only {len(only_o)}, qp-only {len(only_q)}",
+                    det))
     leg = s.execute(select(IndexClose).where(IndexClose.origin == "legacy",
                                              IndexClose.trade_date >= now_cst().date() - dt.timedelta(days=20))).scalars().all()
     if leg:
         qp = {(r.symbol, r.trade_date): r for r in s.execute(select(IndexClose).where(
             IndexClose.origin == "qp", tuple_(IndexClose.symbol, IndexClose.trade_date).in_([(x.symbol, x.trade_date) for x in leg])
         )).scalars()}
-        diffs, missing = [], []
+        diff_rows, missing_rows = [], []
         for x in leg:
             y = qp.get((x.symbol, x.trade_date))
             if y is None:
-                missing.append(f"{x.symbol}@{x.trade_date}")
+                missing_rows.append(f"{x.symbol}@{x.trade_date}")
             elif abs(float(y.close) - float(x.close)) > 0.011:
-                diffs.append({"symbol": x.symbol, "date": x.trade_date.isoformat(), "legacy": float(x.close), "qp": float(y.close)})
-        compared = len(leg) - len(missing)
-        st = "mismatch" if diffs else ("skipped" if compared == 0 else "match")
-        out.append(("index_close.legacy_vs_qp", st, f"compared {compared}, diff {len(diffs)}, qp-missing {len(missing)}",
-                    {"diffs": diffs[:20], "missing": missing[:20]}))
+                diff_rows.append({"symbol": x.symbol, "date": x.trade_date.isoformat(),
+                                  "legacy": float(x.close), "qp": float(y.close)})
+        expected, missing_n, diffs_n = len(leg), len(missing_rows), len(diff_rows)
+        compared = expected - missing_n
+        st = _item_verdict(expected, missing_n, diffs_n)
+        out.append(("index_close.legacy_vs_qp", st, _cov_summary(expected, compared, missing_n, diffs_n),
+                    _cov(expected, compared, missing_n, diffs_n,
+                         diff_rows=diff_rows[:20], missing_rows=missing_rows[:20])))
     else:
-        out.append(("index_close.legacy_vs_qp", "skipped", "no legacy rows in last 20 days", {}))
+        out.append(("index_close.legacy_vs_qp", "skipped", "no legacy rows in last 20 days",
+                    _cov(0, 0, 0, 0)))
     legs = {r.trade_date: r for r in s.execute(select(MarketSummary).where(MarketSummary.origin == "legacy")).scalars()}
     qps = {r.trade_date: r for r in s.execute(select(MarketSummary).where(MarketSummary.origin == "qp")).scalars()}
     both = sorted(set(legs) & set(qps))
     if not both:
         out.append(("snapshot.core_vs_qp", "skipped", "no common date between legacy core-market and qp summary",
-                    {"legacy_latest": max(legs).isoformat() if legs else None,
-                     "qp_dates": [x.isoformat() for x in sorted(qps)][-3:]}))
+                    _cov(0, 0, 0, 0, legacy_latest=max(legs).isoformat() if legs else None,
+                         qp_dates=[x.isoformat() for x in sorted(qps)][-3:])))
     else:
         day = both[-1]
         a, b = legs[day].data, qps[day].data
@@ -415,21 +488,29 @@ def compare(s: Session) -> list[tuple[str, str, str, dict]]:
             sa, sb = [x.get("sym") for x in a.get(k) or []], [x.get("sym") for x in b.get(k) or []]
             if sa != sb:
                 fields[k] = {"legacy": sa, "qp": sb}
-        out.append(("snapshot.core_vs_qp", "mismatch" if fields else "match",
-                    f"{day}: {'differs in ' + ','.join(fields) if fields else 'breadth/coverage/top lists equal'}",
-                    {"date": day.isoformat(), "diffs": fields}))
+        diffs_n = len(fields)
+        st = _item_verdict(1, 0, diffs_n)
+        out.append(("snapshot.core_vs_qp", st,
+                    f"{day}: {_cov_summary(1, 1, 0, diffs_n)}"
+                    + (f"；differs in {','.join(fields)}" if fields else "；breadth/coverage/top lists equal"),
+                    _cov(1, 1, 0, diffs_n, date=day.isoformat(), diff_fields=fields)))
     named = dict(s.execute(select(Instrument.symbol, Instrument.name).where(Instrument.name.is_not(None))).all())
     last = s.scalar(select(func.max(Instrument.qlib_end)))
     active = set(s.execute(select(Instrument.symbol).where(Instrument.in_qlib, Instrument.qlib_end == last)).scalars()) if last else set()
     stocks_named = {k for k in named if k[2:3] in "0123456789"}
     if active and stocks_named:
-        missing = sorted(active - stocks_named)
-        ratio = len(missing) / len(active)
-        out.append(("instruments.qlib_active_vs_names", "mismatch" if ratio > 0.02 else "match",
-                    f"qlib active {len(active)} on {last}, without name {len(missing)} ({ratio:.1%})",
-                    {"missing_sample": missing[:20]}))
+        missing_rows = sorted(active - stocks_named)
+        ratio = len(missing_rows) / len(active)
+        # names exist for the catalog; a small gap is a mismatch, not missing evidence
+        diffs_n = len(missing_rows) if ratio > 0.02 else 0
+        st = _item_verdict(len(active), 0, diffs_n)
+        out.append(("instruments.qlib_active_vs_names", st,
+                    f"qlib active {len(active)} on {last}, without name {len(missing_rows)} ({ratio:.1%})；"
+                    + _cov_summary(len(active), len(active), 0, diffs_n),
+                    _cov(len(active), len(active), 0, diffs_n, missing_sample=missing_rows[:20], ratio=round(ratio, 4))))
     else:
-        out.append(("instruments.qlib_active_vs_names", "skipped", "no names or qlib catalog yet", {}))
+        out.append(("instruments.qlib_active_vs_names", "skipped", "no names or qlib catalog yet",
+                    _cov(0, 0, 0, 0)))
     return out
 
 
@@ -443,16 +524,21 @@ def compare_job(ctx: JobContext) -> dict:
             s.add(CompareResult(run_at=run_at, item=item, status=st, summary=summary, detail=detail))
         firing = [(f"market:compare:{item}", "warning", f"compare {item}: {summary}", detail)
                   for item, st, summary, detail in res if st == "mismatch"]
-        al = apply_alerts(s, firing, ctx.run_id, owns=lambda k: k.startswith("market:compare:"))
+        only_resolve = {f"market:compare:{item}" for item, st, _, _ in res if st == "match"}
+        keep_open = {f"market:compare:{item}" for item, st, _, _ in res if st in ("skipped", "insufficient")}
+        al = apply_alerts(s, firing, ctx.run_id, owns=lambda k: k.startswith("market:compare:"),
+                          keep_open=keep_open, only_resolve=only_resolve)
         s.execute(delete(CompareResult).where(CompareResult.run_at < run_at - dt.timedelta(days=RETAIN_DAYS)))
         s.commit()
-    return {"items": len(res), "mismatch": [r[0] for r in res if r[1] == "mismatch"], "alerts": al}
+    return {"items": len(res), "mismatch": [r[0] for r in res if r[1] == "mismatch"],
+            "insufficient": [r[0] for r in res if r[1] == "insufficient"],
+            "skipped": [r[0] for r in res if r[1] == "skipped"], "alerts": al}
 
 
 def health(s: Session, now: dt.datetime | None = None) -> list[tuple[str, str, str, dict]]:
     now = now or now_cst()
     out = []
-    days = calendar_for_expectation(s)
+    days, cal_meta = calendar_for_expectation(s, now.date())
     qp_open = open_days(s, "qp")
     upd = s.scalar(select(func.max(TradingDay.updated_at)).where(TradingDay.origin == "qp"))
     if not qp_open:
@@ -463,38 +549,69 @@ def health(s: Session, now: dt.datetime | None = None) -> list[tuple[str, str, s
         st = "ok" if ahead >= 30 and age_d <= 8 else "warning"
         out.append(("calendar.qp", st, f"max open {qp_open[-1]} ({ahead}d ahead), refreshed {age_d:.1f}d ago",
                     {"max_open": qp_open[-1].isoformat(), "days_ahead": ahead, "age_days": round(age_d, 2)}))
-    want = expected_trade_date(days, now, dt.time(16, 30))
+
+    def want_at(cutoff: dt.time) -> dt.date | None:
+        return expected_trade_date(days, now, cutoff) if days else None
+
+    def unknown_expect(have_date=None, **extra):
+        return ("unknown", "无法确定期望交易日（日历覆盖不足或尚未到截止时间）",
+                {"expected": None, "latest": str(have_date) if have_date else None, "lag": None,
+                 "calendar": cal_meta, **extra})
+
     have = s.execute(select(IndexClose.trade_date, func.count()).where(IndexClose.origin == "qp")
                      .group_by(IndexClose.trade_date).order_by(IndexClose.trade_date.desc()).limit(1)).first()
-    lag = trading_lag(days, have[0] if have else None, want)
-    st = "ok" if lag == 0 and have and have[1] == 4 else ("warning" if lag in (0, 1) else "critical")
-    out.append(("index_close.qp_current", st, f"expected {want}, latest qp {have[0] if have else None} ({have[1] if have else 0}/4)",
-                {"expected": str(want), "latest": str(have[0]) if have else None, "lag": lag}))
+    have_day, have_n = (have[0], have[1]) if have else (None, 0)
+    want = want_at(dt.time(16, 30))
+    if want is None:
+        st, summary, det = unknown_expect(have_day, count=have_n)
+        out.append(("index_close.qp_current", st, summary, det))
+    else:
+        lag = trading_lag(days, have_day, want)
+        st = "ok" if lag == 0 and have_n == 4 else ("warning" if lag in (0, 1) else "critical")
+        out.append(("index_close.qp_current", st,
+                    f"expected {want}, latest qp {have_day} ({have_n}/4)",
+                    {"expected": want.isoformat(), "latest": str(have_day) if have_day else None, "lag": lag,
+                     "count": have_n}))
+
     cat = s.execute(select(QlibStatus).where(QlibStatus.kind == "catalog").order_by(QlibStatus.id.desc()).limit(1)).scalar()
-    want_q = expected_trade_date(days, now, dt.time(23, 15))
+    want_q = want_at(dt.time(23, 15))
     if cat:
         ql = cat.data.get("calendar_last")
-        lag = trading_lag(days, d(ql) if ql else None, want_q)
-        st = "ok" if lag == 0 else ("warning" if lag == 1 else "critical")
-        out.append(("qlib.current", st, f"qlib calendar last {ql}, expected {want_q}, lag {lag}",
-                    {"calendar_last": ql, "expected": str(want_q), "lag": lag, "tag": cat.data.get("tag"),
-                     "update_status": cat.data.get("update_status")}))
+        extra = {"calendar_last": ql, "tag": cat.data.get("tag"), "update_status": cat.data.get("update_status")}
+        if want_q is None:
+            st, summary, det = unknown_expect(ql, **extra)
+            out.append(("qlib.current", st, summary, det))
+        else:
+            lag = trading_lag(days, d(ql) if ql else None, want_q)
+            st = "ok" if lag == 0 else ("warning" if lag == 1 else "critical")
+            out.append(("qlib.current", st, f"qlib calendar last {ql}, expected {want_q}, lag {lag}",
+                        {"expected": want_q.isoformat(), "lag": lag, **extra}))
     else:
         out.append(("qlib.current", "unknown", "no qlib catalog yet", {}))
     srcq = s.execute(select(QlibStatus).where(QlibStatus.kind == "source").order_by(QlibStatus.id.desc()).limit(1)).scalar()
     if srcq and srcq.data.get("dolt_latest_eod"):
-        lag = trading_lag(days, d(srcq.data["dolt_latest_eod"]), want_q)
-        out.append(("qlib.source_dolt", "ok" if lag == 0 else "warning",
-                    f"Dolt latest EOD {srcq.data['dolt_latest_eod']}, expected {want_q}, lag {lag}",
-                    {**srcq.data, "lag": lag}))
+        eod = srcq.data["dolt_latest_eod"]
+        if want_q is None:
+            st, summary, det = unknown_expect(eod, **srcq.data)
+            out.append(("qlib.source_dolt", st, summary, det))
+        else:
+            lag = trading_lag(days, d(eod), want_q)
+            out.append(("qlib.source_dolt", "ok" if lag == 0 else "warning",
+                        f"Dolt latest EOD {eod}, expected {want_q}, lag {lag}",
+                        {**srcq.data, "expected": want_q.isoformat(), "lag": lag}))
     else:
         out.append(("qlib.source_dolt", "unknown", "Dolt latest EOD unknown", srcq.data if srcq else {}))
     leg_core = s.scalar(select(func.max(MarketSummary.trade_date)).where(MarketSummary.origin == "legacy"))
-    want_s = expected_trade_date(days, now, dt.time(23, 15))
-    lag = trading_lag(days, leg_core, want_s)
-    st = "ok" if lag == 0 else ("warning" if lag == 1 else "critical")
-    out.append(("snapshot.legacy_core_current", st, f"legacy core-market latest {leg_core}, expected {want_s}, lag {lag}",
-                {"latest": str(leg_core), "expected": str(want_s), "lag": lag}))
+    want_s = want_at(dt.time(23, 15))
+    if want_s is None:
+        st, summary, det = unknown_expect(leg_core)
+        out.append(("snapshot.legacy_core_current", st, summary, det))
+    else:
+        lag = trading_lag(days, leg_core, want_s)
+        st = "ok" if lag == 0 else ("warning" if lag == 1 else "critical")
+        out.append(("snapshot.legacy_core_current", st,
+                    f"legacy core-market latest {leg_core}, expected {want_s}, lag {lag}",
+                    {"latest": str(leg_core) if leg_core else None, "expected": want_s.isoformat(), "lag": lag}))
     from qp.models.ops import Inventory
     lh = s.get(Inventory, "market.legacy_health")
     if lh and lh.data and lh.data.get("ok"):
@@ -521,10 +638,24 @@ def health(s: Session, now: dt.datetime | None = None) -> list[tuple[str, str, s
         out.append(("sources.reachable", "unknown", "no probe in 26h", {}))
     last_run = s.scalar(select(func.max(CompareResult.run_at)))
     if last_run:
-        mism = s.execute(select(CompareResult.item).where(CompareResult.run_at == last_run,
-                                                          CompareResult.status == "mismatch")).scalars().all()
-        out.append(("compare.latest", "ok" if not mism else "warning", f"{len(mism)} mismatches in latest compare",
-                    {"run_at": last_run.isoformat(), "mismatch": list(mism)}))
+        rows = s.execute(select(CompareResult).where(CompareResult.run_at == last_run)).scalars().all()
+        expected = len(rows)
+        mismatch = [r.item for r in rows if r.status == "mismatch"]
+        insufficient = [r.item for r in rows if r.status == "insufficient"]
+        skipped = [r.item for r in rows if r.status == "skipped"]
+        compared = sum(1 for r in rows if r.status in ("match", "mismatch"))
+        missing = len(insufficient) + len(skipped)
+        diffs = len(mismatch)
+        if diffs:
+            st = "warning"
+        elif missing:
+            st = "unknown"
+        else:
+            st = "ok"
+        out.append(("compare.latest", st, _cov_summary(expected, compared, missing, diffs),
+                    {"run_at": last_run.isoformat(), "expected": expected, "compared": compared,
+                     "missing": missing, "diffs": diffs, "mismatch": mismatch,
+                     "insufficient": insufficient, "skipped": skipped}))
     return out
 
 
@@ -538,7 +669,10 @@ def health_job(ctx: JobContext) -> dict:
             s.add(HealthResult(run_at=run_at, check=check, status=st, summary=summary, detail=detail))
         firing = [(f"market:health:{c}", "critical" if st == "critical" else "warning", f"market {c}: {summary}", detail)
                   for c, st, summary, detail in res if st in ("warning", "critical")]
-        al = apply_alerts(s, firing, ctx.run_id, owns=lambda k: k.startswith("market:health:"))
+        only_resolve = {f"market:health:{c}" for c, st, _, _ in res if st == "ok"}
+        keep_open = {f"market:health:{c}" for c, st, _, _ in res if st == "unknown"}
+        al = apply_alerts(s, firing, ctx.run_id, owns=lambda k: k.startswith("market:health:"),
+                          keep_open=keep_open, only_resolve=only_resolve)
         s.execute(delete(HealthResult).where(HealthResult.run_at < run_at - dt.timedelta(days=RETAIN_DAYS)))
         s.commit()
     return {"checks": {c: st for c, st, _, _ in res}, "alerts": al}

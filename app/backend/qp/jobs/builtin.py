@@ -102,7 +102,11 @@ def backup(ctx: JobContext) -> dict:
         raise RuntimeError(f"pg_dump exit {p.returncode}: {p.stderr.strip()[-300:]}")
     os.chmod(out, 0o600)
     import hashlib
-    h = hashlib.sha256(out.read_bytes()).hexdigest()
+    hsh = hashlib.sha256()
+    with out.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            hsh.update(chunk)
+    h = hsh.hexdigest()
     cutoff = dt.datetime.now() - dt.timedelta(days=st.backup_keep_days)
     removed = []
     for f in sorted(d.glob("qp-*.dump")):

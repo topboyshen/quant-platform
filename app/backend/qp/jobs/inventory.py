@@ -132,9 +132,21 @@ def evaluate(snap: dict, unit_rows: list[dict], age_min: float) -> list[tuple[st
 
 
 def apply_alerts(s: Session, firing: list[tuple[str, str, str, dict]], run_id: int,
-                 owns=lambda key: not key.startswith("market:")) -> dict:
-    """Upsert firing alerts; resolve open alerts this caller owns (by key predicate) that are no longer firing."""
+                 owns=lambda key: not key.startswith("market:"),
+                 keep_open: set[str] | None = None,
+                 only_resolve: set[str] | None = None) -> dict:
+    """Upsert firing alerts. Close an owned open alert only with valid recovery evidence.
+
+    - firing: keys known to be in fault this run.
+    - keep_open: keys whose evidence is unknown/insufficient; never auto-resolved.
+    - only_resolve: if given, a leftover open alert is resolved only when its key is in
+      this set (explicit ok/match). Owned keys absent from this run stay firing.
+    - If only_resolve is omitted (ops.inventory), owned open alerts not in firing and not
+      in keep_open are resolved, preserving the previous inventory behaviour.
+    """
     now = utcnow()
+    keep = set(keep_open or ())
+    recover = set(only_resolve) if only_resolve is not None else None
     open_alerts = {a.key: a for a in s.execute(select(Alert).where(Alert.state == "firing")).scalars() if owns(a.key)}
     new = 0
     for key, sev, summary, detail in firing:
@@ -146,9 +158,15 @@ def apply_alerts(s: Session, firing: list[tuple[str, str, str, dict]], run_id: i
             new += 1
         else:
             a.severity, a.summary, a.last_seen_at, a.detail = sev, summary, now, detail
-    for a in open_alerts.values():  # no longer firing
+    resolved = 0
+    kept = 0
+    for a in open_alerts.values():
+        if a.key in keep or (recover is not None and a.key not in recover):
+            kept += 1
+            continue
         a.state, a.resolved_at = "resolved", now
-    return {"firing": len(firing), "new": new, "resolved": len(open_alerts)}
+        resolved += 1
+    return {"firing": len(firing), "new": new, "resolved": resolved, "kept_open": kept}
 
 
 @job("ops.inventory", "Ingest legacy read-only snapshot: task center, inventory, monitors, alerts (shadow)",
