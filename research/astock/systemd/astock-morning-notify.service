@@ -1,0 +1,24 @@
+[Unit]
+Description=Deliver only today's sealed AStock report through the approved Telegram route
+AssertPathExists=!/home/ubuntu/.hermes/hermes-agent/.update-incomplete
+AssertPathExists=!/home/ubuntu/.hermes/hermes-agent/.lazy-refresh-incomplete
+AssertPathExists=!/home/ubuntu/.hermes/hermes-agent/.update-incomplete.lock
+AssertPathExists=!/home/ubuntu/.hermes/active_profile
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/AStock_AI_System
+Environment=ASTOCK_FINAL_DELIVERY=telegram
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/local/bin/node scripts/deliver-morning-report.mjs --scheduled
+TimeoutStartSec=120
+TimeoutStopSec=10
+KillMode=control-group
+Restart=no
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/AStock_AI_System/work/notifications

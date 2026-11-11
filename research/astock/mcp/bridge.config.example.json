@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0",
+  "transport": "fixed-stdio-bridge",
+  "executable": ".venv/Scripts/python.exe",
+  "args": [
+    "mcp/akshare_bridge.py"
+  ],
+  "logicalTool": "get_a_share_morning_context",
+  "requestSchema": "mcp/contract.schema.json#/$defs/request",
+  "responseSchema": "mcp/contract.schema.json#/$defs/response",
+  "notes": "文档示例；实际运行只读取 config/workflow.json 的固定 dataBridge，不读取环境变量或任意命令。"
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=Pre-collect CNINFO announcements and PDF evidence before the 08:00 cutoff
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/AStock_AI_System
+Environment=HOME=/home/ubuntu
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/ubuntu/AStock_AI_System/.venv/bin/python -B mcp/precollect_cninfo.py
+TimeoutStartSec=300
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

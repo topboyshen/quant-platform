@@ -1,0 +1,21 @@
+[Unit]
+Description=Seal today's validated formal research independently of the XHS draft
+OnSuccess=nng8-research-digest.service
+OnFailure=research-chain-alert-post.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/AStock_AI_System
+Environment=HOME=/home/ubuntu
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/local/bin/node scripts/research-seal.mjs --require-current-date --max-age-minutes 120
+TimeoutStartSec=120
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=-/home/ubuntu/AStock_AI_System/work/research-seal
+RestrictAddressFamilies=AF_UNIX

@@ -1,0 +1,9 @@
+# Retired historical template. Do not install: no timer trigger is defined.
+# Delivery belongs to the research-seal success chain, not a calendar timer.
+[Unit]
+Description=Retired morning notification timer (historical reference only)
+Documentation=file:///home/ubuntu/AStock_AI_System/docs/MORNING_DELIVERY.md
+
+[Timer]
+Persistent=false
+Unit=astock-morning-notify.service

@@ -1,0 +1,401 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.astock-ai-system/schemas/morning-context-v1.json",
+  "title": "AStock Morning Context Bridge Contract",
+  "description": "固定 stdin 桥的单请求/单响应契约；MCP server 复用相同 request/response 数据模型。",
+  "oneOf": [
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/response" }
+  ],
+  "$defs": {
+    "nullableNumber": {
+      "type": ["number", "null"]
+    },
+    "unitMap": {
+      "type": "object",
+      "description": "数值字段到单位的显式映射；上游口径无法核验时使用 provider_native_unspecified。",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "sourceIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "evidenceSourceType": {
+      "enum": [
+        "trading_calendar_data",
+        "market_data",
+        "industry_market_data",
+        "dragon_tiger_list_aggregation",
+        "financial_data_aggregation",
+        "media_article",
+        "media_aggregation",
+        "official_announcement",
+        "official_disclosure_query"
+      ]
+    },
+    "stock": {
+      "type": "object",
+      "required": ["code", "exchange", "symbol", "name"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[0-9]{6}$" },
+        "exchange": { "enum": ["SH", "SZ", "BJ"] },
+        "symbol": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": ["id", "title", "sourceType"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "url": { "type": ["string", "null"], "format": "uri" },
+        "publisher": { "type": ["string", "null"] },
+        "sourceType": { "$ref": "#/$defs/evidenceSourceType" },
+        "originalPublisher": { "type": ["string", "null"] },
+        "aggregator": { "type": ["string", "null"] },
+        "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+        "dataAsOf": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "sourceType": { "const": "media_aggregation" } },
+            "required": ["sourceType"]
+          },
+          "then": {
+            "required": ["originalPublisher", "aggregator"],
+            "properties": { "aggregator": { "type": "string", "minLength": 1 } }
+          }
+        }
+      ],
+      "additionalProperties": true
+    },
+    "request": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "task",
+        "targetDate",
+        "timezone",
+        "requestedAt",
+        "universe",
+        "requiredSections"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1.0" },
+        "task": { "const": "a_share_morning_context" },
+        "targetDate": { "type": "string", "format": "date" },
+        "timezone": { "const": "Asia/Shanghai" },
+        "requestedAt": { "type": "string", "format": "date-time" },
+        "universe": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/stock" },
+          "minItems": 1
+        },
+        "requiredSections": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "evidenceRequirements": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "sectionCompleteness": {
+      "type": "object",
+      "required": [
+        "tradingCalendar",
+        "overnightGlobal",
+        "previousAShareSession",
+        "policyAndCalendar",
+        "sectors",
+        "capitalFlows",
+        "watchlist",
+        "announcementsAndNews"
+      ],
+      "properties": {
+        "tradingCalendar": { "type": "number", "minimum": 0, "maximum": 100 },
+        "overnightGlobal": { "type": "number", "minimum": 0, "maximum": 100 },
+        "previousAShareSession": { "type": "number", "minimum": 0, "maximum": 100 },
+        "policyAndCalendar": { "type": "number", "minimum": 0, "maximum": 100 },
+        "sectors": { "type": "number", "minimum": 0, "maximum": 100 },
+        "capitalFlows": { "type": "number", "minimum": 0, "maximum": 100 },
+        "watchlist": { "type": "number", "minimum": 0, "maximum": 100 },
+        "announcementsAndNews": { "type": "number", "minimum": 0, "maximum": 100 }
+      },
+      "additionalProperties": false
+    },
+    "dataCompleteness": {
+      "type": "object",
+      "required": ["market", "capital", "news", "financial", "overall"],
+      "properties": {
+        "market": { "type": "number", "minimum": 0, "maximum": 100 },
+        "capital": { "type": "number", "minimum": 0, "maximum": 100 },
+        "news": { "type": "number", "minimum": 0, "maximum": 100 },
+        "financial": { "type": "number", "minimum": 0, "maximum": 100 },
+        "overall": { "type": "number", "minimum": 0, "maximum": 100 }
+      },
+      "additionalProperties": false
+    },
+    "tradingCalendar": {
+      "type": ["object", "null"],
+      "required": ["targetDate", "status", "sourceIds"],
+      "properties": {
+        "targetDate": { "type": "string", "format": "date" },
+        "status": { "enum": ["trading_day", "non_trading_day", "unknown"] },
+        "previousTradingDate": { "type": ["string", "null"], "format": "date" },
+        "nextTradingDate": { "type": ["string", "null"], "format": "date" },
+        "dataAsOf": { "type": ["string", "null"], "format": "date-time" },
+        "sourceIds": { "$ref": "#/$defs/sourceIds" }
+      },
+      "additionalProperties": true
+    },
+    "marketQuote": {
+      "type": "object",
+      "required": ["units"],
+      "properties": {
+        "code": { "type": ["string", "null"] },
+        "symbol": { "type": ["string", "null"] },
+        "name": { "type": ["string", "null"] },
+        "sessionDate": { "type": ["string", "null"], "format": "date" },
+        "open": { "$ref": "#/$defs/nullableNumber" },
+        "high": { "$ref": "#/$defs/nullableNumber" },
+        "low": { "$ref": "#/$defs/nullableNumber" },
+        "close": { "$ref": "#/$defs/nullableNumber" },
+        "change": { "$ref": "#/$defs/nullableNumber" },
+        "changePercent": { "$ref": "#/$defs/nullableNumber" },
+        "volume": { "$ref": "#/$defs/nullableNumber" },
+        "amount": { "$ref": "#/$defs/nullableNumber" },
+        "units": { "$ref": "#/$defs/unitMap" },
+        "dataAsOf": { "type": ["string", "null"], "format": "date-time" },
+        "sourceIds": { "$ref": "#/$defs/sourceIds" }
+      },
+      "additionalProperties": true
+    },
+    "previousAShareSession": {
+      "type": ["object", "null"],
+      "required": ["units"],
+      "properties": {
+        "sessionDate": { "type": ["string", "null"], "format": "date" },
+        "indices": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/marketQuote" }
+        },
+        "marketBreadth": {
+          "type": ["object", "null"],
+          "properties": {
+            "advancers": { "type": ["integer", "null"], "minimum": 0 },
+            "decliners": { "type": ["integer", "null"], "minimum": 0 },
+            "unchanged": { "type": ["integer", "null"], "minimum": 0 },
+            "sourceIds": { "$ref": "#/$defs/sourceIds" }
+          },
+          "additionalProperties": true
+        },
+        "totalTurnover": { "$ref": "#/$defs/nullableNumber" },
+        "turnoverByExchange": {
+          "type": ["object", "null"],
+          "properties": {
+            "SH": { "$ref": "#/$defs/nullableNumber" },
+            "SZ": { "$ref": "#/$defs/nullableNumber" }
+          },
+          "additionalProperties": false
+        },
+        "turnoverSourceIds": { "$ref": "#/$defs/sourceIds" },
+        "units": { "$ref": "#/$defs/unitMap" },
+        "dataAsOf": { "type": ["string", "null"], "format": "date-time" },
+        "sourceIds": { "$ref": "#/$defs/sourceIds" }
+      },
+      "additionalProperties": true
+    },
+    "event": {
+      "type": "object",
+      "properties": {
+        "type": { "type": ["string", "null"] },
+        "code": { "type": ["string", "null"] },
+        "name": { "type": ["string", "null"] },
+        "title": { "type": "string", "minLength": 1 },
+        "summary": { "type": ["string", "null"] },
+        "publisher": { "type": ["string", "null"] },
+        "sourceType": { "$ref": "#/$defs/evidenceSourceType" },
+        "originalPublisher": { "type": ["string", "null"] },
+        "aggregator": { "type": ["string", "null"] },
+        "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+        "url": { "type": ["string", "null"], "format": "uri" },
+        "dataAsOf": { "type": ["string", "null"], "format": "date-time" },
+        "sourceIds": { "$ref": "#/$defs/sourceIds" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "sourceType": { "const": "media_aggregation" } },
+            "required": ["sourceType"]
+          },
+          "then": {
+            "required": ["originalPublisher", "aggregator"],
+            "properties": { "aggregator": { "type": "string", "minLength": 1 } }
+          }
+        }
+      ],
+      "additionalProperties": true
+    },
+    "sector": {
+      "type": "object",
+      "required": ["units"],
+      "properties": {
+        "rank": { "type": ["integer", "null"], "minimum": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "changePercent": { "$ref": "#/$defs/nullableNumber" },
+        "turnover": { "$ref": "#/$defs/nullableNumber" },
+        "netInflow": { "$ref": "#/$defs/nullableNumber" },
+        "advancers": { "type": ["integer", "null"], "minimum": 0 },
+        "decliners": { "type": ["integer", "null"], "minimum": 0 },
+        "leader": { "type": ["string", "null"] },
+        "leaderPrice": { "$ref": "#/$defs/nullableNumber" },
+        "leaderChangePercent": { "$ref": "#/$defs/nullableNumber" },
+        "units": { "$ref": "#/$defs/unitMap" },
+        "dataAsOf": { "type": ["string", "null"], "format": "date-time" },
+        "sourceIds": { "$ref": "#/$defs/sourceIds" }
+      },
+      "additionalProperties": true
+    },
+    "lhbEntry": {
+      "type": "object",
+      "required": ["units"],
+      "properties": {
+        "units": { "$ref": "#/$defs/unitMap" }
+      },
+      "additionalProperties": true
+    },
+    "capitalFlow": {
+      "type": "object",
+      "required": ["type", "status"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["available", "partial", "cached", "unavailable"] },
+        "reason": { "type": ["string", "null"] },
+        "sessionDate": { "type": ["string", "null"], "format": "date" },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/lhbEntry" } },
+        "dataAsOf": { "type": ["string", "null"], "format": "date-time" },
+        "sourceIds": { "$ref": "#/$defs/sourceIds" }
+      },
+      "additionalProperties": true
+    },
+    "watchlistItem": {
+      "type": "object",
+      "required": ["code", "exchange", "symbol", "name", "status"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[0-9]{6}$" },
+        "exchange": { "enum": ["SH", "SZ", "BJ"] },
+        "symbol": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "minLength": 1 },
+        "marketData": {
+          "oneOf": [
+            { "$ref": "#/$defs/marketQuote" },
+            { "type": "null" }
+          ]
+        },
+        "financials": {
+          "type": ["object", "null"],
+          "required": ["units"],
+          "properties": {
+            "reportDate": { "type": ["string", "null"], "format": "date" },
+            "units": { "$ref": "#/$defs/unitMap" }
+          },
+          "additionalProperties": true
+        },
+        "dataAsOf": { "type": ["string", "null"], "format": "date-time" },
+        "sourceIds": { "$ref": "#/$defs/sourceIds" }
+      },
+      "additionalProperties": true
+    },
+    "response": {
+      "type": "object",
+      "required": ["schemaVersion", "meta", "data", "sources"],
+      "properties": {
+        "schemaVersion": { "const": "1.0" },
+        "meta": {
+          "type": "object",
+          "required": [
+            "status",
+            "provider",
+            "targetDate",
+            "asOf",
+            "timezone",
+            "isLive"
+          ],
+          "properties": {
+            "status": { "enum": ["live", "partial", "demo", "unavailable"] },
+            "provider": { "type": "string", "minLength": 1 },
+            "sourceType": { "type": "string" },
+            "targetDate": { "type": "string", "format": "date" },
+            "asOf": { "type": "string", "format": "date-time" },
+            "timezone": { "const": "Asia/Shanghai" },
+            "isLive": { "type": "boolean" },
+            "dataCompleteness": { "$ref": "#/$defs/dataCompleteness" },
+            "warnings": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": true
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "tradingCalendar",
+            "overnightGlobal",
+            "previousAShareSession",
+            "policyAndCalendar",
+            "sectors",
+            "capitalFlows",
+            "watchlist",
+            "announcementsAndNews"
+          ],
+          "properties": {
+            "tradingCalendar": { "$ref": "#/$defs/tradingCalendar" },
+            "overnightGlobal": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/marketQuote" }
+            },
+            "previousAShareSession": { "$ref": "#/$defs/previousAShareSession" },
+            "policyAndCalendar": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/event" }
+            },
+            "sectors": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/sector" }
+            },
+            "capitalFlows": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/capitalFlow" }
+            },
+            "watchlist": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/watchlistItem" }
+            },
+            "announcementsAndNews": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/event" }
+            },
+            "sectionCompleteness": { "$ref": "#/$defs/sectionCompleteness" }
+          },
+          "additionalProperties": true
+        },
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/source" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

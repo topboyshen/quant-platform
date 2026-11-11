@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0",
+  "deliveryEnabled": true,
+  "route": "telegram",
+  "payloadMode": "formal_report_markdown_document",
+  "reportView": "research_brief_v3",
+  "ownerApproval": {
+    "status": "confirmed",
+    "confirmedAt": "2026-08-03",
+    "scope": "telegram_main_channel_formal_report_markdown_document"
+  },
+  "comment": "Manual Telegram delivery remains owner-approved for the recorded scope. Every send-capable invocation must also explicitly set ASTOCK_FINAL_DELIVERY=telegram; missing or disabled mode never sends."
+}

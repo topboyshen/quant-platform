@@ -1,0 +1,9 @@
+# Retired historical template. Do not install: no timer trigger is defined.
+# XHS drafts are optional, explicitly requested local work, not a daily stage.
+[Unit]
+Description=Retired XHS draft timer (historical reference only)
+Documentation=file:///home/ubuntu/AStock_AI_System/docs/MORNING_DELIVERY.md
+
+[Timer]
+Persistent=false
+Unit=astock-xhs-draft.service

@@ -1,0 +1,16 @@
+[Unit]
+Description=Build a local XHS draft from an eligible sealed AStock report
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/AStock_AI_System
+ExecStart=/usr/local/bin/node scripts/xhs-draft.mjs build --require-current-date --max-age-minutes 120
+TimeoutStartSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/AStock_AI_System/work/xhs
+RestrictAddressFamilies=AF_UNIX

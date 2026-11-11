@@ -1,0 +1,11 @@
+[Unit]
+Description=Pre-collect CNINFO before the weekday 08:00 AStock cutoff
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 07:50:00 Asia/Shanghai
+AccuracySec=10s
+Persistent=false
+Unit=astock-cninfo-precollect.service
+
+[Install]
+WantedBy=timers.target

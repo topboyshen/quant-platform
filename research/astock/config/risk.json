@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0",
+  "marketDataMaxAgeHours": 18,
+  "newsMaxAgeHours": 72,
+  "requireSourceForNumericClaim": true,
+  "requireTimestampForMarketData": true,
+  "requireDirectUrlForWebEvidence": true,
+  "labelStaleData": true,
+  "labelFactInferenceScenario": true,
+  "neverInventMissingData": true,
+  "researchOnly": true,
+  "disclaimer": "本晨报用于信息整理与研究支持，不构成个性化投资建议；市场有风险，决策需独立核验。"
+}
+

@@ -1,0 +1,5 @@
+akshare==1.18.81
+curl_cffi==0.16.3
+mcp==2.2.0
+pandas==3.0.5
+pypdf==6.21.4

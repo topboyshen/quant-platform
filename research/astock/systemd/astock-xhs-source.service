@@ -1,0 +1,14 @@
+[Unit]
+Description=Generate the sealed AStock source report without external delivery
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/AStock_AI_System
+Environment=HOME=/home/ubuntu
+Environment=ASTOCK_FINAL_DELIVERY=disabled
+ExecStart=/bin/bash scripts/run-orchestrated-morning-cron.sh
+TimeoutStartSec=3600
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

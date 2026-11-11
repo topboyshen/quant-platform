@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "1.0",
+  "timezone": "Asia/Shanghai",
+  "scheduledTime": "08:00",
+  "agentExecutor": "hermes",
+  "agentFallback": "none",
+  "hermesProvider": "kimi-coding",
+  "hermesModel": "k3-256k",
+  "hermesReasoning": "high",
+  "hermesMaxAgentTurns": 8,
+  "hermesReviewerMaxTurns": 5,
+  "hermesTimeoutMs": 900000,
+  "hermesReviewerTimeoutMs": 600000,
+  "provider": "ollama-cloud",
+  "model": "deepseek-v4-pro",
+  "thinking": "high",
+  "reportMode": "structured_compiler",
+  "maxAnalysisAttempts": 2,
+  "scheduledAnalysisAttempts": 0,
+  "analysisTimeoutMs": 300000,
+  "hermesAnalysisMaxTurns": 5,
+  "maxAgentTurns": 40,
+  "allowedTools": [
+    "web_search",
+    "source_check",
+    "fetch_content",
+    "get_search_content"
+  ],
+  "piTimeoutMs": 900000,
+  "reviewerTimeoutMs": 600000,
+  "maxReviewAttempts": 3,
+  "bridgeTimeoutMs": 180000,
+  "dataBridge": {
+    "executable": ".venv/bin/python",
+    "args": [
+      "mcp/akshare_bridge.py"
+    ]
+  },
+  "inputFile": "data/inbox/morning-context.json",
+  "outputDirectory": "reports/daily",
+  "provisionalOutputDirectory": "reports/provisional",
+  "workDirectory": "work",
+  "allowAgentWebFallback": false
+}

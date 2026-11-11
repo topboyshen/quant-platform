@@ -1,0 +1,11 @@
+[Unit]
+Description=Generate the weekday AStock source report for the research-seal chain
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 08:00:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=astock-xhs-source.service
+
+[Install]
+WantedBy=timers.target

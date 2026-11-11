@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0",
+  "priority": ["explicit_input", "fixed_akshare_bridge", "agent_web_fallback_only_when_bridge_unavailable", "unavailable"],
+  "preferredEvidence": [
+    "交易所与上市公司公告",
+    "政府、央行、统计机构与监管部门",
+    "指数公司或数据发布机构",
+    "可追溯到原始材料的主流财经媒体"
+  ],
+  "evidenceRules": {
+    "futureEventsRequireOfficialPrimarySource": true,
+    "companyFactsRequireAnnouncementOrCompanySource": true,
+    "aggregatorsCannotBeSoleSupportForNumericClaims": true,
+    "allSourceTimesUseTimezone": "Asia/Shanghai",
+    "rejectSourcesPublishedAfterCutoff": true
+  },
+  "notes": [
+    "当前 Pi 没有原生 MCP 配置入口；晨报使用固定 stdin 桥，主动投研由受控扩展通过固定 stdio 客户端调用六个 Research MCP 工具。",
+    "live/partial 数据包生成正式晨报时禁用联网工具；只有数据桥整体不可用的待核验稿才允许联网降级。",
+    "无法核验时必须报告缺口。"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "defaultProvider": "ollama-cloud",
+  "defaultModel": "deepseek-v4-pro",
+  "defaultThinkingLevel": "high",
+  "packages": [
+    {
+      "source": "npm:@hypabolic/pi-hypa@0.1.11",
+      "autoload": false,
+      "extensions": ["!**"]
+    }
+  ]
+}

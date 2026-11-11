@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.0",
+  "language": "zh-CN",
+  "timezone": "Asia/Shanghai",
+  "researchStyle": "growth_and_high_volatility",
+  "timeHorizons": ["intraday_observation", "swing_research", "medium_term_thesis"],
+  "priorities": [
+    "产业趋势与可验证催化",
+    "收入、利润、毛利率与现金流的交叉验证",
+    "市场成交与风险偏好",
+    "投资逻辑的反证条件"
+  ],
+  "reportSections": [
+    "overnight_global",
+    "previous_a_share_session",
+    "policy_and_calendar",
+    "sectors_and_flows",
+    "watchlist",
+    "scenarios",
+    "risks_and_sources"
+  ],
+  "prohibitedOutputs": [
+    "guaranteed_return",
+    "certain_price_direction",
+    "unconditional_buy_or_sell",
+    "fabricated_or_unsourced_data"
+  ]
+}
+

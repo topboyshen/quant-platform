@@ -1,0 +1,33 @@
+{
+  "name": "astock-ai-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node 编排、隔离式 Agent 生成审校与受控发布的每日 A 股晨报工作流",
+  "scripts": {
+    "data:setup": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/setup-akshare.ps1",
+    "data:setup:unix": "bash scripts/setup-akshare.sh",
+    "data:test": "node scripts/morning-report.mjs --dry-run --strict-data",
+    "doctor": "node scripts/doctor.mjs",
+    "doctor:live": "node scripts/doctor.mjs --live",
+    "validate": "node scripts/validate.mjs",
+    "morning": "node scripts/morning-report.mjs",
+    "morning:publish-reviewed": "node scripts/publish-reviewed.mjs",
+    "morning:dry": "node scripts/morning-report.mjs --dry-run",
+    "morning:prepare": "node scripts/morning-report.mjs --prepare-only",
+    "research:dry": "node scripts/research-context.mjs --dry-run",
+    "task:catalog": "node scripts/task-orchestrator.mjs catalog",
+    "task:status": "node scripts/task-orchestrator.mjs status",
+    "notify:drain": "node scripts/hermes-notify.mjs drain",
+    "notify:status": "node scripts/hermes-notify.mjs status",
+    "xhs:draft": "node scripts/xhs-draft.mjs build",
+    "xhs:status": "node scripts/xhs-draft.mjs status",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "pi-turn-limit": "0.1.0"
+  }
+}
