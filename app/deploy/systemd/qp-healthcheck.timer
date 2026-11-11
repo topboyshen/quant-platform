@@ -1,0 +1,10 @@
+[Unit]
+Description=quant-platform ops.healthcheck every 5 min
+
+[Timer]
+OnCalendar=*:0/5
+RandomizedDelaySec=20
+Unit=qp-job@ops.healthcheck.service
+
+[Install]
+WantedBy=timers.target

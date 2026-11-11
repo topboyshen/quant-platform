@@ -1,0 +1,20 @@
+[Unit]
+Description=quant-platform job %i (qp job run)
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=qp
+Group=qp
+EnvironmentFile=/etc/qp/qp.env
+Environment=QP_TRIGGER=timer
+WorkingDirectory=/opt/qp/current/backend
+ExecStart=/opt/qp/current/venv/bin/qp job run %i
+TimeoutStartSec=1h
+MemoryMax=300M
+Nice=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/qp

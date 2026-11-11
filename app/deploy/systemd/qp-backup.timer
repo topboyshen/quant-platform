@@ -1,0 +1,10 @@
+[Unit]
+Description=quant-platform ops.backup daily 03:50 CST (pg_dump qp, keep 14 days)
+
+[Timer]
+OnCalendar=*-*-* 03:50:00 Asia/Shanghai
+Persistent=false
+Unit=qp-job@ops.backup.service
+
+[Install]
+WantedBy=timers.target

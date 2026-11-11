@@ -17,3 +17,5 @@ node_modules/
 __pycache__/
 .venv/
 venv/
+qp.egg-info/
+.pytest_cache/
