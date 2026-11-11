@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>ETF 研究池 · 隔离 UI 验证</title></head>
+<body><div id="app"></div><script type="module">
+import Vue from 'vue'
+import Vuex from 'vuex'
+import VueRouter from 'vue-router'
+import Antd from 'ant-design-vue'
+import 'ant-design-vue/dist/antd.css'
+import PersonalHome from '../../src/views/personal-home/index.vue'
+Vue.use(Vuex); Vue.use(VueRouter); Vue.use(Antd)
+const store = new Vuex.Store({ state: { app: { theme: 'light' } } })
+const router = new VueRouter({ mode: 'abstract', routes: [
+  { path: '/personal-home', component: PersonalHome },
+  { path: '/indicator-ide', component: { render: h => h('div', '隔离导航验证') } }
+] })
+const root = new Vue({ store, router, render: h => h(PersonalHome) }).$mount('#app')
+window.__etfQA = { root, store, router }
+</script></body></html>
