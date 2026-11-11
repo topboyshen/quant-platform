@@ -131,9 +131,11 @@ def evaluate(snap: dict, unit_rows: list[dict], age_min: float) -> list[tuple[st
     return f
 
 
-def apply_alerts(s: Session, firing: list[tuple[str, str, str, dict]], run_id: int) -> dict:
+def apply_alerts(s: Session, firing: list[tuple[str, str, str, dict]], run_id: int,
+                 owns=lambda key: not key.startswith("market:")) -> dict:
+    """Upsert firing alerts; resolve open alerts this caller owns (by key predicate) that are no longer firing."""
     now = utcnow()
-    open_alerts = {a.key: a for a in s.execute(select(Alert).where(Alert.state == "firing")).scalars()}
+    open_alerts = {a.key: a for a in s.execute(select(Alert).where(Alert.state == "firing")).scalars() if owns(a.key)}
     new = 0
     for key, sev, summary, detail in firing:
         a = open_alerts.pop(key, None)

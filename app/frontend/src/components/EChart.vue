@@ -2,11 +2,11 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts/core'
-import { BarChart, GaugeChart, PieChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TitleComponent, TooltipComponent } from 'echarts/components'
+import { BarChart, GaugeChart, HeatmapChart, LineChart, PieChart } from 'echarts/charts'
+import { CalendarComponent, DataZoomComponent, GridComponent, LegendComponent, TitleComponent, TooltipComponent, VisualMapComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
-echarts.use([BarChart, PieChart, GaugeChart, GridComponent, LegendComponent, TitleComponent, TooltipComponent, CanvasRenderer])
+echarts.use([BarChart, PieChart, GaugeChart, LineChart, HeatmapChart, GridComponent, LegendComponent, TitleComponent, TooltipComponent, CalendarComponent, VisualMapComponent, DataZoomComponent, CanvasRenderer])
 const props = withDefaults(defineProps<{ option: Record<string, unknown>; height?: string }>(), { height: '280px' })
 const el = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null

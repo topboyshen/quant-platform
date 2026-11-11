@@ -2,16 +2,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { auth } from './api/client'
 import Layout from './views/Layout.vue'
 import Login from './views/Login.vue'
-import Placeholder from './views/Placeholder.vue'
-import Ops from './views/Ops.vue'
-import Overview from './views/Overview.vue'
-import OpsLayout from './views/OpsLayout.vue'
-import Monitors from './views/Monitors.vue'
-import Tasks from './views/Tasks.vue'
-import Alerts from './views/Alerts.vue'
-import Services from './views/Services.vue'
-import Coverage from './views/Coverage.vue'
-import Tokens from './views/Tokens.vue'
+
+// Route-level code splitting: every page (and ECharts) is a lazy chunk.
+const Placeholder = () => import('./views/Placeholder.vue')
 
 export const NAV = [
   { path: '/', name: 'overview', label: '总览' },
@@ -28,20 +21,30 @@ export const router = createRouter({
     { path: '/login', name: 'login', component: Login, meta: { public: true } },
     {
       path: '/', component: Layout, children: [
-        { path: '', name: 'overview', component: Overview },
-        { path: 'market', name: 'market', component: Placeholder, props: { title: '行情' } },
+        { path: '', name: 'overview', component: () => import('./views/Overview.vue') },
+        {
+          path: 'market', component: () => import('./views/market/MarketLayout.vue'), children: [
+            { path: '', name: 'market', component: () => import('./views/market/Health.vue') },
+            { path: 'instruments', name: 'market-instruments', component: () => import('./views/market/Instruments.vue') },
+            { path: 'calendar', name: 'market-calendar', component: () => import('./views/market/Calendar.vue') },
+            { path: 'index-close', name: 'market-indexclose', component: () => import('./views/market/IndexClose.vue') },
+            { path: 'coverage', name: 'market-coverage', component: () => import('./views/market/MarketCoverage.vue') },
+            { path: 'imports', name: 'market-imports', component: () => import('./views/market/Imports.vue') },
+          ],
+        },
         { path: 'research', name: 'research', component: Placeholder, props: { title: '研究' } },
         { path: 'signals', name: 'signals', component: Placeholder, props: { title: '信号' } },
         { path: 'reports', name: 'reports', component: Placeholder, props: { title: '报告' } },
         {
-          path: 'ops', component: OpsLayout, children: [
-            { path: '', name: 'ops', component: Ops },
-            { path: 'monitors', name: 'ops-monitors', component: Monitors },
-            { path: 'tasks', name: 'ops-tasks', component: Tasks },
-            { path: 'alerts', name: 'ops-alerts', component: Alerts },
-            { path: 'services', name: 'ops-services', component: Services },
-            { path: 'coverage', name: 'ops-coverage', component: Coverage },
-            { path: 'tokens', name: 'ops-tokens', component: Tokens },
+          path: 'ops', component: () => import('./views/OpsLayout.vue'), children: [
+            { path: '', name: 'ops', component: () => import('./views/Ops.vue') },
+            { path: 'monitors', name: 'ops-monitors', component: () => import('./views/Monitors.vue') },
+            { path: 'tasks', name: 'ops-tasks', component: () => import('./views/Tasks.vue') },
+            { path: 'alerts', name: 'ops-alerts', component: () => import('./views/Alerts.vue') },
+            { path: 'compare', name: 'ops-compare', component: () => import('./views/Compare.vue') },
+            { path: 'services', name: 'ops-services', component: () => import('./views/Services.vue') },
+            { path: 'coverage', name: 'ops-coverage', component: () => import('./views/Coverage.vue') },
+            { path: 'tokens', name: 'ops-tokens', component: () => import('./views/Tokens.vue') },
           ],
         },
       ],

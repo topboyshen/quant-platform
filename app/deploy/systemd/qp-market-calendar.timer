@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform shadow job market.calendar (legacy 06:20)
+
+[Timer]
+OnCalendar=*-*-* 06:30:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@market.calendar.service
+
+[Install]
+WantedBy=timers.target

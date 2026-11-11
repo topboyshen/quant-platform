@@ -1,0 +1,13 @@
+[Unit]
+Description=quant-platform shadow job market.sources (probe)
+
+[Timer]
+OnCalendar=*-*-* 09:05:00 Asia/Shanghai
+OnCalendar=*-*-* 13:05:00 Asia/Shanghai
+OnCalendar=*-*-* 19:05:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@market.sources.service
+
+[Install]
+WantedBy=timers.target

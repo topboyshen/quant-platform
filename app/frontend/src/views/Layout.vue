@@ -21,7 +21,7 @@ import { NAV, setAuthed } from '../router'
 const route = useRoute(), router = useRouter()
 const me = ref<Me | null>(null)
 const menu = NAV.map((n) => ({ key: n.name, label: n.label }))
-const active = computed(() => { const n = String(route.name || 'overview'); return n.startsWith('ops') ? 'ops' : n })
+const active = computed(() => { const n = String(route.name || 'overview'); return n.split('-')[0] })
 function go(key: string) { router.push({ name: key }) }
 async function logout() {
   try { await auth.logout() } finally { setAuthed(false); router.replace({ name: 'login' }) }

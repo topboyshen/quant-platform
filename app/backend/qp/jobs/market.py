@@ -1,0 +1,544 @@
+"""M3 market-data jobs (SHADOW). Write only to db qp (schema market + ops alerts/outbox shadow).
+Never write to legacy Qlib, research-data or any legacy file. Legacy outputs arrive read-only via
+qp-market-read (ubuntu) -> /var/lib/qp-inbox/market-legacy.json -> market.ingest_legacy."""
+from __future__ import annotations
+
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path
+from typing import Any, Iterable
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import and_, delete, func, select, tuple_
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
+
+from qp.jobs.inventory import apply_alerts, set_inventory
+from qp.jobs.registry import JobContext, job
+from qp.market import sources as src
+from qp.market.http import FetchError
+from qp.models.base import utcnow
+from qp.models.market import (AnnouncementCount, CompareResult, HealthResult, ImportLog, IndexClose, IndexMember,
+                              Instrument, LegacySnapshot, MarketSummary, QlibStatus, SourceStatus, TradingDay)
+
+CST = ZoneInfo("Asia/Shanghai")
+MARKET_INBOX = Path(os.getenv("QP_MARKET_INBOX_FILE", "/var/lib/qp-inbox/market-legacy.json"))
+MIN_MEM_MB = int(os.getenv("QP_MIN_MEM_MB", "600"))
+RETAIN_DAYS = 90
+
+
+class LowMemory(RuntimeError):
+    pass
+
+
+def mem_guard() -> int | None:
+    try:
+        with open("/proc/meminfo") as fh:
+            for ln in fh:
+                if ln.startswith("MemAvailable:"):
+                    mb = int(ln.split()[1]) // 1024
+                    if mb < MIN_MEM_MB:
+                        raise LowMemory(f"MemAvailable {mb}MB < {MIN_MEM_MB}MB")
+                    return mb
+    except OSError:
+        return None
+    return None
+
+
+def canon(lines: Iterable[str]) -> str:
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
+
+
+def d(v: str) -> dt.date:
+    return dt.date.fromisoformat(str(v)[:10])
+
+
+def now_cst() -> dt.datetime:
+    return dt.datetime.now(CST)
+
+
+# ---------------------------------------------------------------- calendar helpers
+def open_days(s: Session, origin: str = "qp") -> list[dt.date]:
+    return list(s.execute(select(TradingDay.date).where(TradingDay.origin == origin, TradingDay.is_open)
+                          .order_by(TradingDay.date)).scalars())
+
+
+def calendar_for_expectation(s: Session) -> list[dt.date]:
+    days = open_days(s, "qp")
+    return days if days else open_days(s, "legacy")
+
+
+def expected_trade_date(days: list[dt.date], now: dt.datetime, cutoff: dt.time) -> dt.date | None:
+    """Latest open day whose cutoff has passed (today if open and now >= cutoff)."""
+    today = now.date()
+    cands = [x for x in days if x < today or (x == today and now.time() >= cutoff)]
+    return cands[-1] if cands else None
+
+
+def trading_lag(days: list[dt.date], have: dt.date | None, want: dt.date | None) -> int | None:
+    if want is None:
+        return None
+    if have is None:
+        return 999
+    if have >= want:
+        return 0
+    return sum(1 for x in days if have < x <= want)
+
+
+# ---------------------------------------------------------------- fetch jobs (new platform, shadow)
+@job("market.calendar", "Trading calendar (SSE) from Dolt ts_trade_day_calendar -> market.trading_day[qp]",
+     schedule_hint="06:30 CST daily (legacy 06:20)")
+def calendar_job(ctx: JobContext) -> dict:
+    mem_guard()
+    today = now_cst().date()
+    with Session(ctx.engine) as s:
+        have = s.scalar(select(func.count()).select_from(TradingDay).where(TradingDay.origin == "qp")) or 0
+    start = dt.date(2020, 1, 1) if have < 1000 else today - dt.timedelta(days=60)
+    rows = src.dolt_calendar(start, dt.date(today.year + 1, 12, 31))
+    if not rows:
+        return {"ok": False, "error": "empty"}
+    with Session(ctx.engine) as s:
+        stmt = insert(TradingDay).values([{"origin": "qp", "date": x, "is_open": o, "source": "dolt.ts_trade_day_calendar"}
+                                          for x, o in rows])
+        s.execute(stmt.on_conflict_do_update(index_elements=["origin", "date"],
+                                             set_={"is_open": stmt.excluded.is_open, "source": stmt.excluded.source,
+                                                   "updated_at": func.now()}))
+        s.commit()
+        opened = [x for x, o in rows if o]
+    ahead = (opened[-1] - today).days if opened else None
+    return {"rows": len(rows), "range": [rows[0][0].isoformat(), rows[-1][0].isoformat()],
+            "max_open": opened[-1].isoformat() if opened else None, "days_ahead": ahead, "initial": have < 1000}
+
+
+@job("market.index_close", "Four index closes (Tencent fqkline, Sina fallback) -> market.index_close[qp]",
+     schedule_hint="Mon-Fri 16:30, 16:40 CST (legacy 15:35/45/55)")
+def index_close_job(ctx: JobContext) -> dict:
+    mem_guard()
+    got, errors = [], {}
+    fetched = utcnow()
+    now = now_cst()
+    # never store an intraday bar as a close: today's row only after 15:30 CST (close + 30 min grace, as legacy)
+    latest_ok = now.date() if now.time() >= dt.time(15, 30) else now.date() - dt.timedelta(days=1)
+    for sym in src.INDEXES:
+        rows, source = None, None
+        try:
+            rows, source = src.tencent_index(sym, 10), "tencent"
+        except FetchError as e:
+            errors[f"{sym}:tencent"] = str(e)
+            try:
+                rows, source = src.sina_index(sym, 10), "sina"
+            except FetchError as e2:
+                errors[f"{sym}:sina"] = str(e2)
+        for day, close in rows or []:
+            if d(day) > latest_ok:
+                continue
+            got.append({"origin": "qp", "symbol": sym, "trade_date": d(day), "close": round(close, 4), "source": source,
+                        "fetched_at": fetched})
+    if got:
+        with Session(ctx.engine) as s:
+            stmt = insert(IndexClose).values(got)
+            s.execute(stmt.on_conflict_do_update(
+                index_elements=["origin", "symbol", "trade_date"],
+                set_={"close": stmt.excluded.close, "source": stmt.excluded.source, "fetched_at": stmt.excluded.fetched_at,
+                      "updated_at": func.now()}))
+            s.commit()
+    syms_ok = sorted({g["symbol"] for g in got})
+    return {"ok": len(syms_ok) == len(src.INDEXES), "rows": len(got), "symbols": syms_ok,
+            "latest": max((g["trade_date"] for g in got), default=None).isoformat() if got else None, "errors": errors}
+
+
+@job("market.instruments", "Instrument names from Eastmoney clist -> market.instrument (qlib ranges come from ingest)",
+     schedule_hint="Mon-Fri 17:10 CST")
+def instruments_job(ctx: JobContext) -> dict:
+    mem_guard()
+    names = src.eastmoney_names()
+    with Session(ctx.engine) as s:
+        vals = [{"symbol": k, "name": v[:64], "exchange": k[:2], "board": board_of(k), "name_source": "eastmoney"}
+                for k, v in names.items()]
+        stmt = insert(Instrument).values(vals)
+        s.execute(stmt.on_conflict_do_update(index_elements=["symbol"],
+                                             set_={"name": stmt.excluded.name, "exchange": stmt.excluded.exchange,
+                                                   "board": stmt.excluded.board, "name_source": stmt.excluded.name_source,
+                                                   "updated_at": func.now()}))
+        s.commit()
+    return {"names": len(names)}
+
+
+def board_of(sym: str) -> str:
+    code = sym[2:]
+    if sym.startswith("BJ") or code.startswith(("4", "8", "92")):
+        return "bse"
+    if code.startswith("688") or code.startswith("689"):
+        return "star"
+    if code.startswith(("300", "301", "302")):
+        return "chinext"
+    if (sym.startswith("SH") and code.startswith("000")) or (sym.startswith("SZ") and code.startswith("399")):
+        return "index"
+    return "main"
+
+
+@job("market.sources", "Reachability/freshness probe of legacy data sources -> market.source_status",
+     schedule_hint="09:05, 13:05, 19:05 CST")
+def sources_job(ctx: JobContext) -> dict:
+    mem_guard()
+    res = src.probe_all()
+    with Session(ctx.engine) as s:
+        for r in res:
+            s.add(SourceStatus(source=r["source"], ok=r["ok"], via_proxy=r["via_proxy"], ms=r["ms"], detail=r["detail"]))
+        s.execute(delete(SourceStatus).where(SourceStatus.at < utcnow() - dt.timedelta(days=RETAIN_DAYS)))
+        s.commit()
+    return {"ok_count": sum(r["ok"] for r in res), "total": len(res),
+            "failed": [r["source"] for r in res if not r["ok"]]}
+
+
+@job("market.cninfo", "CNINFO announcement count for today (metadata only; direct like legacy)",
+     schedule_hint="08:30 CST daily (legacy 07:50)")
+def cninfo_job(ctx: JobContext) -> dict:
+    mem_guard()
+    day = now_cst().date()
+    total = src.cninfo_count(day)
+    with Session(ctx.engine) as s:
+        stmt = insert(AnnouncementCount).values(date=day, total=total, detail={"scope": "szse+sse fulltext"})
+        s.execute(stmt.on_conflict_do_update(index_elements=["date"], set_={"total": total, "fetched_at": func.now()}))
+        s.commit()
+    return {"date": day.isoformat(), "total": total}
+
+
+@job("market.qlib_check", "Qlib update shadow (compare-only, no data copy): Dolt latest EOD + GitHub release tag",
+     schedule_hint="06:40, 23:20 CST (legacy 06:30 retry / 22:00 nightly)")
+def qlib_check_job(ctx: JobContext) -> dict:
+    mem_guard()
+    out: dict[str, Any] = {}
+    try:
+        out["dolt_latest_eod"] = src.dolt_latest_eod()
+    except FetchError as e:
+        out["dolt_error"] = str(e)
+    try:
+        out["github_release_tag"] = src.github_release_tag()
+    except FetchError as e:
+        out["github_error"] = str(e)
+    with Session(ctx.engine) as s:
+        s.add(QlibStatus(kind="source", data=out))
+        s.commit()
+    out["ok"] = "dolt_latest_eod" in out or "github_release_tag" in out
+    return out
+
+
+# ---------------------------------------------------------------- read-only legacy ingest + reconciliation
+def _log(s: Session, item: str, path: str, file_sha: str | None, legacy_rows: int, legacy_ck: str,
+         db_rows: int, db_ck: str) -> dict:
+    st = "match" if (legacy_rows == db_rows and legacy_ck == db_ck) else "mismatch"
+    s.add(ImportLog(item=item, legacy_path=path, legacy_file_sha256=file_sha, legacy_rows=legacy_rows,
+                    legacy_checksum=legacy_ck, db_rows=db_rows, db_checksum=db_ck, status=st))
+    return {"item": item, "legacy_rows": legacy_rows, "db_rows": db_rows, "status": st}
+
+
+def _mirror_days(s: Session, origin: str, source: str, dates: list[str]) -> None:
+    s.execute(delete(TradingDay).where(TradingDay.origin == origin))
+    for i in range(0, len(dates), 2000):
+        s.execute(insert(TradingDay).values([{"origin": origin, "date": d(x), "is_open": True, "source": source}
+                                             for x in dates[i:i + 2000]]))
+
+
+def ingest(s: Session, snap: dict) -> list[dict]:
+    recon: list[dict] = []
+    cal = snap.get("calendar") or {}
+    if cal.get("ok"):
+        _mirror_days(s, "legacy", "legacy:" + str(cal.get("source")), cal["dates"])
+        s.flush()
+        back = [x.isoformat() for x in open_days(s, "legacy")]
+        recon.append(_log(s, "calendar", cal["path"], cal.get("file_sha256"), cal["rows"], cal["checksum"],
+                          len(back), canon(back)))
+    ic = snap.get("index_close") or {}
+    if ic.get("ok") and ic["rows"]:
+        vals = [{"origin": "legacy", "symbol": r["symbol"], "trade_date": d(r["trade_date"]), "close": r["close"],
+                 "source": r["source"], "fetched_at": dt.datetime.fromisoformat(ic["fetched_at"]) if ic.get("fetched_at") else None}
+                for r in ic["rows"]]
+        stmt = insert(IndexClose).values(vals)
+        s.execute(stmt.on_conflict_do_update(index_elements=["origin", "symbol", "trade_date"],
+                                             set_={"close": stmt.excluded.close, "source": stmt.excluded.source,
+                                                   "fetched_at": stmt.excluded.fetched_at, "updated_at": func.now()}))
+        s.flush()
+        keys = [(r["symbol"], d(r["trade_date"])) for r in ic["rows"]]
+        back = s.execute(select(IndexClose).where(IndexClose.origin == "legacy",
+                                                  tuple_(IndexClose.symbol, IndexClose.trade_date).in_(keys))
+                         .order_by(IndexClose.symbol, IndexClose.trade_date)).scalars().all()
+        recon.append(_log(s, "index_close", ic["path"], ic.get("file_sha256"), len(ic["rows"]), ic["checksum"], len(back),
+                          canon(f"{b.symbol}|{b.trade_date}|{float(b.close):.4f}|{b.source}" for b in back)))
+    q = snap.get("qlib") or {}
+    if q.get("ok"):
+        _mirror_days(s, "qlib", "qlib:calendars/day.txt", q["calendar"])
+        s.flush()
+        back = [x.isoformat() for x in open_days(s, "qlib")]
+        recon.append(_log(s, "qlib_calendar", q["root"] + "/calendars/day.txt", q.get("calendar_sha256"),
+                          len(q["calendar"]), q["calendar_checksum"], len(back), canon(back)))
+        insts = q["instruments"]
+        s.execute(Instrument.__table__.update().values(in_qlib=False))
+        for i in range(0, len(insts), 2000):
+            chunk = insts[i:i + 2000]
+            stmt = insert(Instrument).values([{"symbol": a, "exchange": a[:2], "board": board_of(a), "qlib_start": d(b),
+                                               "qlib_end": d(c), "in_qlib": True} for a, b, c in chunk])
+            s.execute(stmt.on_conflict_do_update(index_elements=["symbol"],
+                                                 set_={"qlib_start": stmt.excluded.qlib_start, "qlib_end": stmt.excluded.qlib_end,
+                                                       "in_qlib": True, "updated_at": func.now()}))
+        s.flush()
+        back = s.execute(select(Instrument.symbol, Instrument.qlib_start, Instrument.qlib_end).where(Instrument.in_qlib)).all()
+        recon.append(_log(s, "qlib_instruments", q["root"] + "/instruments/all.txt", q.get("instruments_sha256"),
+                          len(insts), q["instruments_checksum"], len(back),
+                          canon(sorted(f"{a}|{b}|{c}" for a, b, c in back))))
+        for idx, m in (q.get("members") or {}).items():
+            s.execute(delete(IndexMember).where(IndexMember.index_code == idx))
+            rows = {(a, b): c for a, b, c in m["rows"]}  # PK (symbol, start) unique
+            for i, chunk in enumerate([list(rows.items())[k:k + 2000] for k in range(0, len(rows), 2000)]):
+                s.execute(insert(IndexMember).values([{"index_code": idx, "symbol": a, "start_date": d(b), "end_date": d(c)}
+                                                      for (a, b), c in chunk]))
+            s.flush()
+            back = s.execute(select(IndexMember.symbol, IndexMember.start_date, IndexMember.end_date)
+                             .where(IndexMember.index_code == idx)).all()
+            recon.append(_log(s, f"qlib_members:{idx}", q["root"] + f"/instruments/{idx}.txt", m.get("file_sha256"),
+                              len(m["rows"]), m["checksum"], len(back),
+                              canon(sorted(f"{idx}|{a}|{b}|{c}" for a, b, c in back))))
+        s.add(QlibStatus(kind="catalog", data={
+            "tag": q.get("tag"), "calendar_first": q["calendar"][0] if q["calendar"] else None,
+            "calendar_last": q["calendar"][-1] if q["calendar"] else None, "calendar_days": len(q["calendar"]),
+            "instruments": len(insts), "active_on_last": sum(1 for _, _, c in insts if q["calendar"] and c == q["calendar"][-1]),
+            "feature_dirs": q.get("feature_dirs"), "update_status": q.get("update_status"),
+            "reference_dates": q.get("reference_dates")}))
+    core = snap.get("core_market") or {}
+    if core.get("ok"):
+        s.execute(delete(MarketSummary).where(MarketSummary.origin == "legacy"))
+        for r in core["rows"]:
+            s.add(MarketSummary(origin="legacy", trade_date=d(r["date"]), data=r["qlib"], payload_sha256=r["payload_sha256"],
+                                generated_at=dt.datetime.fromisoformat(r["generated_at"]) if r.get("generated_at") else None))
+        s.flush()
+        back = s.execute(select(MarketSummary.trade_date, MarketSummary.payload_sha256)
+                         .where(MarketSummary.origin == "legacy").order_by(MarketSummary.trade_date)).all()
+        recon.append(_log(s, "core_market", core["path"], None, len(core["rows"]), core["checksum"], len(back),
+                          canon(f"{a}|{b}" for a, b in back)))
+        bad = [r["date"] for r in core["rows"] if r["payload_sha256"] != r["computed_sha256"]]
+        if bad:
+            recon.append({"item": "core_market.payload_sha256_selfcheck", "status": "mismatch", "dates": bad[:10]})
+    sdb = snap.get("snapshot_db") or {}
+    if sdb.get("ok"):
+        s.execute(delete(LegacySnapshot))
+        for r in sdb["rows"]:
+            s.add(LegacySnapshot(date=d(r["date"]), generated_at=r.get("generated_at"), payload_sha256=r["payload_sha256"],
+                                 payload_bytes=r["bytes"], keys=r.get("keys") or []))
+        s.flush()
+        back = s.execute(select(LegacySnapshot.date, LegacySnapshot.payload_sha256).order_by(LegacySnapshot.date)).all()
+        recon.append(_log(s, "snapshot_db", sdb["path"], None, len(sdb["rows"]), sdb["checksum"], len(back),
+                          canon(f"{a}|{b}" for a, b in back)))
+    for summ in snap.get("qlib_summary") or []:
+        if summ.get("ok"):
+            stmt = insert(MarketSummary).values(origin="qp", trade_date=d(summ["date"]), data=summ,
+                                                generated_at=dt.datetime.fromisoformat(snap["collected_at"]))
+            s.execute(stmt.on_conflict_do_update(index_elements=["origin", "trade_date"],
+                                                 set_={"data": stmt.excluded.data, "generated_at": stmt.excluded.generated_at,
+                                                       "updated_at": func.now()}))
+    at = dt.datetime.fromisoformat(snap["collected_at"])
+    set_inventory(s, "market.legacy_health", at, snap.get("health"))
+    set_inventory(s, "market.cninfo_staging", at, snap.get("cninfo"))
+    set_inventory(s, "market.reader", at, {"duration_s": snap.get("duration_s"),
+                                           "summaries": [x.get("date") for x in snap.get("qlib_summary") or []]})
+    return recon
+
+
+@job("market.ingest_legacy", "Read-only legacy market import/mirror with row-count + checksum reconciliation",
+     schedule_hint="after qp-market-read (06:45, 17:00, 23:25 CST)")
+def ingest_job(ctx: JobContext) -> dict:
+    mem_guard()
+    if not MARKET_INBOX.is_file():
+        return {"ok": False, "error": "no market snapshot"}
+    snap = json.loads(MARKET_INBOX.read_text())
+    with Session(ctx.engine) as s:
+        recon = ingest(s, snap)
+        s.execute(delete(ImportLog).where(ImportLog.at < utcnow() - dt.timedelta(days=RETAIN_DAYS)))
+        s.commit()
+    mism = [r for r in recon if r["status"] != "match"]
+    return {"ok": not mism, "items": len(recon), "mismatch": mism, "collected_at": snap.get("collected_at")}
+
+
+# ---------------------------------------------------------------- compare (new vs legacy) + health
+def compare(s: Session) -> list[tuple[str, str, str, dict]]:
+    out: list[tuple[str, str, str, dict]] = []
+    qp_days = open_days(s, "qp")
+    qp_all = dict(s.execute(select(TradingDay.date, TradingDay.is_open).where(TradingDay.origin == "qp")).all())
+    for other in ("legacy", "qlib"):
+        od = open_days(s, other)
+        if not qp_all or not od:
+            out.append((f"calendar.{other}_vs_qp", "skipped", "missing data", {"qp": len(qp_all), other: len(od)}))
+            continue
+        lo, hi = max(min(qp_all), od[0]), min(max(qp_all), od[-1])
+        a = {x for x in od if lo <= x <= hi}
+        b = {x for x in qp_days if lo <= x <= hi}
+        only_o, only_q = sorted(a - b), sorted(b - a)
+        st = "match" if not only_o and not only_q else "mismatch"
+        out.append((f"calendar.{other}_vs_qp", st, f"{lo}..{hi}: {other}-only {len(only_o)}, qp-only {len(only_q)}",
+                    {"range": [lo.isoformat(), hi.isoformat()], "days": len(a), f"{other}_only": [x.isoformat() for x in only_o[:20]],
+                     "qp_only": [x.isoformat() for x in only_q[:20]]}))
+    leg = s.execute(select(IndexClose).where(IndexClose.origin == "legacy",
+                                             IndexClose.trade_date >= now_cst().date() - dt.timedelta(days=20))).scalars().all()
+    if leg:
+        qp = {(r.symbol, r.trade_date): r for r in s.execute(select(IndexClose).where(
+            IndexClose.origin == "qp", tuple_(IndexClose.symbol, IndexClose.trade_date).in_([(x.symbol, x.trade_date) for x in leg])
+        )).scalars()}
+        diffs, missing = [], []
+        for x in leg:
+            y = qp.get((x.symbol, x.trade_date))
+            if y is None:
+                missing.append(f"{x.symbol}@{x.trade_date}")
+            elif abs(float(y.close) - float(x.close)) > 0.011:
+                diffs.append({"symbol": x.symbol, "date": x.trade_date.isoformat(), "legacy": float(x.close), "qp": float(y.close)})
+        compared = len(leg) - len(missing)
+        st = "mismatch" if diffs else ("skipped" if compared == 0 else "match")
+        out.append(("index_close.legacy_vs_qp", st, f"compared {compared}, diff {len(diffs)}, qp-missing {len(missing)}",
+                    {"diffs": diffs[:20], "missing": missing[:20]}))
+    else:
+        out.append(("index_close.legacy_vs_qp", "skipped", "no legacy rows in last 20 days", {}))
+    legs = {r.trade_date: r for r in s.execute(select(MarketSummary).where(MarketSummary.origin == "legacy")).scalars()}
+    qps = {r.trade_date: r for r in s.execute(select(MarketSummary).where(MarketSummary.origin == "qp")).scalars()}
+    both = sorted(set(legs) & set(qps))
+    if not both:
+        out.append(("snapshot.core_vs_qp", "skipped", "no common date between legacy core-market and qp summary",
+                    {"legacy_latest": max(legs).isoformat() if legs else None,
+                     "qp_dates": [x.isoformat() for x in sorted(qps)][-3:]}))
+    else:
+        day = both[-1]
+        a, b = legs[day].data, qps[day].data
+        fields = {}
+        for k in ("breadth", "coverage"):
+            if (a.get(k) or {}) != {kk: (b.get(k) or {}).get(kk) for kk in (a.get(k) or {})}:
+                fields[k] = {"legacy": a.get(k), "qp": b.get(k)}
+        for k in ("topGainers", "topLosers", "topAmount"):
+            sa, sb = [x.get("sym") for x in a.get(k) or []], [x.get("sym") for x in b.get(k) or []]
+            if sa != sb:
+                fields[k] = {"legacy": sa, "qp": sb}
+        out.append(("snapshot.core_vs_qp", "mismatch" if fields else "match",
+                    f"{day}: {'differs in ' + ','.join(fields) if fields else 'breadth/coverage/top lists equal'}",
+                    {"date": day.isoformat(), "diffs": fields}))
+    named = dict(s.execute(select(Instrument.symbol, Instrument.name).where(Instrument.name.is_not(None))).all())
+    last = s.scalar(select(func.max(Instrument.qlib_end)))
+    active = set(s.execute(select(Instrument.symbol).where(Instrument.in_qlib, Instrument.qlib_end == last)).scalars()) if last else set()
+    stocks_named = {k for k in named if k[2:3] in "0123456789"}
+    if active and stocks_named:
+        missing = sorted(active - stocks_named)
+        ratio = len(missing) / len(active)
+        out.append(("instruments.qlib_active_vs_names", "mismatch" if ratio > 0.02 else "match",
+                    f"qlib active {len(active)} on {last}, without name {len(missing)} ({ratio:.1%})",
+                    {"missing_sample": missing[:20]}))
+    else:
+        out.append(("instruments.qlib_active_vs_names", "skipped", "no names or qlib catalog yet", {}))
+    return out
+
+
+@job("market.compare", "Daily compare of new (qp) vs legacy outputs; mismatches -> shadow alerts",
+     schedule_hint="07:00, 17:15, 23:45 CST")
+def compare_job(ctx: JobContext) -> dict:
+    run_at = utcnow()
+    with Session(ctx.engine) as s:
+        res = compare(s)
+        for item, st, summary, detail in res:
+            s.add(CompareResult(run_at=run_at, item=item, status=st, summary=summary, detail=detail))
+        firing = [(f"market:compare:{item}", "warning", f"compare {item}: {summary}", detail)
+                  for item, st, summary, detail in res if st == "mismatch"]
+        al = apply_alerts(s, firing, ctx.run_id, owns=lambda k: k.startswith("market:compare:"))
+        s.execute(delete(CompareResult).where(CompareResult.run_at < run_at - dt.timedelta(days=RETAIN_DAYS)))
+        s.commit()
+    return {"items": len(res), "mismatch": [r[0] for r in res if r[1] == "mismatch"], "alerts": al}
+
+
+def health(s: Session, now: dt.datetime | None = None) -> list[tuple[str, str, str, dict]]:
+    now = now or now_cst()
+    out = []
+    days = calendar_for_expectation(s)
+    qp_open = open_days(s, "qp")
+    upd = s.scalar(select(func.max(TradingDay.updated_at)).where(TradingDay.origin == "qp"))
+    if not qp_open:
+        out.append(("calendar.qp", "warning", "qp calendar empty (Dolt not fetched yet)", {}))
+    else:
+        ahead = (qp_open[-1] - now.date()).days
+        age_d = (utcnow() - upd).total_seconds() / 86400 if upd else 999
+        st = "ok" if ahead >= 30 and age_d <= 8 else "warning"
+        out.append(("calendar.qp", st, f"max open {qp_open[-1]} ({ahead}d ahead), refreshed {age_d:.1f}d ago",
+                    {"max_open": qp_open[-1].isoformat(), "days_ahead": ahead, "age_days": round(age_d, 2)}))
+    want = expected_trade_date(days, now, dt.time(16, 30))
+    have = s.execute(select(IndexClose.trade_date, func.count()).where(IndexClose.origin == "qp")
+                     .group_by(IndexClose.trade_date).order_by(IndexClose.trade_date.desc()).limit(1)).first()
+    lag = trading_lag(days, have[0] if have else None, want)
+    st = "ok" if lag == 0 and have and have[1] == 4 else ("warning" if lag in (0, 1) else "critical")
+    out.append(("index_close.qp_current", st, f"expected {want}, latest qp {have[0] if have else None} ({have[1] if have else 0}/4)",
+                {"expected": str(want), "latest": str(have[0]) if have else None, "lag": lag}))
+    cat = s.execute(select(QlibStatus).where(QlibStatus.kind == "catalog").order_by(QlibStatus.id.desc()).limit(1)).scalar()
+    want_q = expected_trade_date(days, now, dt.time(23, 15))
+    if cat:
+        ql = cat.data.get("calendar_last")
+        lag = trading_lag(days, d(ql) if ql else None, want_q)
+        st = "ok" if lag == 0 else ("warning" if lag == 1 else "critical")
+        out.append(("qlib.current", st, f"qlib calendar last {ql}, expected {want_q}, lag {lag}",
+                    {"calendar_last": ql, "expected": str(want_q), "lag": lag, "tag": cat.data.get("tag"),
+                     "update_status": cat.data.get("update_status")}))
+    else:
+        out.append(("qlib.current", "unknown", "no qlib catalog yet", {}))
+    srcq = s.execute(select(QlibStatus).where(QlibStatus.kind == "source").order_by(QlibStatus.id.desc()).limit(1)).scalar()
+    if srcq and srcq.data.get("dolt_latest_eod"):
+        lag = trading_lag(days, d(srcq.data["dolt_latest_eod"]), want_q)
+        out.append(("qlib.source_dolt", "ok" if lag == 0 else "warning",
+                    f"Dolt latest EOD {srcq.data['dolt_latest_eod']}, expected {want_q}, lag {lag}",
+                    {**srcq.data, "lag": lag}))
+    else:
+        out.append(("qlib.source_dolt", "unknown", "Dolt latest EOD unknown", srcq.data if srcq else {}))
+    leg_core = s.scalar(select(func.max(MarketSummary.trade_date)).where(MarketSummary.origin == "legacy"))
+    want_s = expected_trade_date(days, now, dt.time(23, 15))
+    lag = trading_lag(days, leg_core, want_s)
+    st = "ok" if lag == 0 else ("warning" if lag == 1 else "critical")
+    out.append(("snapshot.legacy_core_current", st, f"legacy core-market latest {leg_core}, expected {want_s}, lag {lag}",
+                {"latest": str(leg_core), "expected": str(want_s), "lag": lag}))
+    from qp.models.ops import Inventory
+    lh = s.get(Inventory, "market.legacy_health")
+    if lh and lh.data and lh.data.get("ok"):
+        status = str(lh.data.get("status") or "unknown")
+        st = {"ok": "ok", "healthy": "ok", "warning": "warning", "critical": "critical"}.get(status, "warning")
+        out.append(("legacy.data_health", st, f"legacy research-data health={status}, mode={lh.data.get('businessMode')}, "
+                                              f"effective {lh.data.get('effectiveTradeDate')}",
+                    {"status": status, "generatedAt": lh.data.get("generatedAt"), "issues": lh.data.get("issues")}))
+        age_h = (utcnow() - lh.at).total_seconds() / 3600
+        out.append(("collector.market_reader", "ok" if age_h <= 26 else "warning", f"legacy market snapshot {age_h:.1f}h old",
+                    {"age_hours": round(age_h, 1)}))
+    else:
+        out.append(("legacy.data_health", "unknown", "legacy health not ingested yet", {}))
+    latest = {}
+    for r in s.execute(select(SourceStatus).where(SourceStatus.at > utcnow() - dt.timedelta(hours=26))
+                       .order_by(SourceStatus.at)).scalars():
+        latest[r.source] = r
+    if latest:
+        bad = sorted(k for k, v in latest.items() if not v.ok)
+        out.append(("sources.reachable", "ok" if not bad else "warning", f"{len(latest) - len(bad)}/{len(latest)} reachable"
+                    + (f"; failing: {', '.join(bad)}" if bad else ""),
+                    {k: {"ok": v.ok, "ms": v.ms, "via_proxy": v.via_proxy, **(v.detail or {})} for k, v in latest.items()}))
+    else:
+        out.append(("sources.reachable", "unknown", "no probe in 26h", {}))
+    last_run = s.scalar(select(func.max(CompareResult.run_at)))
+    if last_run:
+        mism = s.execute(select(CompareResult.item).where(CompareResult.run_at == last_run,
+                                                          CompareResult.status == "mismatch")).scalars().all()
+        out.append(("compare.latest", "ok" if not mism else "warning", f"{len(mism)} mismatches in latest compare",
+                    {"run_at": last_run.isoformat(), "mismatch": list(mism)}))
+    return out
+
+
+@job("market.health", "Market data health checks -> market.health_result; warning/critical -> shadow alerts",
+     schedule_hint="07:05, 17:20, 23:50 CST (legacy 22:45/23:00)")
+def health_job(ctx: JobContext) -> dict:
+    run_at = utcnow()
+    with Session(ctx.engine) as s:
+        res = health(s)
+        for check, st, summary, detail in res:
+            s.add(HealthResult(run_at=run_at, check=check, status=st, summary=summary, detail=detail))
+        firing = [(f"market:health:{c}", "critical" if st == "critical" else "warning", f"market {c}: {summary}", detail)
+                  for c, st, summary, detail in res if st in ("warning", "critical")]
+        al = apply_alerts(s, firing, ctx.run_id, owns=lambda k: k.startswith("market:health:"))
+        s.execute(delete(HealthResult).where(HealthResult.run_at < run_at - dt.timedelta(days=RETAIN_DAYS)))
+        s.commit()
+    return {"checks": {c: st for c, st, _, _ in res}, "alerts": al}

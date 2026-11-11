@@ -1,0 +1,24 @@
+[Unit]
+Description=quant-platform read-only legacy market-data reader (calendar/index cache/Qlib catalog+summary/research-data index)
+# Read-only: opens legacy files and SQLite with mode=ro; never writes legacy Qlib, research-data or any legacy file.
+After=network-online.target
+OnSuccess=qp-job@market.ingest_legacy.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+UMask=0027
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/qp/current/venv/bin/python -m qp.collect.market --out /var/lib/qp-inbox/market-legacy.json
+TimeoutStartSec=600
+MemoryMax=200M
+CPUQuota=50%
+Nice=15
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/qp-inbox

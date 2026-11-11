@@ -1,0 +1,12 @@
+[Unit]
+Description=quant-platform shadow job market.qlib_check (legacy 06:30 retry / 22:00 nightly)
+
+[Timer]
+OnCalendar=*-*-* 06:40:00 Asia/Shanghai
+OnCalendar=*-*-* 23:20:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@market.qlib_check.service
+
+[Install]
+WantedBy=timers.target

@@ -179,3 +179,6 @@ def ops_health(p: Principal = Depends(require_auth), db: Session = Depends(get_d
 from qp.api.ops_m2 import router as _m2_router  # noqa: E402
 
 app.include_router(_m2_router)
+from qp.api.market import router as _market_router  # noqa: E402
+
+app.include_router(_market_router)

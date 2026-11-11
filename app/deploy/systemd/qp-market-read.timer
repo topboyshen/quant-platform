@@ -1,0 +1,13 @@
+[Unit]
+Description=quant-platform legacy market-data reader (after legacy 06:20/06:30, 15:55, 22:00/22:30/22:45/23:00)
+
+[Timer]
+OnCalendar=*-*-* 06:45:00 Asia/Shanghai
+OnCalendar=*-*-* 17:00:00 Asia/Shanghai
+OnCalendar=*-*-* 23:25:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-market-read.service
+
+[Install]
+WantedBy=timers.target

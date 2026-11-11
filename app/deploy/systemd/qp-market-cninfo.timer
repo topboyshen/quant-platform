@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform shadow job market.cninfo (legacy 07:50; shifted after 08:25)
+
+[Timer]
+OnCalendar=*-*-* 08:30:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@market.cninfo.service
+
+[Install]
+WantedBy=timers.target

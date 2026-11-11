@@ -1,0 +1,12 @@
+[Unit]
+Description=quant-platform shadow job market.index_close (legacy Mon-Fri 15:35/45/55; shifted after 16:25)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 16:30:00 Asia/Shanghai
+OnCalendar=Mon..Fri *-*-* 16:40:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@market.index_close.service
+
+[Install]
+WantedBy=timers.target
