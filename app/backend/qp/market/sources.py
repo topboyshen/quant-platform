@@ -2,7 +2,7 @@
   - Dolt (chenditc/investment_data on DoltHub SQL API): trading calendar, latest EOD date  [qlib_dolt_incremental]
   - Tencent fqkline + Sina KLine: index closes                                            [index_close_backend_probe]
   - akshare tool_trade_date_hist_sina: sina klc_td_sh.txt (reachability only)             [update_trading_calendar]
-  - Eastmoney push2 clist: instrument names                                               [akshare stock_zh_a_spot_em]
+  - Eastmoney push2 clist: instrument names (Tencent quote is the fallback)              [akshare stock_zh_a_spot_em]
   - CNINFO hisAnnouncement/query: announcement counts (direct, legacy uses no proxy)       [precollect_cninfo]
   - GitHub releases (chenditc/investment_data): Qlib release-fallback tag                 [release_fallback]
   - baostock: TCP reachability only (raw socket protocol, no HTTP proxy support)
@@ -12,20 +12,28 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import time
 from typing import Any
 
 from qp.market.http import FetchError, fetch, tcp_probe
 
 DOLT = "https://www.dolthub.com/api/v1alpha1/chenditc/investment_data/master"
+# DoltHub's SQL API regularly takes ~60 s; use the same budget as the real EOD query
+# and retry a transient failure once instead of recording a hard source failure.
+DOLT_PROBE_TIMEOUT = 180.0
+DOLT_PROBE_ATTEMPTS = 2
 TENCENT_KLINE = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
 SINA_KLINE = "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData"
 SINA_CAL = "https://finance.sina.com.cn/realstock/company/klc_td_sh.txt"
 EM_CLIST = "https://push2.eastmoney.com/api/qt/clist/get"
+TENCENT_QUOTE = "https://qt.gtimg.cn/q="
 CNINFO_QUERY = "https://www.cninfo.com.cn/new/hisAnnouncement/query"
 GH_RELEASE = "https://api.github.com/repos/chenditc/investment_data/releases/latest"
 BAOSTOCK = ("public-api.baostock.com", 10030)
 INDEXES = ("sh000001", "sh000300", "sz399001", "sz399006")
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_TX_SYMBOL = re.compile(r"^(SH|SZ|BJ)\d{6}$")
+_TX_QUOTE = re.compile(r'v_([a-z]{2}\d{6})="([^"]*)"')
 
 
 def dolt_sql(sql: str, timeout: float = 150) -> list[dict[str, Any]]:
@@ -98,7 +106,10 @@ def eastmoney_names(page_size: int = 100, max_pages: int = 80) -> dict[str, str]
         r = fetch(EM_CLIST, params={"pn": pn, "pz": page_size, "po": 1, "np": 1, "fltt": 2, "invt": 2, "fid": "f12",
                                     "fs": fs, "fields": "f12,f13,f14"}, headers={"Referer": "https://quote.eastmoney.com/"},
                   timeout=15)
-        d = (r.json() or {}).get("data") or {}
+        try:
+            d = (r.json() or {}).get("data") or {}
+        except ValueError:
+            raise FetchError("eastmoney_not_json") from None
         diff = d.get("diff") or []
         if isinstance(diff, dict):
             diff = list(diff.values())
@@ -113,6 +124,39 @@ def eastmoney_names(page_size: int = 100, max_pages: int = 80) -> dict[str, str]
             break
     if not names:
         raise FetchError("eastmoney_empty")
+    return names
+
+
+def tencent_names(symbols: list[str], batch_size: int = 200, min_ratio: float = 0.9) -> dict[str, str]:
+    """Fallback code -> name map from Tencent quote (GBK), batched.
+
+    Only the instruments qp already knows are requested; this is not a full-market
+    listing.  Eastmoney clist is the primary name source, but it can reject the
+    production egress path while this endpoint stays reachable.  A response that
+    covers less than ``min_ratio`` of the requested symbols is treated as a partial
+    failure (delisted codes are a handful, not a whole batch).
+    """
+    wanted = list(dict.fromkeys(s.upper() for s in symbols if _TX_SYMBOL.match(s.upper())))
+    names: dict[str, str] = {}
+    for i in range(0, len(wanted), batch_size):
+        batch = wanted[i:i + batch_size]
+        q = ",".join(s.lower() for s in batch)
+        for attempt in (1, 2):
+            try:
+                text = fetch(TENCENT_QUOTE + q, headers={"Referer": "https://gu.qq.com/"}, timeout=15).text("gbk")
+                break
+            except FetchError as e:
+                if attempt == 2:
+                    raise FetchError(f"tencent_names_batch_{i // batch_size + 1}:{e}") from None
+                time.sleep(1)
+        for code, payload in _TX_QUOTE.findall(text):
+            parts = payload.split("~")
+            if len(parts) > 1 and parts[1].strip():
+                names[code[:2].upper() + code[2:]] = parts[1].strip()
+    if not names:
+        raise FetchError("tencent_names_empty")
+    if len(names) < len(wanted) * min_ratio:
+        raise FetchError(f"tencent_names_partial:{len(names)}/{len(wanted)}")
     return names
 
 
@@ -138,12 +182,33 @@ def github_release_tag() -> str | None:
     return (r.json() or {}).get("tag_name")
 
 
+def _retryable_dolt_error(e: FetchError) -> bool:
+    """Only retry transport/5xx failures; a rejected query should fail immediately."""
+    code = str(e)
+    return code in {"TimeoutError", "URLError", "ConnectionError", "OSError", "ConnectionResetError",
+                    "RemoteDisconnected"} or code.startswith("http_5")
+
+
+def probe_dolt() -> dict[str, Any]:
+    """Dolt reachability probe aligned with the real fetch budget (180 s, one retry)."""
+    last: FetchError | None = None
+    for attempt in range(1, DOLT_PROBE_ATTEMPTS + 1):
+        try:
+            rows = dolt_sql("SELECT 1 AS one", timeout=DOLT_PROBE_TIMEOUT)
+            return {"rows": len(rows), "attempts": attempt}
+        except FetchError as e:
+            last = e
+            if attempt >= DOLT_PROBE_ATTEMPTS or not _retryable_dolt_error(e):
+                raise
+            time.sleep(2)
+    raise last or FetchError("dolt_probe_failed")
+
+
 def probe_all() -> list[dict[str, Any]]:
     """Light reachability + freshness probe for each legacy data source. One request each."""
     out: list[dict[str, Any]] = []
 
     def run(name: str, proxy: bool, f):
-        import time
         t0 = time.monotonic()
         try:
             detail = f() or {}
@@ -156,7 +221,9 @@ def probe_all() -> list[dict[str, Any]]:
             out.append({"source": name, "ok": False, "via_proxy": proxy, "ms": round((time.monotonic() - t0) * 1000, 1),
                         "detail": {"error": type(e).__name__}})
 
-    run("tencent", True, lambda: {"last": tencent_index("sh000001", 2)[-1][0]})
+    # The names check keeps the eastmoney fallback claim in source_verdict honest.
+    run("tencent", True, lambda: {"last": tencent_index("sh000001", 2)[-1][0],
+                                  "names": len(tencent_names(["SH600000", "SZ000001", "BJ430017"]))})
     run("sina", True, lambda: {"last": sina_index("sh000001", 2)[-1][0]})
     run("akshare_sina_calendar", True, lambda: {"bytes": len(fetch(SINA_CAL, timeout=15).body)})
     run("eastmoney", True, lambda: {"total": (fetch(EM_CLIST, params={"pn": 1, "pz": 1, "po": 1, "np": 1, "fltt": 2, "invt": 2,
@@ -164,7 +231,7 @@ def probe_all() -> list[dict[str, Any]]:
                                                     headers={"Referer": "https://quote.eastmoney.com/"},
                                                     timeout=15).json().get("data") or {}).get("total")})
     run("cninfo", False, lambda: {"today_total": cninfo_count(dt.date.today())})
-    run("dolt", True, lambda: {"rows": len(dolt_sql("SELECT 1 AS one", timeout=60))})
+    run("dolt", True, probe_dolt)
     run("github_release", True, lambda: {"tag": github_release_tag()})
 
     def bao():

@@ -197,3 +197,50 @@ def test_market_api(engine, market_env, monkeypatch):
     assert c.get("/api/market/coverage").json()["summaries"]
     assert c.get("/api/market/compare").json()
     assert all(x["status"] == "match" for x in c.get("/api/market/imports").json()["latest"])
+
+
+def test_instruments_falls_back_to_tencent(engine, monkeypatch):
+    import qp.jobs.market as m
+    from qp.jobs import run_job
+    from qp.models.market import Instrument
+
+    with Session(engine) as s:
+        for symbol, exch, in_qlib in (("SH600000", "SH", True), ("SZ000001", "SZ", True), ("SH600001", "SH", False)):
+            s.merge(Instrument(symbol=symbol, name="旧名", exchange=exch, board="main", in_qlib=in_qlib))
+        s.commit()
+
+    def eastmoney_down():
+        raise m.src.FetchError("RemoteDisconnected")
+
+    seen: list[str] = []
+
+    def tencent(syms: list[str]) -> dict[str, str]:
+        seen.extend(syms)
+        return {"SH600000": "浦发银行", "SZ000001": "平安银行"}
+
+    monkeypatch.setattr(m.src, "eastmoney_names", eastmoney_down)
+    monkeypatch.setattr(m.src, "tencent_names", tencent)
+    r = run_job(engine, "market.instruments", trigger="test")
+    assert r.status == "succeeded", (r.error, r.result)
+    assert r.result == {"names": 2, "source": "tencent", "eastmoney_error": "RemoteDisconnected"}
+    assert {"SH600000", "SZ000001"} <= set(seen)
+    assert "SH600001" not in seen  # in_qlib=False stays out of the fallback refresh
+    with Session(engine) as s:
+        assert s.get(Instrument, "SH600000").name == "浦发银行"
+        assert s.get(Instrument, "SZ000001").name_source == "tencent"
+        assert s.get(Instrument, "SH600001").name == "旧名"
+
+
+def test_source_verdict_eastmoney_covered_by_tencent():
+    from types import SimpleNamespace
+
+    from qp.jobs.market import source_verdict
+
+    up = SimpleNamespace(ok=True)
+    down = SimpleNamespace(ok=False)
+    bad, covered = source_verdict({"eastmoney": down, "tencent": up}, calendar_covered=False)
+    assert bad == []
+    assert covered["eastmoney"] == ["tencent"]
+    bad, covered = source_verdict({"eastmoney": down, "tencent": down}, calendar_covered=False)
+    assert bad == ["eastmoney", "tencent"]
+    assert covered["eastmoney"] == []

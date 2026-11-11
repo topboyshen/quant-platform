@@ -2,6 +2,7 @@
 Description=quant-platform shadow job market.sources (probe)
 
 [Timer]
+OnCalendar=*-*-* 06:55:00 Asia/Shanghai
 OnCalendar=*-*-* 09:05:00 Asia/Shanghai
 OnCalendar=*-*-* 13:05:00 Asia/Shanghai
 OnCalendar=*-*-* 19:05:00 Asia/Shanghai

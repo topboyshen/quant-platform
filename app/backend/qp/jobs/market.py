@@ -231,13 +231,26 @@ def index_close_job(ctx: JobContext) -> dict:
             "latest": max((g["trade_date"] for g in got), default=None).isoformat() if got else None, "errors": errors}
 
 
-@job("market.instruments", "Instrument names from Eastmoney clist -> market.instrument (qlib ranges come from ingest)",
+@job("market.instruments",
+     "Instrument names from Eastmoney clist (Tencent fallback) -> market.instrument (qlib ranges come from ingest)",
      schedule_hint="Mon-Fri 17:10 CST")
 def instruments_job(ctx: JobContext) -> dict:
     mem_guard()
-    names = src.eastmoney_names()
+    source, eastmoney_error = "eastmoney", None
+    try:
+        names = src.eastmoney_names()
+    except FetchError as e:
+        # Eastmoney can reject the production egress path while Tencent stays reachable.
+        # Refresh only instruments qp already knows; the full-market listing still
+        # requires Eastmoney (or a later successful run).
+        eastmoney_error = str(e)
+        source = "tencent"
+        with Session(ctx.engine) as s:
+            syms = list(s.scalars(select(Instrument.symbol).where(Instrument.in_qlib.is_(True))
+                                  .order_by(Instrument.symbol)))
+        names = src.tencent_names(syms)
     with Session(ctx.engine) as s:
-        vals = [{"symbol": k, "name": v[:64], "exchange": k[:2], "board": board_of(k), "name_source": "eastmoney"}
+        vals = [{"symbol": k, "name": v[:64], "exchange": k[:2], "board": board_of(k), "name_source": source}
                 for k, v in names.items()]
         stmt = insert(Instrument).values(vals)
         s.execute(stmt.on_conflict_do_update(index_elements=["symbol"],
@@ -245,7 +258,10 @@ def instruments_job(ctx: JobContext) -> dict:
                                                    "board": stmt.excluded.board, "name_source": stmt.excluded.name_source,
                                                    "updated_at": func.now()}))
         s.commit()
-    return {"names": len(names)}
+    out = {"names": len(names), "source": source}
+    if eastmoney_error:
+        out["eastmoney_error"] = eastmoney_error
+    return out
 
 
 def board_of(sym: str) -> str:
@@ -262,7 +278,7 @@ def board_of(sym: str) -> str:
 
 
 @job("market.sources", "Reachability/freshness probe of legacy data sources -> market.source_status",
-     schedule_hint="09:05, 13:05, 19:05 CST")
+     schedule_hint="06:55, 09:05, 13:05, 19:05 CST")
 def sources_job(ctx: JobContext) -> dict:
     mem_guard()
     res = src.probe_all()
@@ -652,6 +668,9 @@ SOURCE_FALLBACKS = {
     "github_release": ("dolt",),
     "tencent": ("sina",),
     "sina": ("tencent",),
+    # Eastmoney is the full-market name listing; Tencent can still refresh names for
+    # the instruments qp already tracks (see instruments_job).
+    "eastmoney": ("tencent",),
 }
 SOURCE_OPTIONAL = {"akshare_sina_calendar", "baostock"}
 # Replaced checks.  The old alert keys are resolved once so a retired check does not
@@ -667,8 +686,9 @@ def source_verdict(latest: dict, *, calendar_covered: bool) -> tuple[list[str], 
     """Return required failures and the fallback path used for degraded sources.
 
     A source failure is not blocking when its peer source is reachable (Tencent/Sina,
-    Dolt/GitHub release).  Dolt's calendar capability is also covered when a calendar
-    mirror already reaches today, so that fallback is passed in explicitly.
+    Eastmoney/Tencent names, Dolt/GitHub release).  Dolt's calendar capability is also
+    covered when a calendar mirror already reaches today, so that fallback is passed in
+    explicitly.
     """
     ok = {name: bool(row.ok) for name, row in latest.items()}
     covered: dict[str, list[str]] = {}
