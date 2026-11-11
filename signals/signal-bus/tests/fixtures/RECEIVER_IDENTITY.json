@@ -1,0 +1,9 @@
+{
+  "role": "pure_local_QA_validator_no_runtime_dependency",
+  "sourcePath": "/opt/signal-gate/app/research_contract.py",
+  "head": "3fafc74ef8d5278de31452163820b6f3dd24c18e",
+  "checkedAt": "2026-09-28T21:49:23.102890+08:00",
+  "sha256": "c3cde339278ac1c0e30b12efcae57721c3d17a1cf3e8f2557a8e792ca2c2a194",
+  "asOfStrictlyBeforeTarget": true,
+  "productionWrites": 0
+}

@@ -1,0 +1,13 @@
+[Unit]
+Description=Research-chain post-window classification (one alert per day)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -B /home/ubuntu/signal-bus/scripts/research_chain_alert.py --phase post --json
+EnvironmentFile=/home/ubuntu/.config/systemd/user/research-chain-alert.env
+WorkingDirectory=/home/ubuntu/signal-bus
+TimeoutStartSec=90
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes

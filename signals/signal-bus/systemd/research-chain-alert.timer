@@ -1,0 +1,12 @@
+[Unit]
+Description=Research evidence check before the relay deadline at 08:12
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 08:12:00 Asia/Shanghai
+Persistent=false
+AccuracySec=5s
+RandomizedDelaySec=0
+Unit=research-chain-alert.service
+
+[Install]
+WantedBy=timers.target

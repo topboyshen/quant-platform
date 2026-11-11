@@ -1,0 +1,12 @@
+[Unit]
+Description=Telegram alert when AStock xhs-draft seal fails (report may still be OK)
+After=astock-xhs-draft.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/ubuntu/signal-bus/scripts/morning_seal_alert.sh draft_failure
+WorkingDirectory=/home/ubuntu/signal-bus
+TimeoutStartSec=90
+UMask=0077
+Nice=10
+NoNewPrivileges=yes
