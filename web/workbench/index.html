@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>研究工作台 · nng8</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/tabler.min.css">
+  <link rel="stylesheet" href="assets/workbench.css">
+  <script src="assets/app.js?v=20261110b" defer></script>
+  <script src="assets/workbench-model.js?v=20261110b" defer></script>
+  <script src="assets/workbench-loader.js?v=20261110b" defer></script>
+  <script src="assets/workbench-shell.js?v=20261110b" defer></script>
+  <script src="assets/workbench.js?v=20261110b" defer></script>
+</head>
+<body class="workbench" data-page="workbench" data-mode="live">
+  <svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-data" viewBox="0 0 24 24"><path d="M4 19h16M7 15V9M12 15V4M17 15v-4"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="m21 3-7 18-4-7-7-4zM10 14 21 3"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.01"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18M8 15h2m4 0h2M8 18h2"/></symbol>
+  </svg>
+  <a class="skip-link" href="#main">跳转到主要内容</a>
+  <button id="nav-backdrop" class="nav-backdrop" aria-label="关闭导航" hidden></button>
+  <aside class="sidebar" id="sidebar" aria-label="主导航">
+    <button id="nav-close" class="icon-button nav-close" aria-label="关闭导航"><svg class="icon"><use href="#i-x"/></svg></button>
+    <a class="brand" href="index.html" aria-label="nng8 研究工作台首页">
+      <span class="brand-mark" aria-hidden="true">n<span>8</span></span>
+      <span class="brand-title">nng8<span>RESEARCH WORKSPACE</span></span>
+    </a>
+    <div class="workspace-switch"><span class="workspace-avatar">研</span><span>研究工作台<small>只读空间</small></span><svg class="icon"><use href="#i-lock"/></svg></div>
+    <div class="nav-caption">工作空间</div>
+    <nav class="nav-stack">
+      <a class="nav-link active" href="index.html" aria-current="page"><svg class="icon"><use href="#i-grid"/></svg><span>总览</span></a>
+      <a class="nav-link" href="report.html"><svg class="icon"><use href="#i-file"/></svg><span>报告记录</span></a>
+      <a class="nav-link" href="progress.html"><svg class="icon"><use href="#i-data"/></svg><span>数据覆盖</span></a>
+      <a class="nav-link" href="evidence.html"><svg class="icon"><use href="#i-send"/></svg><span>投递与验收</span></a>
+      <a class="nav-link" href="projects.html"><svg class="icon"><use href="#i-grid"/></svg><span>服务与项目</span></a>
+    </nav>
+    <div class="sidebar-footer">
+      <a class="preview-about" href="evidence.html"><svg class="icon"><use href="#i-info"/></svg><span>查看依据</span><svg class="icon small-icon"><use href="#i-chevron"/></svg></a>
+      <div class="workspace-mode"><span class="status-dot"></span>只读 · 不触发业务任务</div>
+      <div class="sidebar-credit">由 Tabler 构建</div>
+    </div>
+  </aside>
+  <div class="workspace-main">
+    <header class="topbar">
+      <div class="topbar-left"><button class="icon-button menu-button" id="menu-toggle" aria-label="打开导航" aria-expanded="false" aria-controls="sidebar"><svg class="icon"><use href="#i-menu"/></svg></button><span class="breadcrumb-label">工作空间</span><span class="breadcrumb-divider">/</span><span class="breadcrumb-current">总览</span></div>
+      <div class="topbar-right"><span class="preview-label"><span></span>只读工作台</span><span class="topbar-notice">按来源时间展示</span><span class="user-avatar" aria-label="只读研究空间">研</span></div>
+    </header>
+    <main id="main" class="main-container" tabindex="-1">
+      <section class="page-heading" id="overview">
+        <div><div class="eyebrow">RESEARCH OVERVIEW</div><h1>研究工作台</h1><p>最近报告、待确认事项与数据覆盖。</p></div>
+        <a class="btn btn-white outline-action" href="report.html"><svg class="icon"><use href="#i-file"/></svg>报告记录<svg class="icon small-icon"><use href="#i-arrow"/></svg></a>
+      </section>
+      <div class="date-strip" aria-label="报告日期与计划">
+        <div class="date-context"><svg class="icon"><use href="#i-calendar"/></svg><span>最近报告 <strong id="report-date">—</strong></span><span class="strip-divider"></span><span class="neutral-tag" id="session-label">时效待确认</span></div>
+        <span class="next-run"><svg class="icon"><use href="#i-clock"/></svg>下次计划 <strong id="next-report">—</strong></span>
+      </div>
+      <div id="load-error" class="alert alert-warning" role="status" hidden></div>
+      <div id="freshness-alert" class="alert alert-warning" role="status" hidden></div>
+      <div class="primary-grid">
+        <article class="card report-card">
+          <div class="report-meta"><span class="section-kicker"><span class="blue-mark"></span>最近研究记录</span><span class="badge state-tag tone-warning" id="data-status">数据待确认</span></div>
+          <div class="company-label"><span class="company-monogram">研</span><span><strong>AStock 快报</strong><span>原报告结论</span></span><span class="market-label">A股</span></div>
+          <h2 id="report-headline">正在读取最近报告</h2>
+          <div id="report-summary" class="report-summary"></div>
+          <div class="finding-note"><span class="note-rule"></span><div><span class="finding-label">阅读提示</span><p id="reading-note">保留原报告表述，不在看板中生成新判断。</p></div></div>
+          <div class="report-actions"><a class="btn btn-primary" id="read-report" href="report.html">阅读完整报告<svg class="icon"><use href="#i-arrow"/></svg></a><button class="text-action" data-open="report-evidence">来源与限制<svg class="icon small-icon"><use href="#i-chevron"/></svg></button></div>
+          <div class="report-footer"><span><svg class="icon small-icon"><use href="#i-clock"/></svg><span id="report-cutoff">截止时间未记录</span></span><span id="report-gate">门禁未记录</span></div>
+        </article>
+        <section class="card attention-card" aria-labelledby="attention-title">
+          <div class="section-heading"><div><h2 id="attention-title">需要关注</h2><p id="attention-context">已记录的问题与未确认项</p></div><span class="count-badge" id="pending-count">—</span></div>
+          <div id="attention-list" class="attention-list" aria-live="polite"></div>
+          <button class="attention-foot all-attention" data-open="attention"><svg class="icon small-icon"><use href="#i-info"/></svg><span id="attention-link">查看全部依据</span><svg class="icon small-icon"><use href="#i-chevron"/></svg></button>
+        </section>
+      </div>
+      <section id="data-notes" class="card data-notes-card" aria-labelledby="data-notes-title" hidden>
+        <div class="section-heading"><div><h2 id="data-notes-title">数据说明</h2><p>保留来源记录，不计入需要关注；不代表数据已补齐。</p></div><span class="count-badge information-count" id="data-notes-count">—</span></div>
+        <div id="data-notes-list" aria-live="polite"></div>
+      </section>
+      <section id="data-section" class="data-section" aria-labelledby="data-title">
+        <div class="section-title-row"><div><h2 id="data-title">数据与留存</h2><span>查看覆盖程度，区分当期记录与历史缺口。</span></div><button class="text-action" data-open="coverage">查看明细<svg class="icon small-icon"><use href="#i-arrow"/></svg></button></div>
+        <div class="secondary-grid">
+          <section class="card coverage-card" aria-label="数据覆盖">
+            <div class="coverage-item"><div class="metric-heading"><span>Qlib 行情覆盖</span><span class="metric-date" id="coverage-date">—</span></div><div class="metric-value-row"><span class="metric-value" id="price-percent">—</span><span class="metric-denominator" id="price-count">未知</span></div><div class="metric-track" id="price-track" role="progressbar" aria-label="Qlib行情覆盖"><span id="price-fill"></span></div><div class="metric-foot"><span id="price-note">缺少可用证据</span><button class="inline-link" data-open="coverage">口径</button></div></div>
+            <div class="coverage-item"><div class="metric-heading"><span>审计有效快照</span><span class="neutral-tag">按日期计</span></div><div class="metric-value-row"><span class="metric-value" id="snapshot-count">—</span><span class="metric-denominator" id="snapshot-total">有效 / 已观察</span></div><div class="metric-track snapshot-track" id="snapshot-track" role="progressbar" aria-label="有效快照日期占比"><span id="snapshot-fill"></span></div><div class="metric-foot"><span>存在记录，不等于审计有效</span><button class="inline-link" data-open="coverage">口径</button></div></div>
+          </section>
+          <section class="card history-card" aria-labelledby="history-title">
+            <div class="history-head"><h3 id="history-title">历史保留项</h3><span class="badge state-tag tone-neutral" id="audit-status">审计待确认</span></div>
+            <div class="history-counts"><div><span class="history-number" id="gap-count">—</span><span>仍未解决的缺口日</span></div><div><span class="history-number" id="legacy-count">—</span><span>遗留问题日</span></div></div>
+            <p class="history-evidence-line" id="history-lineage">原基线与后续登记待确认</p>
+            <div class="history-bottom"><span>保留记录 · 不回填、不补造</span><button class="inline-link" data-open="history">查看日期<svg class="icon small-icon"><use href="#i-chevron"/></svg></button></div>
+          </section>
+        </div>
+      </section>
+      <div id="progress-freshness" class="source-status" role="status"></div>
+      <div class="evidence-ribbon"><span class="ribbon-label">报告留存与投递</span><div id="delivery-chips" class="delivery-chips"></div><button class="text-action" data-open="delivery">查看证据<svg class="icon small-icon"><use href="#i-chevron"/></svg></button></div>
+      <footer class="preview-footer"><span id="export-note">导出时间待确认</span><button class="inline-link" data-open="about">来源与更新说明</button></footer>
+    </main>
+  </div>
+  <dialog id="detail-dialog" aria-labelledby="dialog-title"><div class="dialog-header"><div><span class="eyebrow">只读详情</span><h2 id="dialog-title">详情</h2></div><button class="icon-button" id="dialog-close" aria-label="关闭详情"><svg class="icon"><use href="#i-x"/></svg></button></div><div class="dialog-body" id="dialog-body"></div><div class="dialog-footer"><span>按对应日期的记录解读</span><button class="btn btn-white" id="dialog-done">返回总览</button></div></dialog>
+  <noscript><p class="noscript-message">此看板需要启用JavaScript展示导出记录。未加载内容不代表业务正常。</p></noscript>
+</body>
+</html>
