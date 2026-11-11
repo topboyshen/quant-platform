@@ -1,0 +1,87 @@
+{
+  "gapDates": [
+    "2026-09-01",
+    "2026-09-02",
+    "2026-09-03",
+    "2026-09-04",
+    "2026-09-07",
+    "2026-09-08",
+    "2026-09-09",
+    "2026-09-10",
+    "2026-09-11",
+    "2026-09-14",
+    "2026-09-15",
+    "2026-09-16",
+    "2026-09-17",
+    "2026-09-18",
+    "2026-09-21",
+    "2026-09-22",
+    "2026-09-23",
+    "2026-09-24",
+    "2026-09-28",
+    "2026-09-29",
+    "2026-09-30",
+    "2026-10-08",
+    "2026-10-09",
+    "2026-10-12",
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-19",
+    "2026-10-20"
+  ],
+  "lastStoredDate": "2026-08-31",
+  "meaning": "exchange_announced_full_day_suspension_source_absent_nan_slots_no_prices_fabricated",
+  "notAllowed": [
+    "loosening the generic 10-day tail-gap gate",
+    "excluding or deleting the security",
+    "filling prices",
+    "rewriting stored history"
+  ],
+  "officialEvidence": [
+    {
+      "announcement": "1225539050",
+      "file": "evidence/tail-gap-SZ002731-suspension-20260901.pdf",
+      "issuer": "萃华金银珠宝股份有限公司（巨潮资讯网披露）",
+      "published": "2026-09-01",
+      "sha256": "f9890ae00af1769880f17f60953257384ceb3b629cf1b46ba69d528ec880a608",
+      "statement": "因无法在法定期限内披露定期报告，公司股票（*ST萃华，002731）自2026年9月1日开市起停牌",
+      "title": "关于无法在法定期限内披露定期报告暨公司股票停牌暨可能被终止上市的风险提示公告",
+      "url": "http://static.cninfo.com.cn/finalpage/2026-09-01/1225539050.PDF"
+    },
+    {
+      "announcement": "1225616283",
+      "file": "evidence/tail-gap-SZ002731-resume-20261023.pdf",
+      "issuer": "萃华金银珠宝股份有限公司（巨潮资讯网披露）",
+      "published": "2026-10-23",
+      "sha256": "d528d65b080de3c0867a0f08aa1572b5141922d154eebe53722b0956f0e201c9",
+      "statement": "公司股票于2026年10月23日进入退市整理期交易首日（简称萃华退），退市整理期十五个交易日",
+      "title": "关于公司股票进入退市整理期交易首日的风险提示公告",
+      "url": "http://static.cninfo.com.cn/finalpage/2026-10-23/1225616283.PDF"
+    }
+  ],
+  "policyId": "qlib-tail-gap-SZ002731-20260901-v1",
+  "representation": "nine NaN fields and exactly carried factor per gap day (existing sourceAbsence contract)",
+  "requiredBaseDate": "2026-10-20",
+  "resumeDate": "2026-10-23",
+  "scope": "single generation: active only while installed baseDate == requiredBaseDate and the inspected tail gap equals gapDates exactly; every run re-proves zero source rows in gapDates and a source row on resumeDate at its own pinned commit",
+  "sourceProbe": {
+    "calendarSource": "ts_trade_day_calendar SSE is_open=1",
+    "gapRowsReturned": 0,
+    "lastStoredRowSha256": "038e81b1b885152b38ae62fd8baaea9088d468e5d9852e546009bccd6cc36eb0",
+    "range": [
+      "2026-08-31",
+      "2026-10-23"
+    ],
+    "resumeRowSha256": "2b9fb98169407361c3544844a681bd333ce5713927a7e5b19a236a71c24abdfd",
+    "returnedDates": [
+      "2026-08-31",
+      "2026-10-23"
+    ],
+    "sourceCommit": "an0isj66dqbjsdnq3j9u144h2jg1tdi8",
+    "sourceRepository": "chenditc/investment_data",
+    "table": "final_a_stock_eod_price"
+  },
+  "symbol": "SZ002731"
+}

@@ -1,0 +1,78 @@
+{
+  "gapDates": [
+    "2026-08-31",
+    "2026-09-01",
+    "2026-09-02",
+    "2026-09-03",
+    "2026-09-04",
+    "2026-09-07",
+    "2026-09-08",
+    "2026-09-09",
+    "2026-09-10",
+    "2026-09-11",
+    "2026-09-14",
+    "2026-09-15",
+    "2026-09-16",
+    "2026-09-17",
+    "2026-09-18",
+    "2026-09-21",
+    "2026-09-22",
+    "2026-09-23",
+    "2026-09-24",
+    "2026-09-28",
+    "2026-09-29"
+  ],
+  "lastStoredDate": "2026-08-28",
+  "meaning": "exchange_announced_full_day_suspension_source_absent_nan_slots_no_prices_fabricated",
+  "notAllowed": [
+    "loosening the generic 10-day tail-gap gate",
+    "excluding or deleting the security",
+    "filling prices",
+    "rewriting stored history"
+  ],
+  "officialEvidence": [
+    {
+      "announcement": "2026-089",
+      "file": "evidence/szse-301139-2026-089.pdf",
+      "issuer": "元道通信股份有限公司（深交所披露）",
+      "published": "2026-08-29",
+      "sha256": "eb93005104bd94d8896c4c4fcb27ecbd4478ba6d7c4b3a03b134a586aadc50d6",
+      "statement": "根据《创业板股票上市规则》第10.5.8条，股票（*ST元道，301139）自2026年8月31日（星期一）开市起停牌",
+      "title": "关于公司股票停牌暨可能被终止上市的风险提示公告",
+      "url": "http://disc.static.szse.cn/download/disc/disk03/finalpage/2026-08-29/902b4636-26b5-4c04-a580-54a8a8600adc.PDF"
+    },
+    {
+      "announcement": "2026-097",
+      "file": "evidence/szse-301139-2026-097.pdf",
+      "issuer": "元道通信股份有限公司（深交所披露）",
+      "published": "2026-09-21",
+      "sha256": "cef3ef06550bf6e942a29ee39bf4f11b91dc8b6b8e228ba3c5cb0b91285e4aae",
+      "statement": "公司股票于2026年9月30日复牌并进入退市整理期（简称元道退），首个交易日不实行价格涨跌幅限制",
+      "title": "关于公司股票进入退市整理期交易的公告",
+      "url": "http://disc.static.szse.cn/download/disc/disk03/finalpage/2026-09-21/d60f2508-dee7-4b50-9f42-57500e4d24b0.PDF"
+    }
+  ],
+  "policyId": "qlib-tail-gap-SZ301139-20260831-v1",
+  "representation": "nine NaN fields and exactly carried factor per gap day (existing sourceAbsence contract)",
+  "requiredBaseDate": "2026-09-29",
+  "resumeDate": "2026-09-30",
+  "scope": "single generation: active only while installed baseDate == requiredBaseDate and the inspected tail gap equals gapDates exactly; every run re-proves zero source rows in gapDates and a source row on resumeDate at its own pinned commit",
+  "sourceProbe": {
+    "calendarSource": "ts_trade_day_calendar SSE is_open=1",
+    "gapRowsReturned": 0,
+    "lastStoredRowSha256": "cbb9686194d6f788a04ebff79aafe611e973d07eb859c34e37c3a2df5d513eaf",
+    "range": [
+      "2026-08-28",
+      "2026-09-30"
+    ],
+    "resumeRowSha256": "b41cd898ded75dc783e4e71c2baee482642bf6d83a64c846fbe3b6385aacedb1",
+    "returnedDates": [
+      "2026-08-28",
+      "2026-09-30"
+    ],
+    "sourceCommit": "d5ouv06svuoat4193aiefibgu2fa3ose",
+    "sourceRepository": "chenditc/investment_data",
+    "table": "final_a_stock_eod_price"
+  },
+  "symbol": "SZ301139"
+}
