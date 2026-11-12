@@ -54,7 +54,6 @@ import {
   notification,
   Slider
 } from 'ant-design-vue'
-// import Viser from 'viser-vue'
 
 // ext library
 import VueCropper from 'vue-cropper'

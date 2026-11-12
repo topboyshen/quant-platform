@@ -2,7 +2,6 @@ import { defineConfig, loadEnv } from 'vite'
 import vue2 from '@vitejs/plugin-vue2'
 import vue2Jsx from '@vitejs/plugin-vue2-jsx'
 import svgLoader from 'vite-svg-loader'
-import { viteMockServe } from 'vite-plugin-mock'
 import { fileURLToPath, URL } from 'node:url'
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -59,8 +58,8 @@ const resolveManualChunk = (id) => {
   if (id.includes('@ant-design-vue/pro-layout')) return 'ant-pro-layout'
   if (id.includes('ant-design-vue')) return 'ant-design-vue'
   if (id.includes('@ant-design') || id.includes('@antv')) return 'ant-ecosystem'
-  if (id.includes('echarts') || id.includes('klinecharts') || id.includes('viser-vue')) return 'charts'
-  if (id.includes('codemirror') || id.includes('vue-quill-editor') || id.includes('wangeditor')) return 'editors'
+  if (id.includes('echarts') || id.includes('klinecharts')) return 'charts'
+  if (id.includes('codemirror')) return 'editors'
   if (id.includes('pyodide') || id.includes('comlink')) return 'py-runtime'
   if (id.includes('vue')) return 'vue-core'
   if (
@@ -101,7 +100,6 @@ const fixAntDesignVueLess = () => ({
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const enableMock = env.VITE_ENABLE_MOCK === 'true'
   const appVersion = resolveAppVersion(env)
 
   return {
@@ -151,13 +149,7 @@ export default defineConfig(({ mode }) => {
       fixProLayoutLess(),
       vue2(),
       vue2Jsx(),
-      svgLoader({ defaultImport: 'url' }),
-      viteMockServe({
-        mockPath: 'src/mock/services',
-        enable: enableMock,
-        watchFiles: true,
-        logger: true
-      })
+      svgLoader({ defaultImport: 'url' })
     ],
     server: {
       port: 8000,
