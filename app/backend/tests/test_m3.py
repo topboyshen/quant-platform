@@ -104,6 +104,9 @@ def market_env(engine, legacy, tmp_path, monkeypatch):
                         {"sh000001": 3999.1234, "sh000300": 4700.5, "sz399001": 13000.0, "sz399006": 2494.397}[sym])])
     monkeypatch.setattr(m.src, "eastmoney_names", lambda: {"SH600000": "浦发银行", "SZ000001": "平安银行", "SH600519": "贵州茅台",
                                                          "SZ300750": "宁德时代", "SH688999": "测试"})
+    monkeypatch.setattr(m.src, "tencent_names", lambda syms: {"SH600000": "浦发银行", "SZ000001": "平安银行",
+                                                             "SH600519": "贵州茅台", "SZ300750": "宁德时代",
+                                                             "SH688999": "测试"})
     monkeypatch.setattr(m.src, "probe_all", lambda: [{"source": "tencent", "ok": True, "via_proxy": True, "ms": 5, "detail": {}},
                                                      {"source": "cninfo", "ok": False, "via_proxy": False, "ms": 9,
                                                       "detail": {"error": "http_403"}}])
@@ -199,7 +202,7 @@ def test_market_api(engine, market_env, monkeypatch):
     assert all(x["status"] == "match" for x in c.get("/api/market/imports").json()["latest"])
 
 
-def test_instruments_falls_back_to_tencent(engine, monkeypatch):
+def test_instruments_uses_tencent_primary(engine, monkeypatch):
     import qp.jobs.market as m
     from qp.jobs import run_job
     from qp.models.market import Instrument
@@ -209,26 +212,54 @@ def test_instruments_falls_back_to_tencent(engine, monkeypatch):
             s.merge(Instrument(symbol=symbol, name="旧名", exchange=exch, board="main", in_qlib=in_qlib))
         s.commit()
 
-    def eastmoney_down():
-        raise m.src.FetchError("RemoteDisconnected")
-
     seen: list[str] = []
 
     def tencent(syms: list[str]) -> dict[str, str]:
         seen.extend(syms)
         return {"SH600000": "浦发银行", "SZ000001": "平安银行"}
 
-    monkeypatch.setattr(m.src, "eastmoney_names", eastmoney_down)
+    def eastmoney_unexpected():
+        raise AssertionError("eastmoney fallback must not run when tencent succeeds")
+
     monkeypatch.setattr(m.src, "tencent_names", tencent)
+    monkeypatch.setattr(m.src, "eastmoney_names", eastmoney_unexpected)
     r = run_job(engine, "market.instruments", trigger="test")
     assert r.status == "succeeded", (r.error, r.result)
-    assert r.result == {"names": 2, "source": "tencent", "eastmoney_error": "RemoteDisconnected"}
+    assert r.result == {"names": 2, "source": "tencent"}
     assert {"SH600000", "SZ000001"} <= set(seen)
-    assert "SH600001" not in seen  # in_qlib=False stays out of the fallback refresh
+    assert "SH600001" not in seen  # only in_qlib instruments are requested
     with Session(engine) as s:
         assert s.get(Instrument, "SH600000").name == "浦发银行"
         assert s.get(Instrument, "SZ000001").name_source == "tencent"
         assert s.get(Instrument, "SH600001").name == "旧名"
+
+
+def test_instruments_falls_back_to_eastmoney(engine, monkeypatch):
+    import qp.jobs.market as m
+    from qp.jobs import run_job
+    from qp.models.market import Instrument
+
+    with Session(engine) as s:
+        for symbol, exch, in_qlib in (("SH600000", "SH", True), ("SZ000001", "SZ", True), ("SH600001", "SH", False)):
+            s.merge(Instrument(symbol=symbol, name="旧名", exchange=exch, board="main", in_qlib=in_qlib))
+        s.commit()
+
+    def tencent_down(syms: list[str]) -> dict[str, str]:
+        raise m.src.FetchError("tencent_names_batch_1:RemoteDisconnected")
+
+    def eastmoney() -> dict[str, str]:
+        return {"SH600000": "浦发银行", "SZ000001": "平安银行", "SH600001": "老八股"}
+
+    monkeypatch.setattr(m.src, "tencent_names", tencent_down)
+    monkeypatch.setattr(m.src, "eastmoney_names", eastmoney)
+    r = run_job(engine, "market.instruments", trigger="test")
+    assert r.status == "succeeded", (r.error, r.result)
+    assert r.result == {"names": 3, "source": "eastmoney",
+                        "tencent_error": "tencent_names_batch_1:RemoteDisconnected"}
+    with Session(engine) as s:
+        assert s.get(Instrument, "SH600000").name == "浦发银行"
+        assert s.get(Instrument, "SZ000001").name_source == "eastmoney"
+        assert s.get(Instrument, "SH600001").name == "老八股"
 
 
 def test_source_verdict_eastmoney_covered_by_tencent():

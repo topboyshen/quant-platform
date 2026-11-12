@@ -1,8 +1,8 @@
 """Data-source adapters mirroring the endpoints the legacy code uses (read-only public GET/POST).
   - Dolt (chenditc/investment_data on DoltHub SQL API): trading calendar, latest EOD date  [qlib_dolt_incremental]
   - Tencent fqkline + Sina KLine: index closes                                            [index_close_backend_probe]
+  - Tencent quote: instrument names (Eastmoney push2 clist is the fallback)              [akshare stock_zh_a_spot_em]
   - akshare tool_trade_date_hist_sina: sina klc_td_sh.txt (reachability only)             [update_trading_calendar]
-  - Eastmoney push2 clist: instrument names (Tencent quote is the fallback)              [akshare stock_zh_a_spot_em]
   - CNINFO hisAnnouncement/query: announcement counts (direct, legacy uses no proxy)       [precollect_cninfo]
   - GitHub releases (chenditc/investment_data): Qlib release-fallback tag                 [release_fallback]
   - baostock: TCP reachability only (raw socket protocol, no HTTP proxy support)
@@ -99,7 +99,7 @@ def sina_index(symbol: str, count: int = 10) -> list[tuple[str, float]]:
 
 
 def eastmoney_names(page_size: int = 100, max_pages: int = 80) -> dict[str, str]:
-    """A-share code -> name from Eastmoney clist (SH/SZ/BJ). Returns {SH600000: '浦发银行', ...}."""
+    """Fallback A-share code -> name from Eastmoney clist (SH/SZ/BJ). Returns {SH600000: '浦发银行', ...}."""
     names: dict[str, str] = {}
     fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"
     for pn in range(1, max_pages + 1):
@@ -128,13 +128,13 @@ def eastmoney_names(page_size: int = 100, max_pages: int = 80) -> dict[str, str]
 
 
 def tencent_names(symbols: list[str], batch_size: int = 200, min_ratio: float = 0.9) -> dict[str, str]:
-    """Fallback code -> name map from Tencent quote (GBK), batched.
+    """Primary code -> name map from Tencent quote (GBK), batched.
 
     Only the instruments qp already knows are requested; this is not a full-market
-    listing.  Eastmoney clist is the primary name source, but it can reject the
-    production egress path while this endpoint stays reachable.  A response that
-    covers less than ``min_ratio`` of the requested symbols is treated as a partial
-    failure (delisted codes are a handful, not a whole batch).
+    listing.  Eastmoney clist remains the fallback, but it can reject the production
+    egress path while this endpoint stays reachable.  A response that covers less than
+    ``min_ratio`` of the requested symbols is treated as a partial failure (delisted
+    codes are a handful, not a whole batch).
     """
     wanted = list(dict.fromkeys(s.upper() for s in symbols if _TX_SYMBOL.match(s.upper())))
     names: dict[str, str] = {}
@@ -221,7 +221,7 @@ def probe_all() -> list[dict[str, Any]]:
             out.append({"source": name, "ok": False, "via_proxy": proxy, "ms": round((time.monotonic() - t0) * 1000, 1),
                         "detail": {"error": type(e).__name__}})
 
-    # The names check keeps the eastmoney fallback claim in source_verdict honest.
+    # The names check keeps the Tencent primary path (and its Eastmoney fallback claim) honest.
     run("tencent", True, lambda: {"last": tencent_index("sh000001", 2)[-1][0],
                                   "names": len(tencent_names(["SH600000", "SZ000001", "BJ430017"]))})
     run("sina", True, lambda: {"last": sina_index("sh000001", 2)[-1][0]})
