@@ -44,6 +44,7 @@ const eodSrc = computed(() => srcq.value?.latest_eod_source
   || (srcq.value?.dolt_latest_eod ? 'dolt' : (srcq.value?.github_release_tag ? 'github_release' : '-')))
 const ST: Record<string, string> = { ok: 'success', warning: 'warning', critical: 'error', unknown: 'default' }
 const SL: Record<string, string> = { ok: '正常', warning: '告警', critical: '严重', unknown: '未知' }
+const SRC_ROLE: Record<string, string> = { primary: '主源', fallback: '备用', optional: '可选', standalone: '独立' }
 const cols = [
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   { title: '状态', key: 'status', width: 90, render: (r: any) => h(NTag, { size: 'small', type: ST[r.status] as any }, { default: () => SL[r.status] || r.status }) },
@@ -53,12 +54,14 @@ const cols = [
 const srcCheck = computed(() => (data.value?.checks || []).find((c: any) => c.check === 'sources.reachable'))
 const srcRows = computed(() => (Object.values(data.value?.sources || {}) as any[]).map((r) => {
   const d = srcCheck.value?.detail?.[r.source] || {}
-  return { ...r, covered_by: d.covered_by || [], optional: !!d.optional }
+  return { ...r, covered_by: d.covered_by || [], optional: !!d.optional, role: d.role || 'standalone' }
 }))
 const srcCols = [
   { title: '来源', key: 'source' },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  { title: '原始探测', key: 'ok', render: (r: any) => h(NTag, { size: 'small', type: r.ok ? 'success' : 'error' }, { default: () => (r.ok ? '可达' : (r.detail?.error || '失败')) }) },
+  { title: '角色', key: 'role', width: 70, render: (r: any) => h(NTag, { size: 'small', type: r.role === 'primary' ? 'info' : 'default' }, { default: () => SRC_ROLE[r.role] || '独立' }) },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  { title: '原始探测', key: 'ok', render: (r: any) => h(NTag, { size: 'small', type: r.ok ? 'success' : (r.role === 'fallback' ? 'default' : 'error') }, { default: () => (r.ok ? '可达' : (r.detail?.error || '失败')) }) },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   { title: 'qp 判定', key: 'verdict', render: (r: any) => {
     if (r.ok) return h(NTag, { size: 'small', type: 'success' }, { default: () => '直达' })

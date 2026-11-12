@@ -459,6 +459,26 @@ def test_sources_reachable_uses_peer_fallback(engine):
         assert "降级" in summary and "tencent->sina" in summary and "dolt->github_release" in summary
 
 
+def test_sources_reachable_marks_display_roles(engine):
+    """The dashboard needs to know which raw failure is on the active vs fallback path."""
+    from qp.jobs.market import health
+
+    with Session(engine) as s:
+        _wipe(s)
+        _source_rows(s, set())
+        s.commit()
+        st, summary, detail = _by_check(health(s, now=NOW))["sources.reachable"]
+        assert st == "ok", (st, summary, detail)
+        assert detail["tencent"]["role"] == "primary"
+        assert detail["dolt"]["role"] == "primary"
+        assert detail["eastmoney"]["role"] == "fallback"
+        assert detail["sina"]["role"] == "fallback"
+        assert detail["github_release"]["role"] == "fallback"
+        assert detail["cninfo"]["role"] == "standalone"
+        assert detail["akshare_sina_calendar"]["role"] == "optional"
+        assert detail["baostock"]["role"] == "optional"
+
+
 def test_sources_reachable_both_peers_fail_is_warning(engine):
     """If neither path of a source pair is reachable, the check must stay warning."""
     from qp.jobs.market import health

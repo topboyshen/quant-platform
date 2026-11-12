@@ -673,6 +673,15 @@ SOURCE_FALLBACKS = {
     "eastmoney": ("tencent",),
 }
 SOURCE_OPTIONAL = {"akshare_sina_calendar", "baostock"}
+# Dashboard role: primary is the path qp prefers, fallback is only used when the
+# primary is down.  Display metadata only; source_verdict stays authoritative.
+SOURCE_ROLES = {
+    "tencent": "primary",        # names + index closes
+    "eastmoney": "fallback",     # full-market names
+    "sina": "fallback",          # index closes
+    "dolt": "primary",           # calendar + EOD
+    "github_release": "fallback",  # EOD release tag
+}
 # Replaced checks.  The old alert keys are resolved once so a retired check does not
 # stay firing forever; the replacement evidence is snapshot.qp_current and
 # collector.market_reader (the legacy status itself remains on the read-only card).
@@ -850,6 +859,7 @@ def health(s: Session, now: dt.datetime | None = None) -> list[tuple[str, str, s
                     {k: {"ok": v.ok, "ms": v.ms, "via_proxy": v.via_proxy,
                          "covered_by": covered.get(k) or None,
                          "optional": k in SOURCE_OPTIONAL,
+                         "role": SOURCE_ROLES.get(k, "optional" if k in SOURCE_OPTIONAL else "standalone"),
                          **(v.detail or {})} for k, v in latest.items()}))
     else:
         out.append(("sources.reachable", "unknown", "no probe in 26h", {}))
