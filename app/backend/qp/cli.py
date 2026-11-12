@@ -41,6 +41,37 @@ def cmd_job_run(a) -> int:
     return 0 if run.status in ("succeeded", "skipped_dup", "skipped_locked") else 1
 
 
+def cmd_shadow_compare(a) -> int:
+    import datetime as dt
+
+    from sqlalchemy.orm import Session
+
+    from qp.db import get_engine
+    from qp.shadow.compare import compare_day, write_report
+    from qp.signals.approved import load_hmac_secret
+
+    try:
+        day = dt.date.fromisoformat(a.date)
+    except ValueError:
+        print(json.dumps({"ok": False, "error": "bad_date"}))
+        return 2
+    secret = load_hmac_secret(a.hmac_secret_file) if a.hmac_secret_file else None
+    with Session(get_engine()) as session:
+        result = compare_day(session, day, a.legacy, hmac_secret=secret)
+    files = write_report(result, a.out) if a.out else []
+    summary = {"date": result["date"], "overall": result["overall"],
+               "gate_ok": result["gate_ok"], "counts": result["counts"],
+               "checks": [{"id": c["id"], "status": c["status"], "summary": c["summary"]}
+                          for c in result["checks"]],
+               "files": files}
+    print(json.dumps(summary, ensure_ascii=False))
+    if result["overall"] == "FAIL":
+        return 1
+    if result["overall"] == "BLOCKED":
+        return 2
+    return 0
+
+
 def cmd_user_import_legacy(a) -> int:
     """Read one line '<username>\\t<password_hash>' from stdin (e.g. piped from a read-only QD query).
     Never prints the hash. Creates/updates the single core.user."""
@@ -88,6 +119,13 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--trigger", default=os.getenv("QP_TRIGGER", "manual"))
     r.add_argument("--dedup-key", default=None)
     r.set_defaults(fn=cmd_job_run)
+    sh = sub.add_parser("shadow").add_subparsers(dest="sub", required=True)
+    sc = sh.add_parser("compare")
+    sc.add_argument("--date", required=True)
+    sc.add_argument("--legacy", required=True)
+    sc.add_argument("--out", default=None)
+    sc.add_argument("--hmac-secret-file", default=None)
+    sc.set_defaults(fn=cmd_shadow_compare)
     us = sub.add_parser("user").add_subparsers(dest="sub", required=True)
     il = us.add_parser("import-legacy")
     il.add_argument("--stdin", action="store_true", required=True)

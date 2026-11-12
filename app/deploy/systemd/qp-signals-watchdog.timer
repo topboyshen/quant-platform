@@ -1,0 +1,12 @@
+[Unit]
+Description=quant-platform M4 shadow watchdog terminal audit at 15:40 and 15:50 CST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 15:40:00 Asia/Shanghai
+OnCalendar=Mon..Fri *-*-* 15:50:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@signals.watchdog.service
+
+[Install]
+WantedBy=timers.target

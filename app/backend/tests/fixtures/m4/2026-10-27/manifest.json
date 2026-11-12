@@ -1,0 +1,62 @@
+{
+  "decision_date": "2026-10-27",
+  "exported_at": "2026-11-12T05:50:00+00:00",
+  "exporter": "qp.collect.signals/1",
+  "files": {
+    "digest.json": {
+      "bytes": 849,
+      "sha256": "be26a2b22ff0b0cd87386eff2ef4bd4e615c6a54ee037079d3b27c3fb63a4ce2"
+    },
+    "eod_run.json": {
+      "bytes": 788503,
+      "sha256": "3825738425b354e2181aff453243452a5f46e955266913c1cd7231bcd24d5cef"
+    },
+    "intake.json": {
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    "macro_slice.json": {
+      "bytes": 1114,
+      "sha256": "8cfb91f9b36a142b855f2d5d54d48d38de46eb3860adc25299236dd378605059"
+    },
+    "notifications.json": {
+      "bytes": 3406,
+      "sha256": "e7c108996c12075235a9b09c2f6a568064049273a226e9097a81d242a4da9bfb"
+    },
+    "outcomes.json": {
+      "bytes": 156898,
+      "sha256": "debf101f075ca84c368c8d4d1e827e2b639f9b12ef6feaeb0a3e1e1f715f3839"
+    },
+    "risk_snapshot.json": {
+      "bytes": 3799,
+      "sha256": "78fcd464dcd3d1aaac10445f230c976d4909d7fa31a206ea5b8f9701318c3c20"
+    },
+    "risk_state.json": {
+      "bytes": 939,
+      "sha256": "b8d6d1a3573da6b9c80a975929f0a2d1ebc0f41cfa40e23c1c933ac576b3eac0"
+    },
+    "target_decisions.json": {
+      "bytes": 28959,
+      "sha256": "57fa2601d23b03c60b4b49640f6fb694199e06fe45f5d13cc8a22015bbe4fa3b"
+    },
+    "trend_signals.json": {
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    }
+  },
+  "missing": [],
+  "ok": true,
+  "schema_version": "1.0",
+  "source_mtime": {
+    "digest.json": "2026-10-27T23:45:01+00:00",
+    "eod_run.json": "2026-11-12T08:10:15+00:00",
+    "intake.json": "2026-09-07T22:57:58+00:00",
+    "macro_slice.json": "2026-11-12T08:10:15+00:00",
+    "notifications.json": "2026-11-12T08:10:15+00:00",
+    "outcomes.json": "2026-11-12T08:10:15+00:00",
+    "risk_snapshot.json": "2026-11-12T08:10:15+00:00",
+    "risk_state.json": "2026-11-12T13:37:51+00:00",
+    "target_decisions.json": "2026-11-12T08:10:15+00:00",
+    "trend_signals.json": "2026-11-12T08:10:15+00:00"
+  }
+}

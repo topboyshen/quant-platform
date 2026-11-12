@@ -1,0 +1,47 @@
+{
+  "created_at": "2026-11-03 07:30:04",
+  "date": "2026-11-03",
+  "extra": {
+    "collect_status": {
+      "limit_ratio": {
+        "anomalous": false,
+        "available": true,
+        "message": "",
+        "observed_date": "2026-11-03",
+        "source": "akshare",
+        "stale": false
+      },
+      "margin_balance": {
+        "anomalous": false,
+        "available": true,
+        "message": "",
+        "observed_date": "2026-11-02",
+        "source": "akshare",
+        "stale": false
+      },
+      "margin_growth_pct": {
+        "anomalous": false,
+        "available": true,
+        "message": "",
+        "observed_date": "2026-11-02",
+        "source": "akshare",
+        "stale": false
+      },
+      "total_amount": {
+        "anomalous": false,
+        "available": true,
+        "message": "",
+        "observed_date": "2026-11-03",
+        "source": "sina",
+        "stale": false
+      }
+    }
+  },
+  "limit_down": 19,
+  "limit_ratio": 2.4,
+  "limit_up": 48,
+  "margin_balance": 23232.96,
+  "margin_growth_pct": -0.529,
+  "source": "sina+akshare",
+  "total_amount": 17034.35
+}

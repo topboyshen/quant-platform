@@ -1,0 +1,24 @@
+[Unit]
+Description=quant-platform M4 read-only legacy signals export (%i)
+# Reads /home/ubuntu/trading-radar with SQLite mode=ro; writes only /var/lib/qp-inbox.
+# No legacy unit, database, digest or outbox is modified and nothing is sent.
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=qp
+UMask=0027
+Environment=PYTHONDONTWRITEBYTECODE=1
+WorkingDirectory=/opt/qp/current/backend
+ExecStart=/opt/qp/current/venv/bin/python -m qp.collect.signals --date %i --out-root /var/lib/qp-inbox/signals-legacy
+TimeoutStartSec=120
+MemoryMax=150M
+CPUQuota=50%
+Nice=15
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/qp-inbox

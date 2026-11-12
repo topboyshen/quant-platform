@@ -1,0 +1,35 @@
+[
+  {
+    "available_at": {
+      "crude_oil": 1787815649.3683054,
+      "us_10y": 1787815642.9580832,
+      "vix": 1787815636.7694218
+    },
+    "available_at_json": "{\"crude_oil\": 1787815649.3683054, \"us_10y\": 1787815642.9580832, \"vix\": 1787815636.7694218}",
+    "created_at": "2026-08-27T07:30:20.017818Z",
+    "decision_at": "2026-08-27T07:30:20.017109Z",
+    "level": "growth_blocked",
+    "missing_fields": [],
+    "missing_fields_json": "[]",
+    "run_id": "0833aa747c7049fab57ef47e4e375c9f",
+    "snapshot_id": "19ac3ae36ffe4ce4b272b50831289598",
+    "source_timestamps": {
+      "crude_oil": 1787616000.0,
+      "us_10y": 1787616000.0,
+      "vix": 1787815631.0
+    },
+    "source_timestamps_json": "{\"crude_oil\": 1787616000.0, \"us_10y\": 1787616000.0, \"vix\": 1787815631.0}",
+    "sources": {
+      "crude_oil": "fred_dcoilwtico_spot_daily",
+      "us_10y": "fred_dgs10_daily",
+      "vix": "cboe_vix_delayed"
+    },
+    "sources_json": "{\"crude_oil\": \"fred_dcoilwtico_spot_daily\", \"us_10y\": \"fred_dgs10_daily\", \"vix\": \"cboe_vix_delayed\"}",
+    "values": {
+      "crude_oil": 83.9,
+      "us_10y": 4.64,
+      "vix": 15.21
+    },
+    "values_json": "{\"crude_oil\": 83.9, \"us_10y\": 4.64, \"vix\": 15.21}"
+  }
+]

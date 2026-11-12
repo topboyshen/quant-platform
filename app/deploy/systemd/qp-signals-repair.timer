@@ -1,0 +1,12 @@
+[Unit]
+Description=quant-platform M4 shadow total_amount repair at 15:47 and 15:57 CST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 15:47:00 Asia/Shanghai
+OnCalendar=Mon..Fri *-*-* 15:57:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@signals.total_amount_repair.service
+
+[Install]
+WantedBy=timers.target

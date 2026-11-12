@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform M4 shadow swing EOD at 15:30 CST (no notification, legacy untouched)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 15:30:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@signals.eod.service
+
+[Install]
+WantedBy=timers.target

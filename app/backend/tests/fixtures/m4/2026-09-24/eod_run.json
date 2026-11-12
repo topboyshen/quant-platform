@@ -1,0 +1,1110 @@
+[
+  {
+    "allowed_signal_count": 0,
+    "blocked_signal_count": 0,
+    "completed_at": "2026-09-24T07:31:11.241014Z",
+    "created_at": "2026-09-24 07:30:02",
+    "data_date": "2026-09-24",
+    "decision_date": "2026-09-24",
+    "decision_outcome": "data_unavailable",
+    "details": {
+      "decision_at": "2026-09-24T07:30:06.534059Z",
+      "deduplicated_signal_count": 0,
+      "failed_targets": [
+        "沪深300ETF(510300)",
+        "中证500ETF(510500)",
+        "创业板ETF(159915)",
+        "科创50ETF(588000)",
+        "半导体ETF(512480)",
+        "红利低波ETF(512890)",
+        "恒生科技ETF(513180)",
+        "券商ETF(512000)",
+        "医疗ETF(512170)",
+        "黄金ETF(518880)"
+      ],
+      "raw_detected_signal_count": 0,
+      "target_decision_count": 10,
+      "trigger_diagnostics": {
+        "decision_date": "2026-09-24",
+        "run_id": "fd0e66c491fe470aa0033707b044a1d8",
+        "schema_version": "quant.swing-trigger-diagnostics.v1",
+        "targets": [
+          {
+            "code": "510300",
+            "daily": {
+              "average_volume20": null,
+              "close": null,
+              "close_above_ma": null,
+              "evaluated": false,
+              "ma": null,
+              "ma_period": 60,
+              "previous_at_or_below_ma": null,
+              "previous_close": null,
+              "previous_ma": null,
+              "price_cross": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "volume": null,
+              "volume_ok": null,
+              "volume_ratio": null,
+              "volume_ratio_raw": null,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": null,
+              "minimum_rows": 65,
+              "ready": false,
+              "reason_codes": [
+                "empty_daily_data"
+              ],
+              "required_date": "2026-09-24",
+              "rows": 0
+            },
+            "weekly": {
+              "completed_bars": null,
+              "dea": null,
+              "dif": null,
+              "evaluated": false,
+              "golden_cross": null,
+              "minimum_bars": 35,
+              "now_above": null,
+              "previous_at_or_below": null,
+              "previous_dea": null,
+              "previous_dif": null,
+              "previous_week_date": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "week_date": null
+            }
+          },
+          {
+            "code": "510500",
+            "daily": {
+              "average_volume20": null,
+              "close": null,
+              "close_above_ma": null,
+              "evaluated": false,
+              "ma": null,
+              "ma_period": 60,
+              "previous_at_or_below_ma": null,
+              "previous_close": null,
+              "previous_ma": null,
+              "price_cross": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "volume": null,
+              "volume_ok": null,
+              "volume_ratio": null,
+              "volume_ratio_raw": null,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": null,
+              "minimum_rows": 65,
+              "ready": false,
+              "reason_codes": [
+                "empty_daily_data"
+              ],
+              "required_date": "2026-09-24",
+              "rows": 0
+            },
+            "weekly": {
+              "completed_bars": null,
+              "dea": null,
+              "dif": null,
+              "evaluated": false,
+              "golden_cross": null,
+              "minimum_bars": 35,
+              "now_above": null,
+              "previous_at_or_below": null,
+              "previous_dea": null,
+              "previous_dif": null,
+              "previous_week_date": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "week_date": null
+            }
+          },
+          {
+            "code": "159915",
+            "daily": {
+              "average_volume20": null,
+              "close": null,
+              "close_above_ma": null,
+              "evaluated": false,
+              "ma": null,
+              "ma_period": 60,
+              "previous_at_or_below_ma": null,
+              "previous_close": null,
+              "previous_ma": null,
+              "price_cross": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "volume": null,
+              "volume_ok": null,
+              "volume_ratio": null,
+              "volume_ratio_raw": null,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": null,
+              "minimum_rows": 65,
+              "ready": false,
+              "reason_codes": [
+                "empty_daily_data"
+              ],
+              "required_date": "2026-09-24",
+              "rows": 0
+            },
+            "weekly": {
+              "completed_bars": null,
+              "dea": null,
+              "dif": null,
+              "evaluated": false,
+              "golden_cross": null,
+              "minimum_bars": 35,
+              "now_above": null,
+              "previous_at_or_below": null,
+              "previous_dea": null,
+              "previous_dif": null,
+              "previous_week_date": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "week_date": null
+            }
+          },
+          {
+            "code": "588000",
+            "daily": {
+              "average_volume20": null,
+              "close": null,
+              "close_above_ma": null,
+              "evaluated": false,
+              "ma": null,
+              "ma_period": 60,
+              "previous_at_or_below_ma": null,
+              "previous_close": null,
+              "previous_ma": null,
+              "price_cross": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "volume": null,
+              "volume_ok": null,
+              "volume_ratio": null,
+              "volume_ratio_raw": null,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": null,
+              "minimum_rows": 65,
+              "ready": false,
+              "reason_codes": [
+                "empty_daily_data"
+              ],
+              "required_date": "2026-09-24",
+              "rows": 0
+            },
+            "weekly": {
+              "completed_bars": null,
+              "dea": null,
+              "dif": null,
+              "evaluated": false,
+              "golden_cross": null,
+              "minimum_bars": 35,
+              "now_above": null,
+              "previous_at_or_below": null,
+              "previous_dea": null,
+              "previous_dif": null,
+              "previous_week_date": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "week_date": null
+            }
+          },
+          {
+            "code": "512480",
+            "daily": {
+              "average_volume20": null,
+              "close": null,
+              "close_above_ma": null,
+              "evaluated": false,
+              "ma": null,
+              "ma_period": 60,
+              "previous_at_or_below_ma": null,
+              "previous_close": null,
+              "previous_ma": null,
+              "price_cross": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "volume": null,
+              "volume_ok": null,
+              "volume_ratio": null,
+              "volume_ratio_raw": null,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": null,
+              "minimum_rows": 65,
+              "ready": false,
+              "reason_codes": [
+                "empty_daily_data"
+              ],
+              "required_date": "2026-09-24",
+              "rows": 0
+            },
+            "weekly": {
+              "completed_bars": null,
+              "dea": null,
+              "dif": null,
+              "evaluated": false,
+              "golden_cross": null,
+              "minimum_bars": 35,
+              "now_above": null,
+              "previous_at_or_below": null,
+              "previous_dea": null,
+              "previous_dif": null,
+              "previous_week_date": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "week_date": null
+            }
+          },
+          {
+            "code": "512890",
+            "daily": {
+              "average_volume20": null,
+              "close": null,
+              "close_above_ma": null,
+              "evaluated": false,
+              "ma": null,
+              "ma_period": 60,
+              "previous_at_or_below_ma": null,
+              "previous_close": null,
+              "previous_ma": null,
+              "price_cross": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "volume": null,
+              "volume_ok": null,
+              "volume_ratio": null,
+              "volume_ratio_raw": null,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": null,
+              "minimum_rows": 65,
+              "ready": false,
+              "reason_codes": [
+                "empty_daily_data"
+              ],
+              "required_date": "2026-09-24",
+              "rows": 0
+            },
+            "weekly": {
+              "completed_bars": null,
+              "dea": null,
+              "dif": null,
+              "evaluated": false,
+              "golden_cross": null,
+              "minimum_bars": 35,
+              "now_above": null,
+              "previous_at_or_below": null,
+              "previous_dea": null,
+              "previous_dif": null,
+              "previous_week_date": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "week_date": null
+            }
+          },
+          {
+            "code": "513180",
+            "daily": {
+              "average_volume20": null,
+              "close": null,
+              "close_above_ma": null,
+              "evaluated": false,
+              "ma": null,
+              "ma_period": 60,
+              "previous_at_or_below_ma": null,
+              "previous_close": null,
+              "previous_ma": null,
+              "price_cross": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "volume": null,
+              "volume_ok": null,
+              "volume_ratio": null,
+              "volume_ratio_raw": null,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": null,
+              "minimum_rows": 65,
+              "ready": false,
+              "reason_codes": [
+                "empty_daily_data"
+              ],
+              "required_date": "2026-09-24",
+              "rows": 0
+            },
+            "weekly": {
+              "completed_bars": null,
+              "dea": null,
+              "dif": null,
+              "evaluated": false,
+              "golden_cross": null,
+              "minimum_bars": 35,
+              "now_above": null,
+              "previous_at_or_below": null,
+              "previous_dea": null,
+              "previous_dif": null,
+              "previous_week_date": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "week_date": null
+            }
+          },
+          {
+            "code": "512000",
+            "daily": {
+              "average_volume20": null,
+              "close": null,
+              "close_above_ma": null,
+              "evaluated": false,
+              "ma": null,
+              "ma_period": 60,
+              "previous_at_or_below_ma": null,
+              "previous_close": null,
+              "previous_ma": null,
+              "price_cross": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "volume": null,
+              "volume_ok": null,
+              "volume_ratio": null,
+              "volume_ratio_raw": null,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": null,
+              "minimum_rows": 65,
+              "ready": false,
+              "reason_codes": [
+                "empty_daily_data"
+              ],
+              "required_date": "2026-09-24",
+              "rows": 0
+            },
+            "weekly": {
+              "completed_bars": null,
+              "dea": null,
+              "dif": null,
+              "evaluated": false,
+              "golden_cross": null,
+              "minimum_bars": 35,
+              "now_above": null,
+              "previous_at_or_below": null,
+              "previous_dea": null,
+              "previous_dif": null,
+              "previous_week_date": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "week_date": null
+            }
+          },
+          {
+            "code": "512170",
+            "daily": {
+              "average_volume20": null,
+              "close": null,
+              "close_above_ma": null,
+              "evaluated": false,
+              "ma": null,
+              "ma_period": 60,
+              "previous_at_or_below_ma": null,
+              "previous_close": null,
+              "previous_ma": null,
+              "price_cross": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "volume": null,
+              "volume_ok": null,
+              "volume_ratio": null,
+              "volume_ratio_raw": null,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": null,
+              "minimum_rows": 65,
+              "ready": false,
+              "reason_codes": [
+                "empty_daily_data"
+              ],
+              "required_date": "2026-09-24",
+              "rows": 0
+            },
+            "weekly": {
+              "completed_bars": null,
+              "dea": null,
+              "dif": null,
+              "evaluated": false,
+              "golden_cross": null,
+              "minimum_bars": 35,
+              "now_above": null,
+              "previous_at_or_below": null,
+              "previous_dea": null,
+              "previous_dif": null,
+              "previous_week_date": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "week_date": null
+            }
+          },
+          {
+            "code": "518880",
+            "daily": {
+              "average_volume20": null,
+              "close": null,
+              "close_above_ma": null,
+              "evaluated": false,
+              "ma": null,
+              "ma_period": 60,
+              "previous_at_or_below_ma": null,
+              "previous_close": null,
+              "previous_ma": null,
+              "price_cross": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "volume": null,
+              "volume_ok": null,
+              "volume_ratio": null,
+              "volume_ratio_raw": null,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": null,
+              "minimum_rows": 65,
+              "ready": false,
+              "reason_codes": [
+                "empty_daily_data"
+              ],
+              "required_date": "2026-09-24",
+              "rows": 0
+            },
+            "weekly": {
+              "completed_bars": null,
+              "dea": null,
+              "dif": null,
+              "evaluated": false,
+              "golden_cross": null,
+              "minimum_bars": 35,
+              "now_above": null,
+              "previous_at_or_below": null,
+              "previous_dea": null,
+              "previous_dif": null,
+              "previous_week_date": null,
+              "reason_codes": [
+                "data_not_ready"
+              ],
+              "triggered": null,
+              "week_date": null
+            }
+          }
+        ]
+      }
+    },
+    "evaluated_count": 0,
+    "failed_count": 10,
+    "id": 34,
+    "reason_codes": [
+      "trend_data_unavailable"
+    ],
+    "run_id": "fd0e66c491fe470aa0033707b044a1d8",
+    "signal_count": 0,
+    "started_at": "2026-09-24T07:30:02.941463Z",
+    "status": "failed",
+    "target_count": 10
+  },
+  {
+    "allowed_signal_count": 0,
+    "blocked_signal_count": 0,
+    "completed_at": "2026-09-24T07:48:19.036571Z",
+    "created_at": "2026-09-24 07:48:03",
+    "data_date": "2026-09-24",
+    "decision_date": "2026-09-24",
+    "decision_outcome": "no_signal",
+    "details": {
+      "decision_at": "2026-09-24T07:48:06.366345Z",
+      "deduplicated_signal_count": 0,
+      "failed_targets": [],
+      "raw_detected_signal_count": 0,
+      "target_decision_count": 10,
+      "trigger_diagnostics": {
+        "decision_date": "2026-09-24",
+        "run_id": "8fa9fd92d47146a991ef6e692e9e5764",
+        "schema_version": "quant.swing-trigger-diagnostics.v1",
+        "targets": [
+          {
+            "code": "510300",
+            "daily": {
+              "average_volume20": 6805424.75,
+              "close": 4.52,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 4.686816666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 4.59,
+              "previous_ma": 4.692316666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 7102519.0,
+              "volume_ok": false,
+              "volume_ratio": 1.04,
+              "volume_ratio_raw": 1.0436555043827354,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-09-24",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-09-24",
+              "rows": 281
+            },
+            "weekly": {
+              "completed_bars": 59,
+              "dea": 0.013087731791826068,
+              "dif": -0.020280650314795423,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.02142982731848144,
+              "previous_dif": -0.012089632074901324,
+              "previous_week_date": "2026-09-11",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-09-18"
+            }
+          },
+          {
+            "code": "510500",
+            "daily": {
+              "average_volume20": 4003220.4,
+              "close": 7.65,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 7.8746,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 7.818,
+              "previous_ma": 7.892099999999999,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 4093614.0,
+              "volume_ok": false,
+              "volume_ratio": 1.02,
+              "volume_ratio_raw": 1.022580220664343,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-09-24",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-09-24",
+              "rows": 281
+            },
+            "weekly": {
+              "completed_bars": 59,
+              "dea": 0.02937413673801901,
+              "dif": -0.04624493888875847,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.04827890564471338,
+              "previous_dif": -0.04394569313793095,
+              "previous_week_date": "2026-09-11",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-09-18"
+            }
+          },
+          {
+            "code": "159915",
+            "daily": {
+              "average_volume20": 15509397.0,
+              "close": 3.31,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 3.5316,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 3.399,
+              "previous_ma": 3.5437000000000003,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 13253327.0,
+              "volume_ok": false,
+              "volume_ratio": 0.85,
+              "volume_ratio_raw": 0.8545352859302009,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-09-24",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-09-24",
+              "rows": 281
+            },
+            "weekly": {
+              "completed_bars": 59,
+              "dea": 0.050741514507861844,
+              "dif": -0.025395080318213026,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.06977566321438056,
+              "previous_dif": -0.01389673596211738,
+              "previous_week_date": "2026-09-11",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-09-18"
+            }
+          },
+          {
+            "code": "588000",
+            "daily": {
+              "average_volume20": 33637918.55,
+              "close": 1.71,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.8219666666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.755,
+              "previous_ma": 1.8287833333333334,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 31339431.0,
+              "volume_ok": false,
+              "volume_ratio": 0.93,
+              "volume_ratio_raw": 0.9316697450651269,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-09-24",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-09-24",
+              "rows": 281
+            },
+            "weekly": {
+              "completed_bars": 59,
+              "dea": 0.07125329675699978,
+              "dif": 0.030326541377457605,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.08148498560188532,
+              "previous_dif": 0.035353212868245,
+              "previous_week_date": "2026-09-11",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-09-18"
+            }
+          },
+          {
+            "code": "512480",
+            "daily": {
+              "average_volume20": 11327147.8,
+              "close": 1.02,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.0836000000000001,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.051,
+              "previous_ma": 1.0891,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 9408766.0,
+              "volume_ok": false,
+              "volume_ratio": 0.83,
+              "volume_ratio_raw": 0.8306385831744862,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-09-24",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-09-24",
+              "rows": 281
+            },
+            "weekly": {
+              "completed_bars": 59,
+              "dea": 0.06465429027185515,
+              "dif": 0.03379278861416979,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.07236966568627648,
+              "previous_dif": 0.03726448872429633,
+              "previous_week_date": "2026-09-11",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-09-18"
+            }
+          },
+          {
+            "code": "512890",
+            "daily": {
+              "average_volume20": 6245703.45,
+              "close": 1.19,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 1.171933333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 1.182,
+              "previous_ma": 1.1702166666666665,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 4617575.0,
+              "volume_ok": false,
+              "volume_ratio": 0.74,
+              "volume_ratio_raw": 0.7393202442232507,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-09-24",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-09-24",
+              "rows": 281
+            },
+            "weekly": {
+              "completed_bars": 59,
+              "dea": -0.0012860751283814895,
+              "dif": 0.005534699066498616,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.0029912686771015155,
+              "previous_dif": 0.005059308660685158,
+              "previous_week_date": "2026-09-11",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-09-18"
+            }
+          },
+          {
+            "code": "513180",
+            "daily": {
+              "average_volume20": 28663117.9,
+              "close": 0.549,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.5855166666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.552,
+              "previous_ma": 0.5857666666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 26582249.0,
+              "volume_ok": false,
+              "volume_ratio": 0.93,
+              "volume_ratio_raw": 0.9274025628593602,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-09-24",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-09-24",
+              "rows": 281
+            },
+            "weekly": {
+              "completed_bars": 59,
+              "dea": -0.027249546462585227,
+              "dif": -0.026739733435688695,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.027376999719309358,
+              "previous_dif": -0.025954406083146586,
+              "previous_week_date": "2026-09-11",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-09-18"
+            }
+          },
+          {
+            "code": "512000",
+            "daily": {
+              "average_volume20": 17374634.8,
+              "close": 0.5,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.5228333333333334,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.51,
+              "previous_ma": 0.5236500000000001,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 14141789.0,
+              "volume_ok": false,
+              "volume_ratio": 0.81,
+              "volume_ratio_raw": 0.8139330214871624,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-09-24",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-09-24",
+              "rows": 281
+            },
+            "weekly": {
+              "completed_bars": 59,
+              "dea": -0.006320626218781988,
+              "dif": -0.005586997276935901,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.00650403345424351,
+              "previous_dif": -0.004779091888864051,
+              "previous_week_date": "2026-09-11",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-09-18"
+            }
+          },
+          {
+            "code": "512170",
+            "daily": {
+              "average_volume20": 10706735.3,
+              "close": 0.34,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 0.33451666666666663,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.349,
+              "previous_ma": 0.3340333333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 13897515.0,
+              "volume_ok": false,
+              "volume_ratio": 1.3,
+              "volume_ratio_raw": 1.2980161188817285,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-09-24",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-09-24",
+              "rows": 281
+            },
+            "weekly": {
+              "completed_bars": 59,
+              "dea": -0.0027516818839059803,
+              "dif": 0.0006455959670517153,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.0036010013466454037,
+              "previous_dif": 1.0265927391117646e-05,
+              "previous_week_date": "2026-09-11",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-09-18"
+            }
+          },
+          {
+            "code": "518880",
+            "daily": {
+              "average_volume20": 5374294.85,
+              "close": 8.79,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 8.830549999999999,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 8.897,
+              "previous_ma": 8.8253,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 4218092.0,
+              "volume_ok": false,
+              "volume_ratio": 0.78,
+              "volume_ratio_raw": 0.7848642692166397,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-09-24",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-09-24",
+              "rows": 281
+            },
+            "weekly": {
+              "completed_bars": 59,
+              "dea": -0.1400587867920849,
+              "dif": -0.09653424649141762,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.1509399218672517,
+              "previous_dif": -0.10348370486329728,
+              "previous_week_date": "2026-09-11",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-09-18"
+            }
+          }
+        ]
+      }
+    },
+    "evaluated_count": 10,
+    "failed_count": 0,
+    "id": 35,
+    "reason_codes": [],
+    "run_id": "8fa9fd92d47146a991ef6e692e9e5764",
+    "signal_count": 0,
+    "started_at": "2026-09-24T07:48:03.152109Z",
+    "status": "success",
+    "target_count": 10
+  }
+]

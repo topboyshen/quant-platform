@@ -1,0 +1,28 @@
+{
+  "attempts": 3,
+  "decision_date": "2026-10-27",
+  "digest": true,
+  "first_run": {
+    "decision_outcome": "data_unavailable",
+    "run_id": "91c45c917b4844c0aadee5f8bfaec029",
+    "status": "failed"
+  },
+  "intake": 0,
+  "latest_run": {
+    "allowed_signal_count": 0,
+    "blocked_signal_count": 0,
+    "decision_outcome": "no_signal",
+    "evaluated_count": 40,
+    "failed_count": 0,
+    "reason_codes": [],
+    "run_id": "d1663d7912b14d07ac734394b0cbb369",
+    "signal_count": 0,
+    "status": "success",
+    "target_count": 40
+  },
+  "notifications": 1,
+  "outcomes": 160,
+  "source": "Ubuntu-nnG8:/home/ubuntu/trading-radar (read-only export)",
+  "target_decisions": 40,
+  "trend_signals": 0
+}

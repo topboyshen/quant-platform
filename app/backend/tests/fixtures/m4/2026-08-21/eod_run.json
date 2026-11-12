@@ -1,0 +1,27 @@
+[
+  {
+    "allowed_signal_count": 1,
+    "blocked_signal_count": 0,
+    "completed_at": "2026-08-21T07:30:22.497273Z",
+    "created_at": "2026-08-21 07:30:02",
+    "data_date": "2026-08-21",
+    "decision_date": "2026-08-21",
+    "decision_outcome": "emitted",
+    "details": {
+      "decision_at": "2026-08-21T07:30:06.487778Z",
+      "deduplicated_signal_count": 0,
+      "failed_targets": [],
+      "raw_detected_signal_count": 1,
+      "target_decision_count": 10
+    },
+    "evaluated_count": 10,
+    "failed_count": 0,
+    "id": 4,
+    "reason_codes": [],
+    "run_id": "dd8c53a948f1402c8587f056c8ff0ab2",
+    "signal_count": 1,
+    "started_at": "2026-08-21T07:30:02.765851Z",
+    "status": "success",
+    "target_count": 10
+  }
+]

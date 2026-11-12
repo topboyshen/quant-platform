@@ -182,3 +182,6 @@ app.include_router(_m2_router)
 from qp.api.market import router as _market_router  # noqa: E402
 
 app.include_router(_market_router)
+from qp.api.hooks import router as _hooks_router  # noqa: E402
+
+app.include_router(_hooks_router)

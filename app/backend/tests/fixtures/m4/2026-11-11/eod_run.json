@@ -1,0 +1,5158 @@
+[
+  {
+    "allowed_signal_count": 0,
+    "blocked_signal_count": 2,
+    "completed_at": "2026-11-11T07:30:59.003055Z",
+    "created_at": "2026-11-11 07:30:04",
+    "data_date": "2026-11-11",
+    "decision_date": "2026-11-11",
+    "decision_outcome": "blocked",
+    "details": {
+      "rule_attribution": {
+        "breakout_ma": 60,
+        "daily_volume_breakout": false,
+        "decision_date": "2026-11-11",
+        "decision_source_sha256": "b98f64c9643f3e57de121e49b26d61be506066a5623db8ab1bbfce27f710f708",
+        "rule_sha256": "c75b52c85b6efbeb7e7c5f6dd2361502d7362498075ad373a681ee1fbf612386",
+        "run_id": "a24840de772b45f2916c655960992019",
+        "schema_version": "quant.etf-run-rule.v1",
+        "scope": "diagnostic_switch_and_pool_not_full_strategy",
+        "target_codes": [
+          "159611",
+          "159755",
+          "159819",
+          "159869",
+          "159870",
+          "159901",
+          "159915",
+          "159920",
+          "159928",
+          "159941",
+          "159949",
+          "159985",
+          "510050",
+          "510300",
+          "510500",
+          "510880",
+          "512000",
+          "512010",
+          "512050",
+          "512100",
+          "512170",
+          "512200",
+          "512400",
+          "512480",
+          "512660",
+          "512690",
+          "512800",
+          "512890",
+          "512980",
+          "513050",
+          "513180",
+          "513500",
+          "513520",
+          "515050",
+          "515080",
+          "515220",
+          "515880",
+          "518880",
+          "562500",
+          "588000"
+        ],
+        "target_count": 40,
+        "volume_window": 20
+      },
+      "trigger_diagnostics": {
+        "decision_date": "2026-11-11",
+        "run_id": "a24840de772b45f2916c655960992019",
+        "schema_version": "quant.swing-trigger-diagnostics.v1",
+        "targets": [
+          {
+            "code": "510300",
+            "daily": {
+              "average_volume20": 21062659.4,
+              "close": 4.15,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 4.443116666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 4.135,
+              "previous_ma": 4.45275,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 10560363.0,
+              "volume_ok": false,
+              "volume_ratio": 0.5,
+              "volume_ratio_raw": 0.5013784251764524,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 1,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 17,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1029,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 156,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 159,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "510300",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.08533570730941457,
+              "dif": -0.14902083246457387,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.06941442602062475,
+              "previous_dif": -0.13608826708053368,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "510500",
+            "daily": {
+              "average_volume20": 7777430.95,
+              "close": 6.75,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 7.36775,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 6.67,
+              "previous_ma": 7.388400000000001,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 5397718.0,
+              "volume_ok": false,
+              "volume_ratio": 0.69,
+              "volume_ratio_raw": 0.6940232622701716,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 15,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1028,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 101,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 103,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "510500",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.18778092869614196,
+              "dif": -0.3419157907500354,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.1492472131826686,
+              "previous_dif": -0.3126148063014158,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159915",
+            "daily": {
+              "average_volume20": 47321697.6,
+              "close": 2.59,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 3.1081666666666665,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.509,
+              "previous_ma": 3.124416666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 44596299.0,
+              "volume_ok": false,
+              "volume_ratio": 0.94,
+              "volume_ratio_raw": 0.9424069985181597,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1027,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 114,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 116,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159915",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.13019569556336388,
+              "dif": -0.2537255280728026,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.0993132374360042,
+              "previous_dif": -0.22213521411050818,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "588000",
+            "daily": {
+              "average_volume20": 90013308.3,
+              "close": 1.38,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.5824999999999998,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.337,
+              "previous_ma": 1.5896,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 68588207.0,
+              "volume_ok": false,
+              "volume_ratio": 0.76,
+              "volume_ratio_raw": 0.7619785151258572,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1026,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 113,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 115,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "588000",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.025353458756067548,
+              "dif": -0.09009682569555033,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.009167617021196853,
+              "previous_dif": -0.07659213495713546,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512480",
+            "daily": {
+              "average_volume20": 14893847.2,
+              "close": 0.81,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.9341333333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.785,
+              "previous_ma": 0.9384666666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 14594076.0,
+              "volume_ok": false,
+              "volume_ratio": 0.98,
+              "volume_ratio_raw": 0.9798728162056074,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1024,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 128,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 130,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512480",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.0020785208935908623,
+              "dif": -0.0459564113512726,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.008890951720829572,
+              "previous_dif": -0.03672688600739504,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512890",
+            "daily": {
+              "average_volume20": 7481880.5,
+              "close": 1.23,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 1.2028500000000002,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 1.237,
+              "previous_ma": 1.2017333333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma"
+              ],
+              "triggered": false,
+              "volume": 13485928.0,
+              "volume_ok": true,
+              "volume_ratio": 1.8,
+              "volume_ratio_raw": 1.802478400984886,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 16,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1029,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 132,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 134,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512890",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.00935847799021946,
+              "dif": 0.01636256941465586,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": 0.00760745513411036,
+              "previous_dif": 0.01440506726712365,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "513180",
+            "daily": {
+              "average_volume20": 46278359.2,
+              "close": 0.505,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.5401166666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.51,
+              "previous_ma": 0.5418666666666666,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 36892724.0,
+              "volume_ok": false,
+              "volume_ratio": 0.8,
+              "volume_ratio_raw": 0.7971917033739605,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1027,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 129,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 131,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "513180",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.033837081244374914,
+              "dif": -0.03817381835336253,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.03275289696712801,
+              "previous_dif": -0.03922848990653005,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512000",
+            "daily": {
+              "average_volume20": 19206809.95,
+              "close": 0.48,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.5013833333333334,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.48,
+              "previous_ma": 0.5020833333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 11927081.0,
+              "volume_ok": false,
+              "volume_ratio": 0.62,
+              "volume_ratio_raw": 0.6209818825223499,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1028,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 111,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 113,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512000",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.010130105105075539,
+              "dif": -0.013258730454238532,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.00934794876778479,
+              "previous_dif": -0.013171759064163346,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512170",
+            "daily": {
+              "average_volume20": 13774456.05,
+              "close": 0.34,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.3401666666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.348,
+              "previous_ma": 0.34035,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 9922544.0,
+              "volume_ok": false,
+              "volume_ratio": 0.72,
+              "volume_ratio_raw": 0.720358318613968,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1027,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 113,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 116,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512170",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.0002702179974087253,
+              "dif": 0.001699480801752029,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -8.709770367710065e-05,
+              "previous_dif": 0.0006173337377766153,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "518880",
+            "daily": {
+              "average_volume20": 4274449.15,
+              "close": 8.29,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 8.753216666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 8.398,
+              "previous_ma": 8.7652,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 3482229.0,
+              "volume_ok": false,
+              "volume_ratio": 0.81,
+              "volume_ratio_raw": 0.8146614634543026,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1029,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 123,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 125,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "518880",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.19040655017928587,
+              "dif": -0.2504678776858924,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.1753912183026342,
+              "previous_dif": -0.2373553647137303,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "515880",
+            "daily": {
+              "average_volume20": 63710889.7,
+              "close": 0.46,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.59545,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.425,
+              "previous_ma": 0.5985499999999999,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma"
+              ],
+              "triggered": false,
+              "volume": 120316656.0,
+              "volume_ok": true,
+              "volume_ratio": 1.89,
+              "volume_ratio_raw": 1.8884786661517927,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 15,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1028,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 125,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 128,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "515880",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.012273060809851612,
+              "dif": -0.0474426261573383,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.0034806694729799387,
+              "previous_dif": -0.035061100792580735,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512100",
+            "daily": {
+              "average_volume20": 19609932.85,
+              "close": 2.71,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 2.9293833333333335,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.672,
+              "previous_ma": 2.9362166666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 15005589.0,
+              "volume_ok": false,
+              "volume_ratio": 0.77,
+              "volume_ratio_raw": 0.7652034871705335,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1027,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 113,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 116,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512100",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.0894971687415794,
+              "dif": -0.14239414006867968,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.07627292590980432,
+              "previous_dif": -0.13247325404712562,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "510050",
+            "daily": {
+              "average_volume20": 11902036.85,
+              "close": 2.88,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 2.9541666666666666,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.891,
+              "previous_ma": 2.9568166666666666,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 4951728.0,
+              "volume_ok": false,
+              "volume_ratio": 0.42,
+              "volume_ratio_raw": 0.41604038555804,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 15,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 16,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1031,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 115,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 118,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "510050",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.025221653813874555,
+              "dif": -0.03759824958939806,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.022127504869993677,
+              "previous_dif": -0.0377269711447652,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159949",
+            "daily": {
+              "average_volume20": 23372168.8,
+              "close": 1.164,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.4384166666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.119,
+              "previous_ma": 1.4467833333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 21550039.0,
+              "volume_ok": false,
+              "volume_ratio": 0.92,
+              "volume_ratio_raw": 0.9220384802286726,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1028,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 121,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 123,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159949",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.07334561335080043,
+              "dif": -0.13664508134101783,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.05752074635324608,
+              "previous_dif": -0.1195904873932867,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "513050",
+            "daily": {
+              "average_volume20": 20150226.85,
+              "close": 0.994,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.0254333333333334,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.009,
+              "previous_ma": 1.0282,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 21550065.0,
+              "volume_ok": false,
+              "volume_ratio": 1.07,
+              "volume_ratio_raw": 1.0694700938317228,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 20,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1034,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 118,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 120,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "513050",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.06723782700029395,
+              "dif": -0.06305484015541674,
+              "evaluated": true,
+              "golden_cross": true,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": true,
+              "previous_dea": -0.06828357371151325,
+              "previous_dif": -0.06912612338701773,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [],
+              "triggered": true,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512050",
+            "daily": {
+              "average_volume20": 12009239.7,
+              "close": 1.058,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.1460333333333332,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.053,
+              "previous_ma": 1.1489666666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 10849383.0,
+              "volume_ok": false,
+              "volume_ratio": 0.9,
+              "volume_ratio_raw": 0.9034196394631044,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1027,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 128,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 131,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512050",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.026105164889278394,
+              "dif": -0.04580309146256023,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.021180683245957933,
+              "previous_dif": -0.04187481898835643,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159941",
+            "daily": {
+              "average_volume20": 7210099.95,
+              "close": 1.66,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.672583333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.63,
+              "previous_ma": 1.6725666666666668,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 5861069.0,
+              "volume_ok": false,
+              "volume_ratio": 0.81,
+              "volume_ratio_raw": 0.8128970528348917,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1028,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 123,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 125,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159941",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.05588038718330874,
+              "dif": 0.04057408806210572,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.05970696196360949,
+              "previous_dif": 0.05211221095094465,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512800",
+            "daily": {
+              "average_volume20": 14305851.25,
+              "close": 0.88,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 0.8475666666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.889,
+              "previous_ma": 0.8462333333333334,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 20878663.0,
+              "volume_ok": false,
+              "volume_ratio": 1.46,
+              "volume_ratio_raw": 1.4594491886667702,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1027,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 118,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 120,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512800",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.014940103320412127,
+              "dif": 0.021091597016827945,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": 0.013402229896308172,
+              "previous_dif": 0.020020435879490317,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "515050",
+            "daily": {
+              "average_volume20": 10717639.15,
+              "close": 0.71,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.9220666666666666,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.668,
+              "previous_ma": 0.9271833333333334,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma"
+              ],
+              "triggered": false,
+              "volume": 16437095.0,
+              "volume_ok": true,
+              "volume_ratio": 1.53,
+              "volume_ratio_raw": 1.533648854001583,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1028,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 113,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 115,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "515050",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.013052677079446875,
+              "dif": -0.06799347160740155,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.000682521552541792,
+              "previous_dif": -0.04942568475730791,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "515220",
+            "daily": {
+              "average_volume20": 5424384.2,
+              "close": 1.19,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.2639166666666668,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.184,
+              "previous_ma": 1.2651000000000001,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 3400014.0,
+              "volume_ok": false,
+              "volume_ratio": 0.63,
+              "volume_ratio_raw": 0.6268018404743528,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1026,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 114,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 116,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "515220",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.018905394481092856,
+              "dif": 0.008201314946770788,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.02158141436467337,
+              "previous_dif": 0.01589251982860529,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512400",
+            "daily": {
+              "average_volume20": 3665110.15,
+              "close": 1.46,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.6627666666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.458,
+              "previous_ma": 1.6691333333333336,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 3413059.0,
+              "volume_ok": false,
+              "volume_ratio": 0.93,
+              "volume_ratio_raw": 0.9312295839185079,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1027,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 117,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 120,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512400",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.06884835900047828,
+              "dif": -0.10377914711558289,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.06011566197170212,
+              "previous_dif": -0.09651770487674649,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159985",
+            "daily": {
+              "average_volume20": 1085786.9,
+              "close": 2.185,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 2.2449833333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.127,
+              "previous_ma": 2.2439666666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 1339379.0,
+              "volume_ok": false,
+              "volume_ratio": 1.23,
+              "volume_ratio_raw": 1.2335560504552046,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 17,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 33,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1051,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 138,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 140,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159985",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.04693032092701079,
+              "dif": 0.028294335524123415,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.05158931727773264,
+              "previous_dif": 0.04104140541103796,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "510880",
+            "daily": {
+              "average_volume20": 1955097.1,
+              "close": 3.37,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 3.39805,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 3.377,
+              "previous_ma": 3.3970333333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 1209818.0,
+              "volume_ok": false,
+              "volume_ratio": 0.62,
+              "volume_ratio_raw": 0.6188020022125755,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 22,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1037,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 120,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 122,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "510880",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.054906022155277366,
+              "dif": 0.05562451140404168,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": 0.05472639984308629,
+              "previous_dif": 0.05986191291581422,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159819",
+            "daily": {
+              "average_volume20": 2752721.45,
+              "close": 1.442,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.6211666666666666,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.394,
+              "previous_ma": 1.6274000000000002,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 2976786.0,
+              "volume_ok": false,
+              "volume_ratio": 1.08,
+              "volume_ratio_raw": 1.0813974657697385,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1028,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 129,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 132,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159819",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.033545773838588755,
+              "dif": -0.0918925682594176,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.018959075233381535,
+              "previous_dif": -0.07691843240853458,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "562500",
+            "daily": {
+              "average_volume20": 8154358.25,
+              "close": 0.906,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.9071666666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.892,
+              "previous_ma": 0.9090833333333332,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 7742484.0,
+              "volume_ok": false,
+              "volume_ratio": 0.95,
+              "volume_ratio_raw": 0.9494902925070774,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1025,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 129,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 131,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "562500",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.042374848438675526,
+              "dif": -0.05351814921697351,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.03958902324410103,
+              "previous_dif": -0.054345376591103944,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512010",
+            "daily": {
+              "average_volume20": 10327205.8,
+              "close": 0.38,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.38083333333333336,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.388,
+              "previous_ma": 0.3812166666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 10534679.0,
+              "volume_ok": false,
+              "volume_ratio": 1.02,
+              "volume_ratio_raw": 1.0200899647027466,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1026,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 118,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 120,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512010",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.0013931407785495898,
+              "dif": 0.002973109757238024,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": 0.0009981485338774812,
+              "previous_dif": 0.0016901322406046027,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159869",
+            "daily": {
+              "average_volume20": 5186315.4,
+              "close": 1.089,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 1.066733333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 1.074,
+              "previous_ma": 1.0674666666666668,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 7333617.0,
+              "volume_ok": false,
+              "volume_ratio": 1.41,
+              "volume_ratio_raw": 1.4140322048288847,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1027,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 144,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 146,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159869",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.0667670950541208,
+              "dif": -0.06159373639136234,
+              "evaluated": true,
+              "golden_cross": true,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": true,
+              "previous_dea": -0.06806043471981041,
+              "previous_dif": -0.06842021905386209,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [],
+              "triggered": true,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512690",
+            "daily": {
+              "average_volume20": 13707576.1,
+              "close": 0.43,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 0.4233833333333334,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.446,
+              "previous_ma": 0.4235666666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 12227764.0,
+              "volume_ok": false,
+              "volume_ratio": 0.89,
+              "volume_ratio_raw": 0.8920442177957342,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1026,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 124,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 126,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512690",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.017866297538248192,
+              "dif": -0.011347746871305797,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.019495935204983793,
+              "previous_dif": -0.014493381583654652,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "515080",
+            "daily": {
+              "average_volume20": 2436130.5,
+              "close": 1.56,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.56635,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.564,
+              "previous_ma": 1.56625,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 1318036.0,
+              "volume_ok": false,
+              "volume_ratio": 0.54,
+              "volume_ratio_raw": 0.541036697336206,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1028,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 119,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 121,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "515080",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.006656165399235163,
+              "dif": 0.00821525816700519,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": 0.006266392207292654,
+              "previous_dif": 0.008154078518423535,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159611",
+            "daily": {
+              "average_volume20": 2955481.2,
+              "close": 1.032,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.0397833333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.04,
+              "previous_ma": 1.0404,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 1454677.0,
+              "volume_ok": false,
+              "volume_ratio": 0.49,
+              "volume_ratio_raw": 0.49219632999188084,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1025,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 149,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 152,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159611",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.012963320884695814,
+              "dif": -0.013338456772600482,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.012869536912719646,
+              "previous_dif": -0.014747536362758717,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159755",
+            "daily": {
+              "average_volume20": 4256256.65,
+              "close": 0.77,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.8551666666666666,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.775,
+              "previous_ma": 0.8586833333333334,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 3193390.0,
+              "volume_ok": false,
+              "volume_ratio": 0.75,
+              "volume_ratio_raw": 0.7502813534517473,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1026,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 141,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 144,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159755",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.06372589790367975,
+              "dif": -0.07786892260615219,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.06019014172806163,
+              "previous_dif": -0.07837148425994234,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159901",
+            "daily": {
+              "average_volume20": 1318693.0,
+              "close": 2.9,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 3.3040166666666666,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.846,
+              "previous_ma": 3.317216666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 1135487.0,
+              "volume_ok": false,
+              "volume_ratio": 0.86,
+              "volume_ratio_raw": 0.8610700140214591,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1024,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 128,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 131,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159901",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.11245706142747912,
+              "dif": -0.20573882354535344,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.08913662089801053,
+              "previous_dif": -0.18327020701951868,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "513500",
+            "daily": {
+              "average_volume20": 1506257.75,
+              "close": 2.66,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 2.677633333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.652,
+              "previous_ma": 2.6785666666666668,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 879291.0,
+              "volume_ok": false,
+              "volume_ratio": 0.58,
+              "volume_ratio_raw": 0.5837586561795284,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1028,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 124,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 126,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "513500",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.06371117330189856,
+              "dif": 0.047740372328025416,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.06770387354536683,
+              "previous_dif": 0.057293253819057366,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512980",
+            "daily": {
+              "average_volume20": 5725269.6,
+              "close": 0.855,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 0.8157166666666668,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.855,
+              "previous_ma": 0.8159666666666666,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 5874932.0,
+              "volume_ok": false,
+              "volume_ratio": 1.03,
+              "volume_ratio_raw": 1.026140672921324,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1025,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 124,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 126,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512980",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.04361287628917434,
+              "dif": -0.0378021879626389,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.045065548370808194,
+              "previous_dif": -0.044262018614061094,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512200",
+            "daily": {
+              "average_volume20": 1152473.35,
+              "close": 1.15,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.2074166666666666,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.143,
+              "previous_ma": 1.2085833333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 888277.0,
+              "volume_ok": false,
+              "volume_ratio": 0.77,
+              "volume_ratio_raw": 0.7707570851855272,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1024,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 125,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 127,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512200",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.047835553171064804,
+              "dif": -0.04768371043045394,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.04787351385621751,
+              "previous_dif": -0.04550861677716611,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159870",
+            "daily": {
+              "average_volume20": 3301195.1,
+              "close": 0.688,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.7522333333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.691,
+              "previous_ma": 0.7544166666666666,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 3874632.0,
+              "volume_ok": false,
+              "volume_ratio": 1.17,
+              "volume_ratio_raw": 1.1737058497390838,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1026,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 138,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 140,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159870",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.02739051660331983,
+              "dif": -0.03818555048653727,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.02469175813251547,
+              "previous_dif": -0.03764299731959886,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512660",
+            "daily": {
+              "average_volume20": 3414588.4,
+              "close": 1.029,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.0987666666666664,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.03,
+              "previous_ma": 1.1007500000000001,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 2131520.0,
+              "volume_ok": false,
+              "volume_ratio": 0.62,
+              "volume_ratio_raw": 0.6242392201648668,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 15,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1029,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 128,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 130,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512660",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.05810587688503418,
+              "dif": -0.06632728024064782,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.05605052604613076,
+              "previous_dif": -0.06499203796243735,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "513520",
+            "daily": {
+              "average_volume20": 1224733.2,
+              "close": 2.111,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 2.254,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.085,
+              "previous_ma": 2.2573666666666665,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 931159.0,
+              "volume_ok": false,
+              "volume_ratio": 0.76,
+              "volume_ratio_raw": 0.7602953851500066,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 15,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1030,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 129,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 132,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "513520",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.05225316731607087,
+              "dif": 0.014237889305155349,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.06175698681879974,
+              "previous_dif": 0.036619363273106664,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159928",
+            "daily": {
+              "average_volume20": 6740236.35,
+              "close": 0.69,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 0.6685333333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.701,
+              "previous_ma": 0.6683833333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma"
+              ],
+              "triggered": false,
+              "volume": 12282799.0,
+              "volume_ok": true,
+              "volume_ratio": 1.82,
+              "volume_ratio_raw": 1.8223098363605603,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 12,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1027,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 108,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 111,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159928",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.01811712652680437,
+              "dif": -0.009684733187202976,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.020225224861704718,
+              "previous_dif": -0.014157033023945442,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159920",
+            "daily": {
+              "average_volume20": 1631850.9,
+              "close": 1.43,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.4459666666666666,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.443,
+              "previous_ma": 1.4472833333333335,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 1487828.0,
+              "volume_ok": false,
+              "volume_ratio": 0.91,
+              "volume_ratio_raw": 0.9117426107985724,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-11",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-11",
+              "rows": 281,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 13,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 14,
+                    "error_type": "",
+                    "http_status": 502,
+                    "latest_date": null,
+                    "rejection": "http_error",
+                    "route": "session",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "error"
+                  },
+                  {
+                    "elapsed_ms": 1027,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "adapter",
+                    "rows": 0,
+                    "source": "eastmoney_push2his",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 112,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "urllib",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 114,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-11",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 281,
+                    "source": "tencent_kline",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159920",
+                "dropped": 0,
+                "required_date": "2026-11-11",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.02337778714003292,
+              "dif": -0.027852474059022914,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.02225911541028542,
+              "previous_dif": -0.031290766720518004,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          }
+        ]
+      },
+      "truncated": true
+    },
+    "evaluated_count": 40,
+    "failed_count": 0,
+    "id": 72,
+    "reason_codes": [],
+    "run_id": "a24840de772b45f2916c655960992019",
+    "signal_count": 2,
+    "started_at": "2026-11-11T07:30:04.597165Z",
+    "status": "success",
+    "target_count": 40
+  }
+]

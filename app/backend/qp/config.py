@@ -16,6 +16,10 @@ class Settings:
     cookie_secure: bool
     api_health_url: str
     notify_mode: str  # "shadow" only in M1
+    approved_signals_hmac_file: str
+    approved_signals_max_skew_sec: int
+    execution_digest_hmac_file: str
+    execution_digest_output_dir: str
 
 
 def get_settings() -> Settings:
@@ -29,4 +33,11 @@ def get_settings() -> Settings:
         cookie_secure=os.getenv("QP_COOKIE_SECURE", "1") == "1",
         api_health_url=os.getenv("QP_API_HEALTH_URL", "http://127.0.0.1:18800/api/health"),
         notify_mode=os.getenv("QP_NOTIFY_MODE", "shadow"),
+        approved_signals_hmac_file=os.getenv("QP_APPROVED_SIGNALS_HMAC_FILE",
+                                             "/etc/qp/approved_signals_hmac"),
+        approved_signals_max_skew_sec=int(os.getenv("QP_APPROVED_SIGNALS_MAX_SKEW_SEC", "300")),
+        execution_digest_hmac_file=os.getenv("QP_EXECUTION_DIGEST_HMAC_FILE",
+                                             "/etc/qp/dedirock_digest_hmac"),
+        execution_digest_output_dir=os.getenv("QP_EXECUTION_DIGEST_DIR",
+                                              "/var/lib/qp/signals/digests"),
     )

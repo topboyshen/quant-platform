@@ -1,0 +1,35 @@
+[
+  {
+    "available_at": {
+      "crude_oil": 1792740403.82585,
+      "us_10y": 1792740401.5128305,
+      "vix": 1792740396.4101565
+    },
+    "available_at_json": "{\"crude_oil\": 1792740403.82585, \"us_10y\": 1792740401.5128305, \"vix\": 1792740396.4101565}",
+    "created_at": "2026-10-23T07:30:06.054556Z",
+    "decision_at": "2026-10-23T07:30:06.053872Z",
+    "level": "critical",
+    "missing_fields": [],
+    "missing_fields_json": "[]",
+    "run_id": "93a1beeee25a42569cbb01635471e2f4",
+    "snapshot_id": "3179cedbf2cd4d2aa7d0c36681366a6a",
+    "source_timestamps": {
+      "crude_oil": 1792739798.0,
+      "us_10y": 1792540800.0,
+      "vix": 1792700101.0
+    },
+    "source_timestamps_json": "{\"crude_oil\": 1792739798.0, \"us_10y\": 1792540800.0, \"vix\": 1792700101.0}",
+    "sources": {
+      "crude_oil": "yahoo_chart_regular_market",
+      "us_10y": "fred_dgs10_daily",
+      "vix": "yahoo_chart_regular_market"
+    },
+    "sources_json": "{\"crude_oil\": \"yahoo_chart_regular_market\", \"us_10y\": \"fred_dgs10_daily\", \"vix\": \"yahoo_chart_regular_market\"}",
+    "values": {
+      "crude_oil": 100.7,
+      "us_10y": 5.13,
+      "vix": 19.03
+    },
+    "values_json": "{\"crude_oil\": 100.7, \"us_10y\": 5.13, \"vix\": 19.03}"
+  }
+]

@@ -1,0 +1,33 @@
+{
+  "override": null,
+  "state": {
+    "available_at": {
+      "crude_oil": 1794490671.7292058,
+      "us_10y": 1794490670.259624,
+      "vix": 1794490668.3856387
+    },
+    "cached_fields": [],
+    "crude_oil": 87.06,
+    "level": "critical",
+    "message": "CRITICAL_WARNING: 波动率低位反弹，非线性风险来袭\nVIX=18.91 > 阈值 17.5\n建议：降低整体仓位上限（TTL限制），暂停新增买入",
+    "missing_fields": [],
+    "observed_at": {
+      "crude_oil": 1794490671.72923,
+      "us_10y": 1794490671.72923,
+      "vix": 1794490671.72923
+    },
+    "source_timestamps": {
+      "crude_oil": 1794490069.0,
+      "us_10y": 1794489764.0,
+      "vix": 1794489751.0
+    },
+    "sources": {
+      "crude_oil": "yahoo_chart_regular_market",
+      "us_10y": "yahoo_chart_regular_market",
+      "vix": "yahoo_chart_regular_market"
+    },
+    "timestamp": 1794490671.72923,
+    "us_10y": 5.05,
+    "vix": 18.91
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "as_of_day": "2026-11-10",
+  "generated_at": "2026-11-11T07:45:01+08:00",
+  "items": [],
+  "markdown": "【执行摘要】2026-11-10\n受理 0 条（风控通过/订单占位 queued_stub，未实盘下单） · 拒绝 0 条 · 成交 — · 盈亏 未启用\n昨日无业务受理/拒绝（已过滤测试探针）。\n",
+  "report_type": "execution_digest",
+  "schema_version": "0.2",
+  "source": "quant",
+  "summary": {
+    "accepted": 0,
+    "fills": 0,
+    "note": "accepted=queued_stub占位；无实盘下单；成交/盈亏未启用",
+    "pnl": null,
+    "pnl_status": "not_enabled",
+    "rejected": 0
+  },
+  "text": "【执行摘要】2026-11-10\n受理 0 条（风控通过/订单占位 queued_stub，未实盘下单） · 拒绝 0 条 · 成交 — · 盈亏 未启用\n昨日无业务受理/拒绝（已过滤测试探针）。\n"
+}

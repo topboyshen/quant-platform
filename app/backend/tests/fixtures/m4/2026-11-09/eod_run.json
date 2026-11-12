@@ -1,0 +1,3837 @@
+[
+  {
+    "allowed_signal_count": 0,
+    "blocked_signal_count": 2,
+    "completed_at": "2026-11-09T07:30:13.516311Z",
+    "created_at": "2026-11-09 07:30:02",
+    "data_date": "2026-11-09",
+    "decision_date": "2026-11-09",
+    "decision_outcome": "blocked",
+    "details": {
+      "rule_attribution": {
+        "breakout_ma": 60,
+        "daily_volume_breakout": false,
+        "decision_date": "2026-11-09",
+        "decision_source_sha256": "b98f64c9643f3e57de121e49b26d61be506066a5623db8ab1bbfce27f710f708",
+        "rule_sha256": "c75b52c85b6efbeb7e7c5f6dd2361502d7362498075ad373a681ee1fbf612386",
+        "run_id": "e5380dcf5c8b4709ab4a7e6b30e19a62",
+        "schema_version": "quant.etf-run-rule.v1",
+        "scope": "diagnostic_switch_and_pool_not_full_strategy",
+        "target_codes": [
+          "159611",
+          "159755",
+          "159819",
+          "159869",
+          "159870",
+          "159901",
+          "159915",
+          "159920",
+          "159928",
+          "159941",
+          "159949",
+          "159985",
+          "510050",
+          "510300",
+          "510500",
+          "510880",
+          "512000",
+          "512010",
+          "512050",
+          "512100",
+          "512170",
+          "512200",
+          "512400",
+          "512480",
+          "512660",
+          "512690",
+          "512800",
+          "512890",
+          "512980",
+          "513050",
+          "513180",
+          "513500",
+          "513520",
+          "515050",
+          "515080",
+          "515220",
+          "515880",
+          "518880",
+          "562500",
+          "588000"
+        ],
+        "target_count": 40,
+        "volume_window": 20
+      },
+      "trigger_diagnostics": {
+        "decision_date": "2026-11-09",
+        "run_id": "e5380dcf5c8b4709ab4a7e6b30e19a62",
+        "schema_version": "quant.swing-trigger-diagnostics.v1",
+        "targets": [
+          {
+            "code": "510300",
+            "daily": {
+              "average_volume20": 20817526.05,
+              "close": 4.13,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 4.46315,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 4.124,
+              "previous_ma": 4.4735000000000005,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 10649267.0,
+              "volume_ok": false,
+              "volume_ratio": 0.51,
+              "volume_ratio_raw": 0.5115529566011999,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 39,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 42,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "510300",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.08533570730941457,
+              "dif": -0.14902083246457387,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.06941442602062475,
+              "previous_dif": -0.13608826708053368,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "510500",
+            "daily": {
+              "average_volume20": 7656573.25,
+              "close": 6.612,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 7.411183333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 6.629,
+              "previous_ma": 7.4341,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 5065226.0,
+              "volume_ok": false,
+              "volume_ratio": 0.66,
+              "volume_ratio_raw": 0.6615526077543893,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 112,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 115,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "510500",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.18778092869614196,
+              "dif": -0.3419157907500354,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.1492472131826686,
+              "previous_dif": -0.3126148063014158,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159915",
+            "daily": {
+              "average_volume20": 46360731.75,
+              "close": 2.472,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 3.1419166666666665,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.48,
+              "previous_ma": 3.160483333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 31695711.0,
+              "volume_ok": false,
+              "volume_ratio": 0.68,
+              "volume_ratio_raw": 0.6836758136372599,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 108,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 110,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159915",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.13019569556336388,
+              "dif": -0.2537255280728026,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.0993132374360042,
+              "previous_dif": -0.22213521411050818,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "588000",
+            "daily": {
+              "average_volume20": 89425048.25,
+              "close": 1.327,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.5978999999999999,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.326,
+              "previous_ma": 1.60645,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 53315029.0,
+              "volume_ok": false,
+              "volume_ratio": 0.6,
+              "volume_ratio_raw": 0.5961979338378495,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 110,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 112,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "588000",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.025353458756067548,
+              "dif": -0.09009682569555033,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.009167617021196853,
+              "previous_dif": -0.07659213495713546,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512480",
+            "daily": {
+              "average_volume20": 15139969.15,
+              "close": 0.775,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.9434,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.775,
+              "previous_ma": 0.9485333333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 9911816.0,
+              "volume_ok": false,
+              "volume_ratio": 0.65,
+              "volume_ratio_raw": 0.6546787448374688,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 103,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 105,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512480",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.0020785208935908623,
+              "dif": -0.0459564113512726,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.008890951720829572,
+              "previous_dif": -0.03672688600739504,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512890",
+            "daily": {
+              "average_volume20": 7674307.65,
+              "close": 1.242,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 1.2004833333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 1.237,
+              "previous_ma": 1.1990833333333335,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 7100359.0,
+              "volume_ok": false,
+              "volume_ratio": 0.93,
+              "volume_ratio_raw": 0.925211670397394,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 108,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 110,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512890",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.00935847799021946,
+              "dif": 0.01636256941465586,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": 0.00760745513411036,
+              "previous_dif": 0.01440506726712365,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "513180",
+            "daily": {
+              "average_volume20": 45216093.2,
+              "close": 0.508,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.54365,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.51,
+              "previous_ma": 0.5454000000000001,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 51190445.0,
+              "volume_ok": false,
+              "volume_ratio": 1.13,
+              "volume_ratio_raw": 1.1321288810506962,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 113,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 114,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "513180",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.033837081244374914,
+              "dif": -0.03817381835336253,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.03275289696712801,
+              "previous_dif": -0.03922848990653005,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512000",
+            "daily": {
+              "average_volume20": 18936059.05,
+              "close": 0.482,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.5028333333333334,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.483,
+              "previous_ma": 0.5035333333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 9495512.0,
+              "volume_ok": false,
+              "volume_ratio": 0.5,
+              "volume_ratio_raw": 0.5014513302333623,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 70,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 72,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512000",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.010130105105075539,
+              "dif": -0.013258730454238532,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.00934794876778479,
+              "previous_dif": -0.013171759064163346,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512170",
+            "daily": {
+              "average_volume20": 14393863.4,
+              "close": 0.347,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 0.3404333333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.349,
+              "previous_ma": 0.3404166666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 8283169.0,
+              "volume_ok": false,
+              "volume_ratio": 0.58,
+              "volume_ratio_raw": 0.5754653055829333,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 112,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 115,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512170",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.0002702179974087253,
+              "dif": 0.001699480801752029,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -8.709770367710065e-05,
+              "previous_dif": 0.0006173337377766153,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "518880",
+            "daily": {
+              "average_volume20": 4235034.6,
+              "close": 8.375,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 8.775316666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 8.253,
+              "previous_ma": 8.783933333333332,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 4128254.0,
+              "volume_ok": false,
+              "volume_ratio": 0.97,
+              "volume_ratio_raw": 0.9747863689236448,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 79,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 81,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "518880",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.19040655017928587,
+              "dif": -0.2504678776858924,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.1753912183026342,
+              "previous_dif": -0.2373553647137303,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "515880",
+            "daily": {
+              "average_volume20": 63190578.4,
+              "close": 0.413,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.6022,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.405,
+              "previous_ma": 0.6063166666666666,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 58743996.0,
+              "volume_ok": false,
+              "volume_ratio": 0.93,
+              "volume_ratio_raw": 0.9296321933967295,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 108,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 110,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "515880",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.012273060809851612,
+              "dif": -0.0474426261573383,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.0034806694729799387,
+              "previous_dif": -0.035061100792580735,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512100",
+            "daily": {
+              "average_volume20": 19504514.15,
+              "close": 2.644,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 2.943833333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.65,
+              "previous_ma": 2.9516166666666668,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 11702460.0,
+              "volume_ok": false,
+              "volume_ratio": 0.6,
+              "volume_ratio_raw": 0.5999872598723511,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 107,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 109,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512100",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.0894971687415794,
+              "dif": -0.14239414006867968,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.07627292590980432,
+              "previous_dif": -0.13247325404712562,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "510050",
+            "daily": {
+              "average_volume20": 11844017.2,
+              "close": 2.909,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 2.959883333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.902,
+              "previous_ma": 2.9625,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 5366639.0,
+              "volume_ok": false,
+              "volume_ratio": 0.45,
+              "volume_ratio_raw": 0.4531096932213169,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 111,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 113,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "510050",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.025221653813874555,
+              "dif": -0.03759824958939806,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.022127504869993677,
+              "previous_dif": -0.0377269711447652,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159949",
+            "daily": {
+              "average_volume20": 22893178.55,
+              "close": 1.102,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.4557833333333334,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.104,
+              "previous_ma": 1.4654,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 15708880.0,
+              "volume_ok": false,
+              "volume_ratio": 0.69,
+              "volume_ratio_raw": 0.6861816923189986,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 105,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 107,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159949",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.07334561335080043,
+              "dif": -0.13664508134101783,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.05752074635324608,
+              "previous_dif": -0.1195904873932867,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "513050",
+            "daily": {
+              "average_volume20": 19395935.35,
+              "close": 1.02,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.0309666666666666,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.026,
+              "previous_ma": 1.0332999999999999,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 22000351.0,
+              "volume_ok": false,
+              "volume_ratio": 1.13,
+              "volume_ratio_raw": 1.134276362701941,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 106,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 108,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "513050",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.06723782700029395,
+              "dif": -0.06305484015541674,
+              "evaluated": true,
+              "golden_cross": true,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": true,
+              "previous_dea": -0.06828357371151325,
+              "previous_dif": -0.06912612338701773,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [],
+              "triggered": true,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512050",
+            "daily": {
+              "average_volume20": 12355538.7,
+              "close": 1.05,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.1521166666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.049,
+              "previous_ma": 1.1552833333333334,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 8406252.0,
+              "volume_ok": false,
+              "volume_ratio": 0.68,
+              "volume_ratio_raw": 0.6803630504593053,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 94,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 96,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512050",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.026105164889278394,
+              "dif": -0.04580309146256023,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.021180683245957933,
+              "previous_dif": -0.04187481898835643,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159941",
+            "daily": {
+              "average_volume20": 7412601.9,
+              "close": 1.572,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.6734666666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.582,
+              "previous_ma": 1.6753833333333332,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 6273933.0,
+              "volume_ok": false,
+              "volume_ratio": 0.85,
+              "volume_ratio_raw": 0.8463874203199824,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 81,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 83,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159941",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.05588038718330874,
+              "dif": 0.04057408806210572,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.05970696196360949,
+              "previous_dif": 0.05211221095094465,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512800",
+            "daily": {
+              "average_volume20": 14176155.5,
+              "close": 0.885,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 0.8448,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.877,
+              "previous_ma": 0.8433499999999999,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 20056448.0,
+              "volume_ok": false,
+              "volume_ratio": 1.41,
+              "volume_ratio_raw": 1.4148016364521396,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 83,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 85,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512800",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.014940103320412127,
+              "dif": 0.021091597016827945,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": 0.013402229896308172,
+              "previous_dif": 0.020020435879490317,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "515050",
+            "daily": {
+              "average_volume20": 10775464.25,
+              "close": 0.65,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.9330333333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.637,
+              "previous_ma": 0.9395833333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 9319441.0,
+              "volume_ok": false,
+              "volume_ratio": 0.86,
+              "volume_ratio_raw": 0.8648760539482092,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 108,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 110,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "515050",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.013052677079446875,
+              "dif": -0.06799347160740155,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.000682521552541792,
+              "previous_dif": -0.04942568475730791,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "515220",
+            "daily": {
+              "average_volume20": 5516965.25,
+              "close": 1.209,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.2664000000000002,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.169,
+              "previous_ma": 1.2668166666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 6507558.0,
+              "volume_ok": false,
+              "volume_ratio": 1.18,
+              "volume_ratio_raw": 1.1795539223307596,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 107,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 109,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "515220",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.018905394481092856,
+              "dif": 0.008201314946770788,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.02158141436467337,
+              "previous_dif": 0.01589251982860529,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512400",
+            "daily": {
+              "average_volume20": 3548070.25,
+              "close": 1.457,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.6771333333333334,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.448,
+              "previous_ma": 1.6846,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 2652088.0,
+              "volume_ok": false,
+              "volume_ratio": 0.75,
+              "volume_ratio_raw": 0.7474733624566763,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 89,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 91,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512400",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.06884835900047828,
+              "dif": -0.10377914711558289,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.06011566197170212,
+              "previous_dif": -0.09651770487674649,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159985",
+            "daily": {
+              "average_volume20": 1117153.5,
+              "close": 2.11,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 2.244066666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.107,
+              "previous_ma": 2.244316666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 723994.0,
+              "volume_ok": false,
+              "volume_ratio": 0.65,
+              "volume_ratio_raw": 0.6480702965169961,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 84,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 87,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159985",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.04693032092701079,
+              "dif": 0.028294335524123415,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.05158931727773264,
+              "previous_dif": 0.04104140541103796,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "510880",
+            "daily": {
+              "average_volume20": 1885067.4,
+              "close": 3.402,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 3.396066666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 3.371,
+              "previous_ma": 3.394066666666667,
+              "price_cross": true,
+              "reason_codes": [
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 2783951.0,
+              "volume_ok": false,
+              "volume_ratio": 1.48,
+              "volume_ratio_raw": 1.4768442762311842,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 104,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 106,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "510880",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.054906022155277366,
+              "dif": 0.05562451140404168,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": 0.05472639984308629,
+              "previous_dif": 0.05986191291581422,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159819",
+            "daily": {
+              "average_volume20": 2726746.85,
+              "close": 1.369,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.6343999999999999,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.358,
+              "previous_ma": 1.6426833333333335,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 2051715.0,
+              "volume_ok": false,
+              "volume_ratio": 0.75,
+              "volume_ratio_raw": 0.7524405868480236,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 76,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 78,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159819",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.033545773838588755,
+              "dif": -0.0918925682594176,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.018959075233381535,
+              "previous_dif": -0.07691843240853458,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "562500",
+            "daily": {
+              "average_volume20": 7723865.05,
+              "close": 0.874,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.9110666666666666,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.862,
+              "previous_ma": 0.9135166666666665,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 7243035.0,
+              "volume_ok": false,
+              "volume_ratio": 0.94,
+              "volume_ratio_raw": 0.9377474817481437,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 73,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 74,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "562500",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.042374848438675526,
+              "dif": -0.05351814921697351,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.03958902324410103,
+              "previous_dif": -0.054345376591103944,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512010",
+            "daily": {
+              "average_volume20": 10596903.45,
+              "close": 0.39,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 0.3815,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.393,
+              "previous_ma": 0.38159999999999994,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 5340875.0,
+              "volume_ok": false,
+              "volume_ratio": 0.5,
+              "volume_ratio_raw": 0.5040033652472318,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 78,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 81,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512010",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.0013931407785495898,
+              "dif": 0.002973109757238024,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": 0.0009981485338774812,
+              "previous_dif": 0.0016901322406046027,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159869",
+            "daily": {
+              "average_volume20": 5070875.65,
+              "close": 1.048,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.0687833333333332,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.068,
+              "previous_ma": 1.0701666666666665,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 4693299.0,
+              "volume_ok": false,
+              "volume_ratio": 0.93,
+              "volume_ratio_raw": 0.9255401480807363,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 130,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 132,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159869",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.0667670950541208,
+              "dif": -0.06159373639136234,
+              "evaluated": true,
+              "golden_cross": true,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": true,
+              "previous_dea": -0.06806043471981041,
+              "previous_dif": -0.06842021905386209,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [],
+              "triggered": true,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512690",
+            "daily": {
+              "average_volume20": 13683235.3,
+              "close": 0.446,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 0.4235499999999999,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.448,
+              "previous_ma": 0.42336666666666667,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 6598441.0,
+              "volume_ok": false,
+              "volume_ratio": 0.48,
+              "volume_ratio_raw": 0.4822281321143399,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 71,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 73,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512690",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.017866297538248192,
+              "dif": -0.011347746871305797,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.019495935204983793,
+              "previous_dif": -0.014493381583654652,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "515080",
+            "daily": {
+              "average_volume20": 2494594.85,
+              "close": 1.574,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 1.5662166666666666,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.563,
+              "previous_ma": 1.5657166666666666,
+              "price_cross": true,
+              "reason_codes": [
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 1603635.0,
+              "volume_ok": false,
+              "volume_ratio": 0.64,
+              "volume_ratio_raw": 0.6428438670111101,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 80,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 82,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "515080",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.006656165399235163,
+              "dif": 0.00821525816700519,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": 0.006266392207292654,
+              "previous_dif": 0.008154078518423535,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159611",
+            "daily": {
+              "average_volume20": 3044089.95,
+              "close": 1.047,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 1.0408,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 1.044,
+              "previous_ma": 1.041,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 2844064.0,
+              "volume_ok": false,
+              "volume_ratio": 0.93,
+              "volume_ratio_raw": 0.9342903944083518,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 75,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 77,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159611",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.012963320884695814,
+              "dif": -0.013338456772600482,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.012869536912719646,
+              "previous_dif": -0.014747536362758717,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159755",
+            "daily": {
+              "average_volume20": 4567682.9,
+              "close": 0.771,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.8622333333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.784,
+              "previous_ma": 0.8656166666666666,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 3722153.0,
+              "volume_ok": false,
+              "volume_ratio": 0.81,
+              "volume_ratio_raw": 0.8148886605066213,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 108,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 110,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159755",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.06372589790367975,
+              "dif": -0.07786892260615219,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.06019014172806163,
+              "previous_dif": -0.07837148425994234,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159901",
+            "daily": {
+              "average_volume20": 1339544.35,
+              "close": 2.827,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 3.331366666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.825,
+              "previous_ma": 3.3461166666666666,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 1155215.0,
+              "volume_ok": false,
+              "volume_ratio": 0.86,
+              "volume_ratio_raw": 0.8623939924049546,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 82,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 84,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159901",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.11245706142747912,
+              "dif": -0.20573882354535344,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.08913662089801053,
+              "previous_dif": -0.18327020701951868,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "513500",
+            "daily": {
+              "average_volume20": 1554276.25,
+              "close": 2.604,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 2.6793,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.588,
+              "previous_ma": 2.6808166666666664,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 1015283.0,
+              "volume_ok": false,
+              "volume_ratio": 0.65,
+              "volume_ratio_raw": 0.6532191429934029,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 74,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 76,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "513500",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.06371117330189856,
+              "dif": 0.047740372328025416,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.06770387354536683,
+              "previous_dif": 0.057293253819057366,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512980",
+            "daily": {
+              "average_volume20": 5717071.15,
+              "close": 0.829,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 0.8163666666666667,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.841,
+              "previous_ma": 0.8170000000000001,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 7202432.0,
+              "volume_ok": false,
+              "volume_ratio": 1.26,
+              "volume_ratio_raw": 1.259811503307948,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 75,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 77,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512980",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.04361287628917434,
+              "dif": -0.0378021879626389,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.045065548370808194,
+              "previous_dif": -0.044262018614061094,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512200",
+            "daily": {
+              "average_volume20": 1185513.0,
+              "close": 1.129,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.2099833333333334,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.142,
+              "previous_ma": 1.2112833333333335,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 1515277.0,
+              "volume_ok": false,
+              "volume_ratio": 1.28,
+              "volume_ratio_raw": 1.278161437284956,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 108,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 110,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512200",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.047835553171064804,
+              "dif": -0.04768371043045394,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.04787351385621751,
+              "previous_dif": -0.04550861677716611,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159870",
+            "daily": {
+              "average_volume20": 3489913.05,
+              "close": 0.692,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 0.7569333333333333,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 0.701,
+              "previous_ma": 0.7591666666666668,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 2842912.0,
+              "volume_ok": false,
+              "volume_ratio": 0.81,
+              "volume_ratio_raw": 0.8146082607989331,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 80,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 82,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159870",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.02739051660331983,
+              "dif": -0.03818555048653727,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.02469175813251547,
+              "previous_dif": -0.03764299731959886,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "512660",
+            "daily": {
+              "average_volume20": 3343527.8,
+              "close": 1.032,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.1031166666666665,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.021,
+              "previous_ma": 1.1051499999999999,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 4028601.0,
+              "volume_ok": false,
+              "volume_ratio": 1.2,
+              "volume_ratio_raw": 1.2048953204456683,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 81,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 83,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "512660",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.05810587688503418,
+              "dif": -0.06632728024064782,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.05605052604613076,
+              "previous_dif": -0.06499203796243735,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "513520",
+            "daily": {
+              "average_volume20": 1234683.0,
+              "close": 2.027,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 2.2615166666666666,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 2.013,
+              "previous_ma": 2.2657999999999996,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 1359819.0,
+              "volume_ok": false,
+              "volume_ratio": 1.1,
+              "volume_ratio_raw": 1.1013507110732066,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 91,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 93,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "513520",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": 0.05225316731607087,
+              "dif": 0.014237889305155349,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": 0.06175698681879974,
+              "previous_dif": 0.036619363273106664,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159928",
+            "daily": {
+              "average_volume20": 6592542.4,
+              "close": 0.703,
+              "close_above_ma": true,
+              "evaluated": true,
+              "ma": 0.6682000000000001,
+              "ma_period": 60,
+              "previous_at_or_below_ma": false,
+              "previous_close": 0.708,
+              "previous_ma": 0.6676833333333333,
+              "price_cross": false,
+              "reason_codes": [
+                "previous_close_above_ma",
+                "volume_below_threshold"
+              ],
+              "triggered": false,
+              "volume": 4116904.0,
+              "volume_ok": false,
+              "volume_ratio": 0.62,
+              "volume_ratio_raw": 0.624478956707203,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 82,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 84,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159928",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.01811712652680437,
+              "dif": -0.009684733187202976,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": true,
+              "previous_at_or_below": false,
+              "previous_dea": -0.020225224861704718,
+              "previous_dif": -0.014157033023945442,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          },
+          {
+            "code": "159920",
+            "daily": {
+              "average_volume20": 1570214.0,
+              "close": 1.441,
+              "close_above_ma": false,
+              "evaluated": true,
+              "ma": 1.4485500000000002,
+              "ma_period": 60,
+              "previous_at_or_below_ma": true,
+              "previous_close": 1.442,
+              "previous_ma": 1.4496166666666668,
+              "price_cross": false,
+              "reason_codes": [
+                "close_not_above_ma"
+              ],
+              "triggered": false,
+              "volume": 2420722.0,
+              "volume_ok": true,
+              "volume_ratio": 1.54,
+              "volume_ratio_raw": 1.541651010626577,
+              "volume_threshold": 1.5
+            },
+            "data": {
+              "data_date": "2026-11-09",
+              "minimum_rows": 65,
+              "ready": true,
+              "reason_codes": [],
+              "required_date": "2026-11-09",
+              "rows": 280,
+              "source_attempts": {
+                "attempts": [
+                  {
+                    "elapsed_ms": 0,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": null,
+                    "rejection": "unknown",
+                    "route": "cache",
+                    "rows": 0,
+                    "source": "parquet",
+                    "state": "empty"
+                  },
+                  {
+                    "elapsed_ms": 84,
+                    "error_type": "",
+                    "http_status": 200,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "session",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  },
+                  {
+                    "elapsed_ms": 86,
+                    "error_type": "",
+                    "http_status": null,
+                    "latest_date": "2026-11-09",
+                    "rejection": "ready",
+                    "route": "adapter",
+                    "rows": 280,
+                    "source": "eastmoney_push2his",
+                    "state": "ready"
+                  }
+                ],
+                "code": "159920",
+                "dropped": 0,
+                "required_date": "2026-11-09",
+                "response_origin": "unknown",
+                "route_semantics": "application_phase_not_network_attestation",
+                "schema_version": "quant.kline-source-attempts.v1"
+              }
+            },
+            "weekly": {
+              "completed_bars": 60,
+              "dea": -0.02337778714003292,
+              "dif": -0.027852474059022914,
+              "evaluated": true,
+              "golden_cross": false,
+              "minimum_bars": 35,
+              "now_above": false,
+              "previous_at_or_below": true,
+              "previous_dea": -0.02225911541028542,
+              "previous_dif": -0.031290766720518004,
+              "previous_week_date": "2026-10-30",
+              "reason_codes": [
+                "no_weekly_golden_cross"
+              ],
+              "triggered": false,
+              "week_date": "2026-11-06"
+            }
+          }
+        ]
+      },
+      "truncated": true
+    },
+    "evaluated_count": 40,
+    "failed_count": 0,
+    "id": 70,
+    "reason_codes": [],
+    "run_id": "e5380dcf5c8b4709ab4a7e6b30e19a62",
+    "signal_count": 2,
+    "started_at": "2026-11-09T07:30:02.234690Z",
+    "status": "success",
+    "target_count": 40
+  }
+]

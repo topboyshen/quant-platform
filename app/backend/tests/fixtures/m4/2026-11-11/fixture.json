@@ -1,0 +1,29 @@
+{
+  "attempts": 1,
+  "decision_date": "2026-11-11",
+  "digest": true,
+  "first_run": {
+    "decision_outcome": "blocked",
+    "run_id": "a24840de772b45f2916c655960992019",
+    "status": "success"
+  },
+  "intake": 0,
+  "latest_run": {
+    "allowed_signal_count": 0,
+    "blocked_signal_count": 2,
+    "decision_outcome": "blocked",
+    "evaluated_count": 40,
+    "failed_count": 0,
+    "reason_codes": [],
+    "run_id": "a24840de772b45f2916c655960992019",
+    "signal_count": 2,
+    "status": "success",
+    "target_count": 40
+  },
+  "notes": "trend_signals reconstructed from target_decisions.raw_signals: legacy migrated this same data bar to 2026-11-12 after the window",
+  "notifications": 0,
+  "outcomes": 0,
+  "source": "Ubuntu-nnG8:/home/ubuntu/trading-radar (read-only export)",
+  "target_decisions": 40,
+  "trend_signals": 2
+}

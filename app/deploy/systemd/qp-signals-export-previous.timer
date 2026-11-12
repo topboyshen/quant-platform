@@ -1,0 +1,12 @@
+[Unit]
+Description=quant-platform M4 previous-day legacy export after the 08:35 digest (08:45 CST)
+
+[Timer]
+# Tue..Sat covers Monday..Friday decision dates; Sunday has no digest or EOD run.
+OnCalendar=Tue..Sat *-*-* 08:45:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-signals-export@yesterday.service
+
+[Install]
+WantedBy=timers.target

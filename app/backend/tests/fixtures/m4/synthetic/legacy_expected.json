@@ -1,0 +1,892 @@
+{
+  "generator": "tests/fixtures/m4/synthetic/generate_legacy.py",
+  "legacy_source": {
+    "radar/swing/trend_strategy.py": "c47b90a4a1f0d19aaf07af403d6d4bd3cd8ca96bf4578a51734090b852f00ed7",
+    "radar_swing_eod.py": "b98f64c9643f3e57de121e49b26d61be506066a5623db8ab1bbfce27f710f708"
+  },
+  "risk_gate": {
+    "cases": [
+      {
+        "expected": {
+          "allowed": [
+            "510300",
+            "159915",
+            "512480",
+            "513050",
+            "518880"
+          ],
+          "blocked": []
+        },
+        "level": "ok",
+        "risk_state": {
+          "level": "ok"
+        }
+      },
+      {
+        "expected": {
+          "allowed": [
+            "510300",
+            "159915",
+            "512480",
+            "513050",
+            "518880"
+          ],
+          "blocked": []
+        },
+        "level": "OK",
+        "risk_state": {
+          "level": "OK"
+        }
+      },
+      {
+        "expected": {
+          "allowed": [
+            "510300",
+            "518880"
+          ],
+          "blocked": [
+            "159915",
+            "512480",
+            "513050"
+          ]
+        },
+        "level": "growth_blocked",
+        "risk_state": {
+          "level": "growth_blocked"
+        }
+      },
+      {
+        "expected": {
+          "allowed": [],
+          "blocked": [
+            "510300",
+            "159915",
+            "512480",
+            "513050",
+            "518880"
+          ]
+        },
+        "level": "critical",
+        "risk_state": {
+          "level": "critical"
+        }
+      },
+      {
+        "expected": {
+          "allowed": [],
+          "blocked": [
+            "510300",
+            "159915",
+            "512480",
+            "513050",
+            "518880"
+          ]
+        },
+        "level": "warning",
+        "risk_state": {
+          "level": "warning"
+        }
+      },
+      {
+        "expected": {
+          "allowed": [],
+          "blocked": [
+            "510300",
+            "159915",
+            "512480",
+            "513050",
+            "518880"
+          ]
+        },
+        "level": "unavailable",
+        "risk_state": {
+          "level": "unavailable"
+        }
+      },
+      {
+        "expected": {
+          "allowed": [],
+          "blocked": [
+            "510300",
+            "159915",
+            "512480",
+            "513050",
+            "518880"
+          ]
+        },
+        "level": "unknown",
+        "risk_state": {
+          "level": "something_new"
+        }
+      },
+      {
+        "expected": {
+          "allowed": [],
+          "blocked": [
+            "510300",
+            "159915",
+            "512480",
+            "513050",
+            "518880"
+          ]
+        },
+        "level": "missing",
+        "risk_state": null
+      },
+      {
+        "expected": {
+          "allowed": [],
+          "blocked": [
+            "510300",
+            "159915",
+            "512480",
+            "513050",
+            "518880"
+          ]
+        },
+        "level": "missing_level",
+        "risk_state": {}
+      }
+    ],
+    "targets": [
+      {
+        "code": "510300",
+        "name": "沪深300ETF",
+        "sector": "宽基"
+      },
+      {
+        "code": "159915",
+        "name": "创业板ETF",
+        "sector": "成长"
+      },
+      {
+        "code": "512480",
+        "name": "半导体ETF",
+        "sector": "行业"
+      },
+      {
+        "code": "513050",
+        "name": "中概互联网ETF",
+        "sector": "港股科技"
+      },
+      {
+        "code": "518880",
+        "name": "黄金ETF",
+        "sector": "避险"
+      }
+    ]
+  },
+  "schema_version": "1.0",
+  "volume_breakout": {
+    "bars": [
+      {
+        "close": 100.0,
+        "date": "2026-05-01",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-02",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-03",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-04",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-05",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-06",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-07",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-08",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-09",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-10",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-11",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-12",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-13",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-14",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-15",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-16",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-17",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-18",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-19",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-20",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-21",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-22",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-23",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-24",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-25",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-26",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-27",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-28",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-29",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-30",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-05-31",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-01",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-02",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-03",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-04",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-05",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-06",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-07",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-08",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-09",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-10",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-11",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-12",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-13",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-14",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-15",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-16",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-17",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-18",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-19",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-20",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-21",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-22",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-23",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-24",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-25",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-26",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-27",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-28",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-29",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-06-30",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-01",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-02",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-03",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-04",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-05",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-06",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-07",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-08",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-09",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-10",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-11",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-12",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-13",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-14",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-15",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-16",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 100.0,
+        "date": "2026-07-17",
+        "high": 100.0,
+        "low": 100.0,
+        "open": 100.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 99.0,
+        "date": "2026-07-18",
+        "high": 99.0,
+        "low": 99.0,
+        "open": 99.0,
+        "volume": 1000.0
+      },
+      {
+        "close": 101.0,
+        "date": "2026-07-19",
+        "high": 101.0,
+        "low": 101.0,
+        "open": 101.0,
+        "volume": 3000.0
+      }
+    ],
+    "code": "510300",
+    "daily_breakout_enabled": true,
+    "diagnostics": {
+      "code": "510300",
+      "daily": {
+        "average_volume20": 1000.0,
+        "close": 101.0,
+        "close_above_ma": true,
+        "evaluated": true,
+        "ma": 100.0,
+        "ma_period": 60,
+        "previous_at_or_below_ma": true,
+        "previous_close": 99.0,
+        "previous_ma": 99.98333333333333,
+        "price_cross": true,
+        "reason_codes": [],
+        "triggered": true,
+        "volume": 3000.0,
+        "volume_ok": true,
+        "volume_ratio": 3.0,
+        "volume_ratio_raw": 3.0,
+        "volume_threshold": 1.5
+      },
+      "data": {
+        "data_date": "2026-07-19",
+        "minimum_rows": 65,
+        "ready": true,
+        "reason_codes": [],
+        "required_date": null,
+        "rows": 80
+      },
+      "weekly": {
+        "completed_bars": 12,
+        "dea": null,
+        "dif": null,
+        "evaluated": false,
+        "golden_cross": null,
+        "minimum_bars": 35,
+        "now_above": null,
+        "previous_at_or_below": null,
+        "previous_dea": null,
+        "previous_dif": null,
+        "previous_week_date": "2026-07-10",
+        "reason_codes": [
+          "insufficient_completed_weeks"
+        ],
+        "triggered": null,
+        "week_date": "2026-07-17"
+      }
+    },
+    "expected_signals": [
+      {
+        "code": "510300",
+        "confidence": 0.55,
+        "detail": {
+          "close": 101.0,
+          "data_date": "2026-07-19",
+          "ma60": 100.0,
+          "volume_ratio": 3.0,
+          "volume_threshold": 1.5
+        },
+        "name": "沪深300ETF",
+        "period": "D",
+        "signal_type": "volume_breakout_ma60",
+        "title": "沪深300ETF 放量突破 MA60"
+      }
+    ],
+    "name": "沪深300ETF"
+  }
+}

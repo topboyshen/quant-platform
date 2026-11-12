@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform M4 shadow swing outcome collection at 16:10 CST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 16:10:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@signals.outcomes.service
+
+[Install]
+WantedBy=timers.target

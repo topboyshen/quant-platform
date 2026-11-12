@@ -1,0 +1,12 @@
+[Unit]
+Description=quant-platform M4 legacy export before/after the 15:30 EOD (15:55,16:20 CST)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 15:55:00 Asia/Shanghai
+OnCalendar=Mon..Fri *-*-* 16:20:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-signals-export@today.service
+
+[Install]
+WantedBy=timers.target

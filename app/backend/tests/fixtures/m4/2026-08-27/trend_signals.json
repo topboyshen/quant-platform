@@ -1,0 +1,27 @@
+[
+  {
+    "code": "512000",
+    "confidence": 0.55,
+    "created_at": "2026-08-27 07:30:35",
+    "data_date": "2026-08-26",
+    "date": "2026-08-27",
+    "detail": {
+      "close": 0.523,
+      "data_date": "2026-08-26",
+      "ma60": 0.5227,
+      "risk_gate": {
+        "blocked": false,
+        "level": "growth_blocked",
+        "message": "GROWTH_BLOCK: 核心约束收紧\n触发条件: 美债10Y=4.64% >= 4.55%\n建议：无条件挂起（Suspend）所有高估值成长股买入指令，资金向红利/低波动核心资产（沪深300稳定器）收敛"
+      },
+      "volume_ratio": 1.7,
+      "volume_threshold": 1.5
+    },
+    "id": 2,
+    "name": "券商ETF",
+    "notified_at": null,
+    "period": "D",
+    "signal_type": "volume_breakout_ma60",
+    "title": "券商ETF 放量突破 MA60"
+  }
+]

@@ -1,0 +1,51 @@
+{
+  "decision_date": "2026-11-09",
+  "exported_at": "2026-11-12T05:50:00+00:00",
+  "exporter": "qp.collect.signals/1",
+  "files": {
+    "digest.json": {
+      "bytes": 849,
+      "sha256": "356d52201948c69e0175df6780c3f0340d157f6b82394c313b173c29f35b4a4f"
+    },
+    "eod_run.json": {
+      "bytes": 136332,
+      "sha256": "b3f26fb7fc7c45a52b8156b4c3ac624738fcc9e3f757c225bce8d23e3a4f8a6c"
+    },
+    "intake.json": {
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    "macro_slice.json": {
+      "bytes": 1100,
+      "sha256": "cbbb4be7f8a108f8109fa8811cb9042e5160fba17aacf8d41e3c1c74cef30c12"
+    },
+    "notifications.json": {
+      "bytes": 55,
+      "sha256": "7b02be1a50e588c84fe6d2716635cd873933fcff00cc18ae0d12af0355f13df8"
+    },
+    "outcomes.json": {
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    "risk_snapshot.json": {
+      "bytes": 1283,
+      "sha256": "b445e94f5471ae528bd9fcdf5262120aa0c38c7996e859b2860ee9d723a32d57"
+    },
+    "risk_state.json": {
+      "bytes": 939,
+      "sha256": "b8d6d1a3573da6b9c80a975929f0a2d1ebc0f41cfa40e23c1c933ac576b3eac0"
+    },
+    "target_decisions.json": {
+      "bytes": 30091,
+      "sha256": "46226bd707eb3456809d31b6dc66a2c217afb141dd3bd6f4d8779138c6f2405e"
+    },
+    "trend_signals.json": {
+      "bytes": 943,
+      "sha256": "9ecfd7bb581820894771bc087670e788cb1388f086c044579d8f17e15e000ddf"
+    }
+  },
+  "missing": [],
+  "ok": true,
+  "schema_version": "1.0",
+  "source_mtime": {}
+}

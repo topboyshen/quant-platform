@@ -1,0 +1,47 @@
+{
+  "created_at": "2026-08-27 07:30:20",
+  "date": "2026-08-27",
+  "extra": {
+    "collect_status": {
+      "limit_ratio": {
+        "anomalous": false,
+        "available": true,
+        "message": "",
+        "observed_date": "2026-08-27",
+        "source": "akshare",
+        "stale": false
+      },
+      "margin_balance": {
+        "anomalous": false,
+        "available": false,
+        "message": "没有最近完整沪深同日两融余额",
+        "observed_date": null,
+        "source": "akshare",
+        "stale": false
+      },
+      "margin_growth_pct": {
+        "anomalous": false,
+        "available": false,
+        "message": "两融余额和增速所有数据源均失败",
+        "observed_date": null,
+        "source": "akshare/mx",
+        "stale": false
+      },
+      "total_amount": {
+        "anomalous": false,
+        "available": false,
+        "message": "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",
+        "observed_date": null,
+        "source": "tencent/akshare/eastmoney",
+        "stale": false
+      }
+    }
+  },
+  "limit_down": 2,
+  "limit_ratio": 25.667,
+  "limit_up": 77,
+  "margin_balance": null,
+  "margin_growth_pct": null,
+  "source": "akshare",
+  "total_amount": null
+}

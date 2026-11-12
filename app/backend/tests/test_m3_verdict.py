@@ -444,10 +444,12 @@ def test_qlib_source_stale_check_is_unknown(engine, monkeypatch):
         assert "超过 26h" in summary and detail["age_hours"] > 26
 
 
-def test_sources_reachable_uses_peer_fallback(engine):
+def test_sources_reachable_uses_peer_fallback(engine, monkeypatch):
     """Tencent/Dolt failures are degraded, not blocking, when their peer is reachable."""
-    from qp.jobs.market import health
+    from qp.jobs import market as m
 
+    monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.timezone.utc))
+    health = m.health
     with Session(engine) as s:
         _wipe(s)
         _source_rows(s, {"tencent", "dolt"})
@@ -459,10 +461,12 @@ def test_sources_reachable_uses_peer_fallback(engine):
         assert "降级" in summary and "tencent->sina" in summary and "dolt->github_release" in summary
 
 
-def test_sources_reachable_marks_display_roles(engine):
+def test_sources_reachable_marks_display_roles(engine, monkeypatch):
     """The dashboard needs to know which raw failure is on the active vs fallback path."""
-    from qp.jobs.market import health
+    from qp.jobs import market as m
 
+    monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.timezone.utc))
+    health = m.health
     with Session(engine) as s:
         _wipe(s)
         _source_rows(s, set())
@@ -479,10 +483,12 @@ def test_sources_reachable_marks_display_roles(engine):
         assert detail["baostock"]["role"] == "optional"
 
 
-def test_sources_reachable_both_peers_fail_is_warning(engine):
+def test_sources_reachable_both_peers_fail_is_warning(engine, monkeypatch):
     """If neither path of a source pair is reachable, the check must stay warning."""
-    from qp.jobs.market import health
+    from qp.jobs import market as m
 
+    monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.timezone.utc))
+    health = m.health
     with Session(engine) as s:
         _wipe(s)
         _source_rows(s, {"tencent", "sina", "dolt", "github_release"})

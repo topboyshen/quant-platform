@@ -1,0 +1,26 @@
+[
+  {
+    "code": "518880",
+    "confidence": 0.6,
+    "created_at": "2026-08-21 07:30:19",
+    "data_date": "2026-08-21",
+    "date": "2026-08-21",
+    "detail": {
+      "data_date": "2026-08-21",
+      "dea": -0.1914,
+      "dif": -0.1842,
+      "risk_gate": {
+        "blocked": false,
+        "level": "growth_blocked",
+        "message": "GROWTH_BLOCK: 核心约束收紧\n触发条件: 美债10Y=4.70% >= 4.55%\n建议：无条件挂起（Suspend）所有高估值成长股买入指令，资金向红利/低波动核心资产（沪深300稳定器）收敛"
+      },
+      "weekly_close": 9.39
+    },
+    "id": 1,
+    "name": "黄金ETF",
+    "notified_at": "2026-08-21 07:30:22",
+    "period": "W",
+    "signal_type": "weekly_macd_golden_cross",
+    "title": "黄金ETF 周线 MACD 金叉"
+  }
+]

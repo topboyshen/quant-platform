@@ -1,0 +1,47 @@
+{
+  "created_at": "2026-11-10 07:30:06",
+  "date": "2026-11-10",
+  "extra": {
+    "collect_status": {
+      "limit_ratio": {
+        "anomalous": false,
+        "available": true,
+        "message": "",
+        "observed_date": "2026-11-10",
+        "source": "akshare",
+        "stale": false
+      },
+      "margin_balance": {
+        "anomalous": false,
+        "available": true,
+        "message": "",
+        "observed_date": "2026-11-09",
+        "source": "akshare",
+        "stale": false
+      },
+      "margin_growth_pct": {
+        "anomalous": false,
+        "available": true,
+        "message": "",
+        "observed_date": "2026-11-09",
+        "source": "akshare",
+        "stale": false
+      },
+      "total_amount": {
+        "anomalous": false,
+        "available": true,
+        "message": "",
+        "observed_date": "2026-11-10",
+        "source": "tencent",
+        "stale": false
+      }
+    }
+  },
+  "limit_down": 0,
+  "limit_ratio": 93.0,
+  "limit_up": 93,
+  "margin_balance": 22882.91,
+  "margin_growth_pct": 0.545,
+  "source": "tencent+akshare",
+  "total_amount": 15048.15
+}

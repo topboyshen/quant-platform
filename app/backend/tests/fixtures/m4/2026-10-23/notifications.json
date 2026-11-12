@@ -1,0 +1,117 @@
+{
+  "attempts": [
+    {
+      "attempt_no": 1,
+      "dispatch_id": 1,
+      "error_class": "SSLError",
+      "finished_at": "2026-10-23T07:40:05.942785Z",
+      "http_status": null,
+      "id": 1,
+      "message_id": null,
+      "outcome": "uncertain",
+      "retry_after": null,
+      "stage": "unknown",
+      "started_at": "2026-10-23T07:40:00.933417Z"
+    },
+    {
+      "attempt_no": 1,
+      "dispatch_id": 2,
+      "error_class": null,
+      "finished_at": "2026-10-23T07:50:05.161701Z",
+      "http_status": 200,
+      "id": 2,
+      "message_id": 45001,
+      "outcome": "confirmed",
+      "retry_after": null,
+      "stage": "response",
+      "started_at": "2026-10-23T07:50:01.358699Z"
+    }
+  ],
+  "dispatch": [
+    {
+      "attempts_used": 1,
+      "budget_deadline_at": "2026-10-23T07:40:40.933417Z",
+      "business_key": "v2:0002f9b27dbd945dc59245805c35058e850fbb24239f2b86ef040dce6af529d1",
+      "channel": "telegram",
+      "claim_token": "[redacted]",
+      "completed_at": "2026-10-23T07:40:05.942785Z",
+      "conflict_count": 0,
+      "created_at": "2026-10-23T07:40:00.926809Z",
+      "first_attempt_at": "2026-10-23T07:40:00.933417Z",
+      "id": 1,
+      "last_conflict_kind": null,
+      "last_conflict_sha256": null,
+      "last_error_class": "SSLError",
+      "last_http_status": null,
+      "last_outcome": "uncertain",
+      "last_retry_after": null,
+      "last_stage": "unknown",
+      "lease_expires_at": null,
+      "legacy_ref": null,
+      "max_attempts": 3,
+      "message_id": null,
+      "namespace": "watchdog:2026-10-23:failure",
+      "next_attempt_at": null,
+      "operation": "send_system_alert",
+      "payload": {
+        "args": [
+          "Swing EOD 审计异常 2026-10-23",
+          "15:40 终态检查失败：EOD 终态为 partial，outcome=data_unavailable, reasons=['trend_data_partial']\nattempts=1 first=partial/data_unavailable@2026-10-23T07:32:05.153035Z latest=partial/data_unavailable@2026-10-23T07:32:05.153035Z\n15:30 失败记录保留；15:50 仍未恢复则并入日报。请检查 stock-radar-swing-eod-retry.service、行情源和 swing_eod_run。"
+        ],
+        "kwargs": {}
+      },
+      "payload_sha256": "ac01a070ab330b8b7c217b2f3fc82a8229f1da6c5f0da64228490cb7cf948d3a",
+      "reason_code": "SSLError",
+      "receipt_at": null,
+      "review_note": "2026-11-07 复核：服务端无送达证据（SSLError、stage=unknown、无 message_id；10-23 journal 已轮转）。同内容 15:50 日报已 confirmed 送达 message_id=45001，故不补发，state 保持 uncertain。可在 Telegram 搜 2026-10-23 15:40 告警做最终确认。",
+      "reviewed_at": "2026-11-07T15:14:19.570125Z",
+      "state": "uncertain",
+      "target_alias": "telegram-default",
+      "target_digest": "383fade4650df7bc4ee1bead58f11702",
+      "updated_at": "2026-11-07T15:14:19.570125Z"
+    },
+    {
+      "attempts_used": 1,
+      "budget_deadline_at": "2026-10-23T07:50:41.358699Z",
+      "business_key": "v2:b47c7b44ee8cbb2367576b1b0964cdc490677b7f1f10fc294730c009adf874fd",
+      "channel": "telegram",
+      "claim_token": "[redacted]",
+      "completed_at": "2026-10-23T07:50:05.161701Z",
+      "conflict_count": 0,
+      "created_at": "2026-10-23T07:50:01.353930Z",
+      "first_attempt_at": "2026-10-23T07:50:01.358699Z",
+      "id": 2,
+      "last_conflict_kind": null,
+      "last_conflict_sha256": null,
+      "last_error_class": null,
+      "last_http_status": 200,
+      "last_outcome": "confirmed",
+      "last_retry_after": null,
+      "last_stage": "response",
+      "lease_expires_at": null,
+      "legacy_ref": null,
+      "max_attempts": 3,
+      "message_id": 45001,
+      "namespace": "watchdog:2026-10-23:daily",
+      "next_attempt_at": null,
+      "operation": "send_system_alert",
+      "payload": {
+        "args": [
+          "EOD 日报 2026-10-23",
+          "EOD 日报 2026-10-23 15:50\n终态：未完成 / partial\n首次：partial/data_unavailable @ 2026-10-23T07:32:05.153035Z\n最终：partial/data_unavailable @ 2026-10-23T07:32:05.153035Z\n运行解读\n- 标的行情：2/40 合格，失败 38 只\n- 宏观数据：完整\n- 信号：无触发\n- 研究资格：因批次完整性要求（partial：trend_data_partial），未计入有效样本\n逐标的：未触发2 含放行0 全拦截0 数据失败38\n合格记录（与有效性卡片同口径：allowed+有触发+批次成功+窗口/OOS）\n- T+1：n=1 胜率100.00% 净0.64% 超额1.73%\n- T+3：n=1 胜率100.00% 净0.18% 超额0.78%\n- T+5：n=1 胜率0.00% 净-0.24% 超额-0.29%\n- T+10：n=1 胜率0.00% 净-3.61% 超额-2.37%\n- T+20：n=1 胜率0.00% 净-5.19% 超额-3.09%\n- 合格1 条 / 已成熟1 条（标的 1 只）\n- 同一决策的多个持有期不是多笔交易；n 为该持有期已成熟的合格决策数。对照/数据失败仅作上下文，不计入有效性样本。\n不计入有效性样本（仅作上下文）\n- 未触发对照：517 条决策（horizon 行 1725）\n- 宏观缺失导致批次不完整：4 条\n- 数据失败：248 条决策（horizon 行 660）\n- 其他排除：窗口 0 / 非OOS 0 / 无效 0 / 批次失败 0\n宏观切片：涨停82 跌停6 成交额19562.58 来源 sina\n口径：eod_decision_outcome.net_return 已含 fees_return 与 slippage_return；基准 510300；非实盘账户\n成交接线：stub；fills=0；pnl=None；order routing stub; fills/pnl 未接线，不能当作 0 收益\n结论：当日未完成终态，不支持推荐。"
+        ],
+        "kwargs": {}
+      },
+      "payload_sha256": "2abceb6b60b6dab94ef6f373fb26550b1fb396c573fc4b4f9b6a945d438e8b21",
+      "reason_code": null,
+      "receipt_at": "2026-10-23T07:50:05.161701Z",
+      "review_note": null,
+      "reviewed_at": null,
+      "state": "confirmed",
+      "target_alias": "telegram-default",
+      "target_digest": "383fade4650df7bc4ee1bead58f11702",
+      "updated_at": "2026-10-23T07:50:05.161701Z"
+    }
+  ],
+  "outbox": []
+}

@@ -1,0 +1,105 @@
+[
+  {
+    "available_at": {
+      "crude_oil": 1793083010.6676116,
+      "us_10y": 1793086006.695106,
+      "vix": 1793086000.490758
+    },
+    "available_at_json": "{\"crude_oil\": 1793083010.6676116, \"us_10y\": 1793086006.695106, \"vix\": 1793086000.490758}",
+    "created_at": "2026-10-27T07:30:06.147238Z",
+    "decision_at": "2026-10-27T07:30:06.146542Z",
+    "level": "critical",
+    "missing_fields": [
+      "crude_oil"
+    ],
+    "missing_fields_json": "[\"crude_oil\"]",
+    "run_id": "91c45c917b4844c0aadee5f8bfaec029",
+    "snapshot_id": "955c8ce9d8674e6181e38ade730bcc7f",
+    "source_timestamps": {
+      "crude_oil": 1793082407.0,
+      "us_10y": 1792713600.0,
+      "vix": 1792713600.0
+    },
+    "source_timestamps_json": "{\"crude_oil\": 1793082407.0, \"us_10y\": 1792713600.0, \"vix\": 1792713600.0}",
+    "sources": {
+      "crude_oil": "yahoo_chart_regular_market",
+      "us_10y": "fred_dgs10_daily",
+      "vix": "fred_vixcls_daily"
+    },
+    "sources_json": "{\"crude_oil\": \"yahoo_chart_regular_market\", \"us_10y\": \"fred_dgs10_daily\", \"vix\": \"fred_vixcls_daily\"}",
+    "values": {
+      "crude_oil": null,
+      "us_10y": 5.0,
+      "vix": 19.45
+    },
+    "values_json": "{\"crude_oil\": null, \"us_10y\": 5.0, \"vix\": 19.45}"
+  },
+  {
+    "available_at": {
+      "crude_oil": 1793083010.6676116,
+      "us_10y": 1793087205.0949035,
+      "vix": 1793087199.1374319
+    },
+    "available_at_json": "{\"crude_oil\": 1793083010.6676116, \"us_10y\": 1793087205.0949035, \"vix\": 1793087199.1374319}",
+    "created_at": "2026-10-27T07:48:06.446967Z",
+    "decision_at": "2026-10-27T07:48:06.446295Z",
+    "level": "critical",
+    "missing_fields": [
+      "crude_oil"
+    ],
+    "missing_fields_json": "[\"crude_oil\"]",
+    "run_id": "a70f0003c280410888d267b93c1c279f",
+    "snapshot_id": "c97f367273944f96acfa4ff46e66f5ea",
+    "source_timestamps": {
+      "crude_oil": 1793082407.0,
+      "us_10y": 1792713600.0,
+      "vix": 1792713600.0
+    },
+    "source_timestamps_json": "{\"crude_oil\": 1793082407.0, \"us_10y\": 1792713600.0, \"vix\": 1792713600.0}",
+    "sources": {
+      "crude_oil": "yahoo_chart_regular_market",
+      "us_10y": "fred_dgs10_daily",
+      "vix": "fred_vixcls_daily"
+    },
+    "sources_json": "{\"crude_oil\": \"yahoo_chart_regular_market\", \"us_10y\": \"fred_dgs10_daily\", \"vix\": \"fred_vixcls_daily\"}",
+    "values": {
+      "crude_oil": null,
+      "us_10y": 5.0,
+      "vix": 19.45
+    },
+    "values_json": "{\"crude_oil\": null, \"us_10y\": 5.0, \"vix\": 19.45}"
+  },
+  {
+    "available_at": {
+      "crude_oil": 1793094402.7396185,
+      "us_10y": 1793094700.274995,
+      "vix": 1793094695.1043391
+    },
+    "available_at_json": "{\"crude_oil\": 1793094402.7396185, \"us_10y\": 1793094700.274995, \"vix\": 1793094695.1043391}",
+    "created_at": "2026-10-27T09:55:15.014215Z",
+    "decision_at": "2026-10-27T09:55:15.013549Z",
+    "level": "critical",
+    "missing_fields": [],
+    "missing_fields_json": "[]",
+    "run_id": "d1663d7912b14d07ac734394b0cbb369",
+    "snapshot_id": "2f143e9bbef84ab6a930f1079b69acd9",
+    "source_timestamps": {
+      "crude_oil": 1793093799.0,
+      "us_10y": 1792713600.0,
+      "vix": 1793093791.0
+    },
+    "source_timestamps_json": "{\"crude_oil\": 1793093799.0, \"us_10y\": 1792713600.0, \"vix\": 1793093791.0}",
+    "sources": {
+      "crude_oil": "yahoo_chart_regular_market",
+      "us_10y": "fred_dgs10_daily",
+      "vix": "yahoo_chart_regular_market"
+    },
+    "sources_json": "{\"crude_oil\": \"yahoo_chart_regular_market\", \"us_10y\": \"fred_dgs10_daily\", \"vix\": \"yahoo_chart_regular_market\"}",
+    "values": {
+      "crude_oil": 102.04,
+      "us_10y": 5.0,
+      "vix": 18.27
+    },
+    "values_json": "{\"crude_oil\": 102.04, \"us_10y\": 5.0, \"vix\": 18.27}"
+  }
+]
