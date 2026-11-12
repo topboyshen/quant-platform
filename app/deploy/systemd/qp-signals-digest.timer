@@ -1,8 +1,9 @@
 [Unit]
-Description=quant-platform M4 shadow previous-day execution digest at 08:35 CST (write only, no POST)
+Description=quant-platform M4 shadow previous-day execution digest daily at 08:35 CST (write only, no POST)
 
 [Timer]
-OnCalendar=Mon..Fri *-*-* 08:35:00 Asia/Shanghai
+# Daily, matching quant-execution-digest.timer: Friday's digest is produced on Saturday.
+OnCalendar=*-*-* 08:35:00 Asia/Shanghai
 AccuracySec=30s
 Persistent=false
 Unit=qp-job@signals.execution_digest.service

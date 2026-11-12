@@ -14,6 +14,7 @@ TIMERS = {
     "qp-signals-outcomes.timer": ("qp-job@signals.outcomes.service", "16:10"),
     "qp-signals-digest.timer": ("qp-job@signals.execution_digest.service", "08:35"),
 }
+DAILY_TIMERS = {"qp-signals-digest.timer"}
 EXPORT_TIMERS = {
     "qp-signals-export.timer": ("qp-signals-export@today.service", "16:20"),
     "qp-signals-export-previous.timer": ("qp-signals-export@yesterday.service", "08:45"),
@@ -32,6 +33,16 @@ def test_job_timers_target_registered_shadow_jobs():
         assert "Asia/Shanghai" in text and "Persistent=false" in text, name
         job = unit.split("@", 1)[1].removesuffix(".service")
         assert job in JOBS and job.startswith("signals."), job
+
+
+def test_digest_timer_runs_every_day_so_friday_is_covered():
+    # Legacy quant-execution-digest.timer is daily. A Mon-Fri digest at 08:35
+    # would never produce Friday's digest, because that run happens on Saturday.
+    assert "OnCalendar=*-*-* 08:35:00 Asia/Shanghai" in _read("qp-signals-digest.timer")
+    for name in TIMERS:
+        if name in DAILY_TIMERS:
+            continue
+        assert "OnCalendar=Mon..Fri *-*-*" in _read(name), name
 
 
 def test_export_timers_use_relative_dates_and_read_only_service():
