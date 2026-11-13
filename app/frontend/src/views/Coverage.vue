@@ -3,9 +3,17 @@
     <span class="muted">qp 原生数据覆盖 · 生成于 {{ fmt(cov?.at) }}</span>
     <n-grid :cols="5" :x-gap="12" responsive="screen" item-responsive>
       <n-gi span="5 m:1">
-        <n-card size="small" title="Qlib">
+        <n-card size="small">
+          <template #header>
+            <n-space align="center" size="small">
+              <span>Qlib</span>
+              <n-tag v-if="cov?.qlib?.status && cov.qlib.status !== 'current'" size="small" type="warning">{{ cov.qlib.status }}</n-tag>
+              <n-tag v-else-if="cov?.qlib?.status" size="small" type="success">current</n-tag>
+            </n-space>
+          </template>
           <n-statistic :value="cov?.qlib?.latest || '-'" />
           <div class="muted">instruments {{ cov?.qlib?.instruments ?? '-' }} · calendar {{ cov?.qlib?.calendar_days ?? '-' }} 天 · active {{ cov?.qlib?.active ?? '-' }}</div>
+          <div v-if="cov?.qlib?.target_date" class="muted">目标 {{ cov.qlib.planned_date || cov.qlib.target_date }}{{ cov.qlib.failure_stage ? ' · 失败于 ' + cov.qlib.failure_stage : '' }}</div>
         </n-card>
       </n-gi>
       <n-gi span="5 m:1">

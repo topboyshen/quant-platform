@@ -122,8 +122,14 @@ def _qp_coverage(db: Session) -> dict[str, Any]:
                        "summary": "no qlib catalog snapshot"})
     else:
         if update.get("status") not in (None, "current"):
+            stage = update.get("failureStage")
+            when = (update.get("time") or "")[:16].replace("T", " ")
             issues.append({"code": "qlib_status", "severity": "warning",
-                           "summary": f"qlib update status {update.get('status')}"})
+                           "summary": f"qlib update {update.get('status')}"
+                                      + (f" at {stage}" if stage else "")
+                                      + (f" ({when})" if when else "")
+                                      + (f"；planned {update.get('plannedDate')}" if update.get("plannedDate") else "")
+                                      + f"；数据停在 {qlib_latest}"})
         if qlib_latest is None:
             issues.append({"code": "qlib_calendar_missing", "severity": "warning",
                            "summary": "qlib calendar_last missing"})
@@ -150,7 +156,9 @@ def _qp_coverage(db: Session) -> dict[str, Any]:
         "at": utcnow().isoformat(),
         "qlib": {"latest": qlib_latest, "instruments": qd.get("instruments"),
                  "calendar_days": qd.get("calendar_days"), "active": qd.get("active_on_last"),
-                 "status": update.get("status"), "target_date": update.get("targetDate")},
+                 "status": update.get("status"), "target_date": update.get("targetDate"),
+                 "planned_date": update.get("plannedDate"), "failure_stage": update.get("failureStage"),
+                 "update_at": update.get("time"), "error": update.get("error")},
         "snapshot": {"latest": snap.get("latest"), "expected": snap.get("expected"), "lag": snap.get("lag")},
         "compare": {"compared": cmp.get("compared"), "expected": cmp.get("expected"),
                     "missing": cmp.get("missing"), "diffs": cmp.get("diffs")},

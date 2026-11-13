@@ -210,6 +210,8 @@ def test_m2_api(authed, engine, inbox):
     cov = authed.get("/api/dash/coverage").json()
     assert {"qlib", "snapshot", "compare", "index_close", "calendar", "recent", "issues"} <= set(cov)
     assert isinstance(cov["recent"], list) and isinstance(cov["issues"], list)
+    # the qlib card needs the update status/stage so an interrupted nightly is visible
+    assert {"status", "planned_date", "failure_stage", "update_at"} <= set(cov["qlib"])
 
 
 def test_tokens(authed):
