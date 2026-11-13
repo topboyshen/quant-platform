@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from qp.api.main import Principal, get_db, require_auth
+from qp.api.main import Principal, get_db, require_auth, require_scope
 from qp.models.base import utcnow
 from qp.models.market import HealthResult
 from qp.models.notify import DeliveryAttempt, Outbox
@@ -17,7 +17,7 @@ from qp.models.reports import Report
 from qp.models.signals import EodRun
 from qp.release import release_info
 
-router = APIRouter(prefix="/api/overview")
+router = APIRouter(prefix="/api/overview", dependencies=[Depends(require_scope("ops:read"))])
 
 
 @router.get("")

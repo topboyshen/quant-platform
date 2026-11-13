@@ -45,7 +45,7 @@ def _token(engine) -> str:
     import uuid
     from qp.auth.sessions import create_service_token
     with Session(engine) as s:
-        tok = create_service_token(s, f"m7-reports-{uuid.uuid4().hex[:8]}", ["ops:read"])
+        tok = create_service_token(s, f"m7-reports-{uuid.uuid4().hex[:8]}", ["reports:read"])
         s.commit()
     return tok
 

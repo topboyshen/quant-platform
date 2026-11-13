@@ -63,7 +63,7 @@ def seed(engine) -> None:
 def _token(engine) -> str:
     from qp.auth.sessions import create_service_token
     with Session(engine) as s:
-        tok = create_service_token(s, "m7-research", ["ops:read"])
+        tok = create_service_token(s, "m7-research", ["research:read"])
         s.commit()
     return tok
 

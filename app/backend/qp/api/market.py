@@ -8,12 +8,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from qp.api.main import Principal, get_db, require_auth
+from qp.api.main import Principal, get_db, require_auth, require_scope
 from qp.models.market import (AnnouncementCount, CompareResult, HealthResult, ImportLog, IndexClose, IndexMember,
                               Instrument, LegacySnapshot, MarketSummary, QlibStatus, SourceStatus, TradingDay)
 from qp.models.ops import Inventory
 
-router = APIRouter(prefix="/api/market")
+router = APIRouter(prefix="/api/market", dependencies=[Depends(require_scope("market:read"))])
 
 
 def _row(o, cols):

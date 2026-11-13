@@ -7,10 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from qp.api.main import Principal, get_db, require_auth
+from qp.api.main import Principal, get_db, require_auth, require_scope
 from qp.models.reports import Report, ReportDelivery, ReportReceipt, ReportSource
 
-router = APIRouter(prefix="/api/reports")
+router = APIRouter(prefix="/api/reports", dependencies=[Depends(require_scope("reports:read"))])
 
 
 def _report(r: Report) -> dict[str, Any]:

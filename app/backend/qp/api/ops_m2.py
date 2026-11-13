@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from qp.api.main import Principal, check_same_origin, get_db, require_auth
+from qp.api.main import Principal, check_same_origin, get_db, require_auth, require_scope
 from qp.auth.sessions import create_service_token
 from qp.models.base import utcnow
 from qp.models.core import AuditEvent, ServiceToken
@@ -34,7 +34,7 @@ def _mark_retired(inv: dict[str, Any] | None) -> dict[str, Any] | None:
                             for c in inv["data"] if isinstance(c, dict)]}
 
 
-@router.get("/ops/units")
+@router.get("/ops/units", dependencies=[Depends(require_scope("ops:read"))])
 def units(scope: str | None = None, kind: str | None = None, category: str | None = None, include_os: bool = False,
           p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     q = select(LegacyUnit).where(LegacyUnit.present.is_(True)).order_by(LegacyUnit.scope, LegacyUnit.name)
@@ -52,13 +52,13 @@ def units(scope: str | None = None, kind: str | None = None, category: str | Non
     return [{c: getattr(u, c) for c in cols} for u in db.execute(q).scalars()]
 
 
-@router.get("/ops/inventory")
+@router.get("/ops/inventory", dependencies=[Depends(require_scope("ops:read"))])
 def inventory(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
     return {k: (_mark_retired(_inv(db, k)) if k == "containers" else _inv(db, k))
             for k in ("collector", "host", "pg", "containers", "ports", "certs", "egress", "logs")}
 
 
-@router.get("/ops/alerts")
+@router.get("/ops/alerts", dependencies=[Depends(require_scope("ops:read"))])
 def alerts(state: str | None = "firing", limit: int = 200, p: Principal = Depends(require_auth),
            db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     q = select(Alert).order_by(Alert.id.desc()).limit(max(1, min(limit, 1000)))
@@ -69,7 +69,7 @@ def alerts(state: str | None = "firing", limit: int = 200, p: Principal = Depend
             for a in db.execute(q).scalars()]
 
 
-@router.get("/dash/services")
+@router.get("/dash/services", dependencies=[Depends(require_scope("ops:read"))])
 def dash_services(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
     by_cat = db.execute(select(LegacyUnit.category, LegacyUnit.kind, LegacyUnit.active_state, func.count())
                         .where(LegacyUnit.present.is_(True)).group_by(LegacyUnit.category, LegacyUnit.kind,
@@ -155,7 +155,7 @@ def _qp_coverage(db: Session) -> dict[str, Any]:
     }
 
 
-@router.get("/dash/coverage")
+@router.get("/dash/coverage", dependencies=[Depends(require_scope("ops:read"))])
 def dash_coverage(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
     return _qp_coverage(db)
 

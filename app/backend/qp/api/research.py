@@ -8,12 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from qp.api.main import Principal, get_db, require_auth
+from qp.api.main import Principal, get_db, require_auth, require_scope
 from qp.models.research import (AiMessage, AiSession, AiTask, BacktestEquity, BacktestRun,
                                 BacktestTrade, Branch, ProfitObservation, ProfitPick, ProfitRun,
                                 ProfitRunAttempt, Project)
 
-router = APIRouter(prefix="/api/research")
+router = APIRouter(prefix="/api/research", dependencies=[Depends(require_scope("research:read"))])
 
 
 def _num(value: Any) -> float | None:

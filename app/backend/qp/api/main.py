@@ -50,6 +50,7 @@ class Principal(BaseModel):
     kind: str
     name: str
     role: str | None = None
+    scopes: list[str] | None = None
 
 
 def require_auth(req: Request, db: Session = Depends(get_db)) -> Principal:
@@ -61,8 +62,17 @@ def require_auth(req: Request, db: Session = Depends(get_db)) -> Principal:
     if auth.lower().startswith("bearer "):
         tok = resolve_service_token(db, auth.split(None, 1)[1].strip())
         if tok is not None:
-            return Principal(kind="service", name=tok.name)
+            return Principal(kind="service", name=tok.name, scopes=list(tok.scopes or []))
     raise HTTPException(status_code=401, detail="unauthorized")
+
+
+def require_scope(scope: str):
+    """Service tokens are limited to their scopes; interactive user sessions are not."""
+    def dep(p: Principal = Depends(require_auth)) -> Principal:
+        if p.kind == "user" or scope in (p.scopes or []):
+            return p
+        raise HTTPException(status_code=403, detail=f"missing scope {scope}")
+    return dep
 
 
 def check_same_origin(req: Request) -> None:
@@ -140,7 +150,7 @@ def me(p: Principal = Depends(require_auth)) -> Principal:
     return p
 
 
-@app.get("/api/ops/jobs")
+@app.get("/api/ops/jobs", dependencies=[Depends(require_scope("ops:read"))])
 def ops_jobs(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     out = []
     for d in db.execute(select(JobDef).order_by(JobDef.name)).scalars():
@@ -151,7 +161,7 @@ def ops_jobs(p: Principal = Depends(require_auth), db: Session = Depends(get_db)
     return out
 
 
-@app.get("/api/ops/job-runs")
+@app.get("/api/ops/job-runs", dependencies=[Depends(require_scope("ops:read"))])
 def ops_job_runs(limit: int = 50, job: str | None = None, p: Principal = Depends(require_auth),
                  db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     q = select(JobRun).order_by(JobRun.id.desc()).limit(max(1, min(limit, 500)))
@@ -163,7 +173,7 @@ def ops_job_runs(limit: int = 50, job: str | None = None, p: Principal = Depends
             for r in db.execute(q).scalars()]
 
 
-@app.get("/api/ops/health")
+@app.get("/api/ops/health", dependencies=[Depends(require_scope("ops:read"))])
 def ops_health(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
     latest_run = db.execute(select(func.max(HealthCheck.job_run_id))).scalar_one_or_none()
     checks = []

@@ -7,12 +7,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from qp.api.main import Principal, get_db, require_auth
+from qp.api.main import Principal, get_db, require_auth, require_scope
 from qp.config import get_settings
 from qp.models.core import User
 from qp.release import release_info
 
-router = APIRouter(prefix="/api/settings")
+router = APIRouter(prefix="/api/settings", dependencies=[Depends(require_scope("ops:read"))])
 
 
 @router.get("")

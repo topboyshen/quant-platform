@@ -11,11 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from qp.api.main import Principal, get_db, require_auth
+from qp.api.main import Principal, get_db, require_auth, require_scope
 from qp.models.signals import DecisionOutcome, EodRun, TargetDecision, TrendSignal
 from qp.signals.universe import TARGETS
 
-router = APIRouter(prefix="/api/signals")
+router = APIRouter(prefix="/api/signals", dependencies=[Depends(require_scope("signals:read"))])
 DEFAULT_SHADOW_DIR = "/var/lib/qp/shadow-reports"
 
 

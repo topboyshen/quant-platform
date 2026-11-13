@@ -223,6 +223,14 @@ def test_tokens(authed):
     h = {"authorization": f"Bearer {tok}"}
     assert svc.get("/api/ops/units", headers=h).status_code == 200
     assert svc.get("/api/ops/tokens", headers=h).status_code == 403   # tokens can't manage tokens
+    # scopes are enforced: ops:read does not grant other groups
+    for p in ("/api/market/instruments", "/api/research/backtests", "/api/signals/runs", "/api/reports"):
+        assert svc.get(p, headers=h).status_code == 403, p
+    assert svc.get("/api/settings", headers=h).status_code == 200      # settings is ops:read
+    r2 = authed.post("/api/ops/tokens", json={"name": "probe-market", "scopes": ["market:read"]})
+    h2 = {"authorization": f"Bearer {r2.json()['token']}"}
+    assert svc.get("/api/market/instruments", headers=h2).status_code == 200
+    assert svc.get("/api/ops/units", headers=h2).status_code == 403
     tid = next(t["id"] for t in lst if t["name"] == "probe-m2")
     assert authed.delete(f"/api/ops/tokens/{tid}").status_code == 200
     assert svc.get("/api/ops/units", headers=h).status_code == 401
