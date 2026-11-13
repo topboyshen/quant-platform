@@ -1,5 +1,6 @@
 <template>
   <n-space vertical>
+    <n-alert type="info" :bordered="false">M4 影子验收历史报告；旧链已停止，报告中的差异属历史对比，不代表 qp 当前信号故障。</n-alert>
     <AsyncState :loading="loading" :error="error" :empty="!loading && !error && !checks.length" emptyText="未生成对比报告">
     <n-space>
       <n-date-picker v-model:value="ts" type="date" />
@@ -14,8 +15,8 @@
   </n-space>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue'
-import { NButton, NDataTable, NDatePicker, NSpace, NTag, NText } from 'naive-ui'
+import { onMounted, ref } from 'vue'
+import { NAlert, NButton, NDataTable, NDatePicker, NSpace, NTag, NText } from 'naive-ui'
 import AsyncState from '../../components/AsyncState.vue'
 import { api } from '../../api/client'
 
@@ -48,4 +49,5 @@ async function load() {
     error.value = (e as Error).message
   } finally { loading.value = false }
 }
+onMounted(load)
 </script>
