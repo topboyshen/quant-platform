@@ -38,6 +38,20 @@ CATEGORIES = [  # display only; order matters
     ("qp", r"^qp-"),
     ("ops", r"^(nng8-|quant-|mihomo|nginx|docker|postgresql)"),
 ]
+# M9: containers intentionally stopped.  They remain in the read-only inventory but
+# never page; a stopped retired container is an expected state, not a recovery claim.
+RETIRED_CONTAINERS = {
+    "radar-mihomo",
+    "radar-prometheus",
+    "radar-grafana",
+    "radar-alertmanager",
+    "radar-node-exporter",
+    "radar-quantdinger-backend",
+    "radar-quantdinger-frontend",
+    "radar-integration-api",
+    "radar-macro-risk",
+    "radar-runtime-observer",
+}
 
 
 def _ts(v: str | None) -> dt.datetime | None:
@@ -106,7 +120,7 @@ def evaluate(snap: dict, unit_rows: list[dict], age_min: float) -> list[tuple[st
                       f"{r['scope']} unit {r['name']} result={r['result']} state={r['active_state']}",
                       {"category": r["category"], "last_exit": str(r["last_exit"])}))
     for c in snap.get("containers") or []:
-        if c.get("name") == "radar-mihomo":  # retired in unify phase 1 (restart=no, profiles retired)
+        if c.get("name") in RETIRED_CONTAINERS:
             continue
         if c.get("state") != "running" or c.get("health") not in (None, "healthy"):
             f.append((f"container:{c.get('name')}", "critical" if c.get("state") != "running" else "warning",
@@ -162,8 +176,8 @@ def recovery_evidence(snap: dict, unit_rows: list[dict], age_min: float, open_ke
                 recovered.add(key)
         elif key.startswith("container:"):
             c = containers.get(key)
-            if c and c.get("name") == "radar-mihomo":
-                recovered.add(key)  # explicitly retired: an old alert is obsolete, not a recovery claim
+            if c and c.get("name") in RETIRED_CONTAINERS:
+                recovered.add(key)  # retired: an old alert is obsolete, not a recovery claim
             elif c and c.get("state") == "running" and c.get("health") in (None, "healthy"):
                 recovered.add(key)
         elif key.startswith("cert:"):
@@ -255,7 +269,7 @@ def inventory(ctx: JobContext) -> dict:
         metrics = [("legacy.units_failed", sum(1 for u in units if u["kind"] == "service" and u["category"] != "os"
                                              and (u["active_state"] == "failed" or u["result"] not in (None, "success")))),
                    ("legacy.containers_unhealthy", sum(1 for c in snap.get("containers") or []
-                                                       if c.get("name") != "radar-mihomo" and (c.get("state") != "running" or c.get("health") not in (None, "healthy")))),
+                                                       if c.get("name") not in RETIRED_CONTAINERS and (c.get("state") != "running" or c.get("health") not in (None, "healthy")))),
                    ("host.disk_free_gb", (hostd.get("disk_root") or {}).get("free_gb")),
                    ("host.mem_available_mb", (hostd.get("mem_mb") or {}).get("MemAvailable")),
                    ("pg.connections", pg["connections"])]

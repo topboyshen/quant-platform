@@ -30,7 +30,8 @@ def snap(now=None, **over):
              "result": "success", "exit_status": "0"}], "timers": []},
         "containers": [{"name": "radar-quantdinger-backend", "state": "running", "health": "healthy"},
                        {"name": "radar-mihomo", "state": "exited", "health": None},
-                       {"name": "radar-grafana", "state": "running", "health": "unhealthy"}],
+                       {"name": "radar-grafana", "state": "exited", "health": None},
+                       {"name": "radar-legacy-check", "state": "running", "health": "unhealthy"}],
         "ports": [{"addr": "127.0.0.1", "port": 18800}],
         "certs": [{"target": "443", "ok": True, "hours_left": 30.0, "not_after": "x"},
                   {"target": "8443", "ok": True, "hours_left": 88.0}],
@@ -83,7 +84,8 @@ def test_inventory_alert_lifecycle(engine, inbox):
         assert "unit:system:qd-redacted-log-root-health.service" in keys
         assert "unit:system:apt-daily.service" not in keys          # OS units ignored
         assert "container:radar-mihomo" not in keys                 # retired
-        assert keys["container:radar-grafana"] == "warning"
+        assert "container:radar-grafana" not in keys                # retired
+        assert keys["container:radar-legacy-check"] == "warning"
         assert keys["cert:443"] == "warning" and "cert:8443" not in keys
         assert "egress:gstatic_204" in keys and "egress:telegram_direct" not in keys
         assert "logs:system:noisy.service" in keys and "logs:system:ssh.service" not in keys
@@ -96,12 +98,12 @@ def test_inventory_alert_lifecycle(engine, inbox):
     # second run: same state -> no new outbox rows; then fix grafana -> resolved
     run_job(engine, "ops.inventory", trigger="test")
     fixed = snap()
-    fixed["containers"][2]["health"] = "healthy"
+    next(c for c in fixed["containers"] if c["name"] == "radar-legacy-check")["health"] = "healthy"
     inbox.write_text(json.dumps(fixed))
     run_job(engine, "ops.inventory", trigger="test")
     with Session(engine) as s:
         assert len(s.execute(select(Outbox).where(Outbox.dedup_key.like("alert:%"))).scalars().all()) == n_out
-        g = s.execute(select(Alert).where(Alert.key == "container:radar-grafana")).scalar_one()
+        g = s.execute(select(Alert).where(Alert.key == "container:radar-legacy-check")).scalar_one()
         assert g.state == "resolved" and g.resolved_at is not None
     sent = run_job(engine, "notify.send", trigger="test")
     assert sent.result["sent"] == 0
