@@ -1,0 +1,12 @@
+[Unit]
+Description=quant-platform M5 research ledger import (weekdays 09:40/16:40, read-only source)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:40:00 Asia/Shanghai
+OnCalendar=Mon..Fri *-*-* 16:40:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@research.import_ledger.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform M5 profit-research import (daily 17:45, read-only)
+
+[Timer]
+OnCalendar=*-*-* 17:45:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@research.import_profit.service
+
+[Install]
+WantedBy=timers.target

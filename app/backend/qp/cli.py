@@ -72,6 +72,36 @@ def cmd_shadow_compare(a) -> int:
     return 0
 
 
+def cmd_research_compare(a) -> int:
+    from sqlalchemy.orm import Session
+
+    from qp.db import get_engine
+    from qp.research.compare import compare_research, write_report
+    from qp.research.sources import LedgerReader, Phase2Reader, QDReader
+
+    ledger = LedgerReader(a.ledger_dsn) if a.ledger_dsn else None
+    qd = QDReader(a.qd_dsn) if a.qd_dsn else None
+    phase2 = Phase2Reader(a.phase2_db) if a.phase2_db and Path(a.phase2_db).is_file() else None
+    try:
+        with Session(get_engine()) as session:
+            result = compare_research(session, ledger=ledger, phase2=phase2, qd=qd)
+    finally:
+        for reader in (ledger, qd):
+            if reader is not None:
+                reader.close()
+    files = write_report(result, a.out) if a.out else []
+    print(json.dumps({"overall": result["overall"], "gate_ok": result["gate_ok"],
+                      "counts": result["counts"],
+                      "checks": [{"id": c["id"], "status": c["status"], "summary": c["summary"]}
+                                 for c in result["checks"]],
+                      "files": files}, ensure_ascii=False))
+    if result["overall"] == "FAIL":
+        return 1
+    if result["overall"] == "BLOCKED":
+        return 2
+    return 0
+
+
 def cmd_user_import_legacy(a) -> int:
     """Read one line '<username>\\t<password_hash>' from stdin (e.g. piped from a read-only QD query).
     Never prints the hash. Creates/updates the single core.user."""
@@ -126,6 +156,13 @@ def main(argv: list[str] | None = None) -> int:
     sc.add_argument("--out", default=None)
     sc.add_argument("--hmac-secret-file", default=None)
     sc.set_defaults(fn=cmd_shadow_compare)
+    rs = sub.add_parser("research").add_subparsers(dest="sub", required=True)
+    rc = rs.add_parser("compare")
+    rc.add_argument("--out", default=None)
+    rc.add_argument("--ledger-dsn", default=os.getenv("QP_LEDGER_DSN"))
+    rc.add_argument("--phase2-db", default=os.getenv("QP_PHASE2_DB", "/var/lib/research-system-phase2/phase2.db"))
+    rc.add_argument("--qd-dsn", default=os.getenv("QP_QD_DSN"))
+    rc.set_defaults(fn=cmd_research_compare)
     us = sub.add_parser("user").add_subparsers(dest="sub", required=True)
     il = us.add_parser("import-legacy")
     il.add_argument("--stdin", action="store_true", required=True)

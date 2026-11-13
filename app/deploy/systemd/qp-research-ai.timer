@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform M5 AI record import (daily 17:40, no LLM calls)
+
+[Timer]
+OnCalendar=*-*-* 17:40:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@research.import_ai.service
+
+[Install]
+WantedBy=timers.target

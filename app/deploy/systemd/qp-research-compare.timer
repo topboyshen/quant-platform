@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform M5 research R1-R10 comparison (daily 18:10)
+
+[Timer]
+OnCalendar=*-*-* 18:10:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@research.compare.service
+
+[Install]
+WantedBy=timers.target

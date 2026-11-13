@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform M5 phase2 lineage import (weekdays 16:45, SQLite read-only)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 16:45:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@research.import_phase2.service
+
+[Install]
+WantedBy=timers.target
