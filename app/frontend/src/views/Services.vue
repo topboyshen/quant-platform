@@ -1,21 +1,14 @@
 <template>
   <n-space vertical size="large">
     <n-card title="旧服务状态（按分类，不含系统单元）"><EChart :option="barOpt" height="320px" /></n-card>
-    <n-grid :cols="2" :x-gap="16" responsive="screen" item-responsive>
-      <n-gi span="2 m:1"><n-card title="容器健康"><EChart :option="pieOpt" height="260px" /></n-card></n-gi>
-      <n-gi span="2 m:1"><n-card title="项目版本（来自旧看板导出）">
-        <n-data-table size="small" :bordered="false" :data="versions" :columns="vCols" :max-height="240" />
-        <div class="muted">导出时间：{{ fmt(data?.projects?.data?.exportedAt) }}</div>
-      </n-card></n-gi>
-    </n-grid>
+    <n-card title="容器健康"><EChart :option="pieOpt" height="260px" /></n-card>
   </n-space>
 </template>
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { NCard, NDataTable, NGi, NGrid, NSpace } from 'naive-ui'
+import { NCard, NSpace } from 'naive-ui'
 import EChart from '../components/EChart.vue'
 import { api } from '../api/client'
-import { fmt } from '../util'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const data = ref<any>(null)
 const STATES = ['active', 'inactive', 'activating', 'failed']
@@ -42,17 +35,6 @@ const pieOpt = computed(() => {
   return { tooltip: { trigger: 'item' }, legend: { bottom: 0 },
     series: [{ type: 'pie', radius: ['40%', '70%'],
       data: entries.map(([name, value]) => ({ name, value, itemStyle: name === 'retired' ? { color: '#f0a020' } : undefined })) }] }
-})
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const versions = computed<any[]>(() => {
-  const v = data.value?.projects?.data?.versions
-  if (Array.isArray(v)) return v
-  if (v && typeof v === 'object') return Object.entries(v).map(([name, val]) => ({ name, value: typeof val === 'object' ? JSON.stringify(val) : String(val) }))
-  return []
-})
-const vCols = computed(() => {
-  const first = versions.value[0]
-  return first ? Object.keys(first).slice(0, 4).map((k) => ({ title: k, key: k, ellipsis: { tooltip: true } })) : []
 })
 onMounted(async () => { data.value = await api('/dash/services') })
 </script>

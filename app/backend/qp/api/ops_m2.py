@@ -74,8 +74,7 @@ def dash_services(p: Principal = Depends(require_auth), db: Session = Depends(ge
                         .where(LegacyUnit.present.is_(True)).group_by(LegacyUnit.category, LegacyUnit.kind,
                                                                       LegacyUnit.active_state)).all()
     return {"unit_states": [{"category": c, "kind": k, "active_state": a, "n": n} for c, k, a, n in by_cat],
-            "containers": _mark_retired(_inv(db, "containers")), "projects": _inv(db, "dash.projects"),
-            "legacy_services": _inv(db, "dash.services")}
+            "containers": _mark_retired(_inv(db, "containers"))}
 
 
 def _latest_health(db: Session, check: str) -> dict[str, Any]:

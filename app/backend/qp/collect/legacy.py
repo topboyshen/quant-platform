@@ -19,7 +19,6 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-DASH_DIR = Path(os.getenv("QP_LEGACY_DASH_DIR", "/var/lib/nng8-dashboard"))
 PROXY = os.getenv("QP_EGRESS_PROXY", "http://127.0.0.1:7890")
 CERT_TARGETS = [("443", "127.0.0.1", 443, "150.158.46.28"), ("8443", "127.0.0.1", 8443, "150.158.46.28")]
 EGRESS_TARGETS = [  # GET only; no bot token, no message - pure reachability
@@ -195,28 +194,12 @@ def host() -> dict:
             "mem_mb": mem, "load": os.getloadavg()}
 
 
-def dashboard() -> dict:
-    out = {}
-    for name in ("progress", "services", "projects"):
-        p = DASH_DIR / f"{name}.json"
-        try:
-            out[name] = json.loads(p.read_text())
-        except Exception as e:
-            out[name] = {"__error__": type(e).__name__}
-    pr = out.get("progress", {})
-    slim = {k: pr.get(k) for k in ("coverage", "coreMarket", "effectiveTradeDate", "currentIssues", "ageSeconds",
-                                   "criticalDates", "activeLastRun") if isinstance(pr, dict)}
-    pj = out.get("projects", {})
-    return {"coverage": slim, "services": out.get("services"),
-            "projects": {k: pj.get(k) for k in ("versions", "exportedAt", "stale", "readErrors")} if isinstance(pj, dict) else pj}
-
-
 def collect() -> dict:
     t0 = time.monotonic()
     snap = {"schema": "qp.legacy.v1", "collected_at": datetime.now(timezone.utc).isoformat(), "host": socket.gethostname()}
     for key, fn in (("systemd_system", lambda: systemd_scope(False)), ("systemd_user", lambda: systemd_scope(True)),
                     ("containers", containers), ("ports", ports), ("certs", certs), ("egress", egress),
-                    ("logs", log_errors), ("host", host), ("dashboard", dashboard)):
+                    ("logs", log_errors), ("host", host)):
         try:
             snap[key] = fn()
         except Exception as e:

@@ -245,9 +245,6 @@ def inventory(ctx: JobContext) -> dict:
             upsert_units(s, "user", snap.get("systemd_user") or {})
         for kind in ("containers", "ports", "certs", "egress", "logs", "host"):
             set_inventory(s, kind, at, snap.get(kind))
-        dash = snap.get("dashboard") or {}
-        for kind in ("coverage", "services", "projects"):
-            set_inventory(s, f"dash.{kind}", at, dash.get(kind))
         pg = pg_stats(s)
         set_inventory(s, "pg", utcnow(), pg)
         set_inventory(s, "collector", at, {"duration_s": snap.get("duration_s"), "host": snap.get("host"),

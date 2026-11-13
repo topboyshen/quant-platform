@@ -41,9 +41,6 @@ def snap(now=None, **over):
         "logs": {"system": {"ok": True, "window_min": 15, "counts": {"ssh.service": 3, "noisy.service": 80}, "total": 83},
                  "user": {"ok": True, "window_min": 15, "counts": {}, "total": 0}},
         "host": {"disk_root": {"free_gb": 11.2}, "mem_mb": {"MemAvailable": 2000}},
-        "dashboard": {"coverage": {"coverage": {"dates": [{"date": "2026-11-10", "classification": "complete"}],
-                                                "qlibCoverage": {"ratio": 0.98}}},
-                      "services": {"units": []}, "projects": {"versions": []}},
     }
     s.update(over)
     return s
@@ -92,7 +89,7 @@ def test_inventory_alert_lifecycle(engine, inbox):
         eod = s.get(LegacyUnit, ("system", "stock-radar-swing-eod.service"))
         assert eod.triggered_by == "stock-radar-swing-eod.timer" and eod.category == "radar"
         assert s.get(LegacyUnit, ("user", "astock-cninfo-precollect.service")).category == "morning_chain"
-        assert s.get(Inventory, "dash.coverage").data["coverage"]["qlibCoverage"]["ratio"] == 0.98
+        assert s.get(Inventory, "dash.coverage") is None
         n_out = len(s.execute(select(Outbox).where(Outbox.dedup_key.like("alert:%"))).scalars().all())
         assert n_out == len(keys) and all(o.mode == "shadow" for o in s.execute(select(Outbox)).scalars())
     # second run: same state -> no new outbox rows; then fix grafana -> resolved
