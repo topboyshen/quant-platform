@@ -201,6 +201,9 @@ def test_m2_api(authed, engine, inbox):
     assert len(authed.get("/api/ops/alerts").json()) >= 1
     svc = authed.get("/api/dash/services").json()
     assert "unit_states" in svc
+    att = {u["name"]: u for u in svc["attention"]}
+    assert att["qd-redacted-log-root-health.service"]["active_state"] == "failed"
+    assert "apt-daily.service" not in att            # os units are excluded from the page
     by_name = {c["name"]: c for c in svc["containers"]["data"]}
     assert by_name["radar-grafana"]["retired"] is True
     assert by_name["radar-legacy-check"]["retired"] is False

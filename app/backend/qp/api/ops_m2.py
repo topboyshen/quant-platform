@@ -74,7 +74,14 @@ def dash_services(p: Principal = Depends(require_auth), db: Session = Depends(ge
     by_cat = db.execute(select(LegacyUnit.category, LegacyUnit.kind, LegacyUnit.active_state, func.count())
                         .where(LegacyUnit.present.is_(True)).group_by(LegacyUnit.category, LegacyUnit.kind,
                                                                       LegacyUnit.active_state)).all()
+    attention = db.execute(select(LegacyUnit).where(
+        LegacyUnit.present.is_(True), LegacyUnit.category != "os",
+        LegacyUnit.active_state.in_(("failed", "activating"))
+    ).order_by(LegacyUnit.active_state, LegacyUnit.category, LegacyUnit.name)).scalars()
     return {"unit_states": [{"category": c, "kind": k, "active_state": a, "n": n} for c, k, a, n in by_cat],
+            "attention": [{"name": u.name, "category": u.category, "kind": u.kind, "active_state": u.active_state,
+                           "sub_state": u.sub_state, "result": u.result, "last_exit": u.last_exit}
+                          for u in attention],
             "containers": _mark_retired(_inv(db, "containers"))}
 
 
