@@ -54,7 +54,8 @@ def units(scope: str | None = None, kind: str | None = None, category: str | Non
 
 @router.get("/ops/inventory")
 def inventory(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
-    return {k: _inv(db, k) for k in ("collector", "host", "pg", "containers", "ports", "certs", "egress", "logs")}
+    return {k: (_mark_retired(_inv(db, k)) if k == "containers" else _inv(db, k))
+            for k in ("collector", "host", "pg", "containers", "ports", "certs", "egress", "logs")}
 
 
 @router.get("/ops/alerts")

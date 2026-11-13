@@ -16,6 +16,7 @@
           <n-tag :type="e.ok ? 'success' : e.via_proxy ? 'error' : 'default'">{{ e.target }}</n-tag>
           {{ e.via_proxy ? '经代理' : '直连' }} · {{ e.ok ? e.status + ' · ' + e.ms + 'ms' : (e.error || '失败') }}
         </div>
+        <div class="muted">telegram_direct 直连不可达为预期；实际发送经 127.0.0.1:7890 代理。</div>
       </n-card></n-gi>
       <n-gi span="3 m:1"><n-card title="主机与数据库">
         <div>根分区剩余 {{ inv?.host?.data?.disk_root?.free_gb }} GB / {{ inv?.host?.data?.disk_root?.total_gb }} GB</div>
@@ -32,8 +33,19 @@
         </div>
       </n-space>
     </n-card>
-    <n-card title="容器">
-      <n-data-table size="small" :bordered="false" :data="inv?.containers?.data || []" :columns="cCols" />
+    <n-card>
+      <template #header>
+        <n-space align="center">
+          <span>容器</span>
+          <n-tag size="small" type="success">{{ activeCount }} 个运行中</n-tag>
+          <n-tag size="small" type="default">已退役 {{ retiredCount }}</n-tag>
+          <n-switch v-model:value="showRetired" size="small">
+            <template #checked>显示已退役</template>
+            <template #unchecked>隐藏已退役</template>
+          </n-switch>
+        </n-space>
+      </template>
+      <n-data-table size="small" :bordered="false" :data="containers" :columns="cCols" />
     </n-card>
     <n-card title="监听端口">
       <n-space><n-tag v-for="p in inv?.ports?.data || []" :key="p.addr + p.port" size="small">{{ p.addr }}:{{ p.port }}</n-tag></n-space>
@@ -41,14 +53,24 @@
   </n-space>
 </template>
 <script setup lang="ts">
-import { h, onMounted, ref } from 'vue'
-import { NButton, NCard, NDataTable, NGi, NGrid, NSpace, NTag } from 'naive-ui'
+import { computed, h, onMounted, ref } from 'vue'
+import { NButton, NCard, NDataTable, NGi, NGrid, NSpace, NSwitch, NTag } from 'naive-ui'
 import { api } from '../api/client'
 import { fmt, tagType } from '../util'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const inv = ref<any>(null)
+const showRetired = ref(false)
+const allContainers = computed<any[]>(() => inv.value?.containers?.data || [])
+const retiredCount = computed(() => allContainers.value.filter((c: any) => c.retired).length)
+const activeCount = computed(() => allContainers.value.filter((c: any) => !c.retired).length)
+const containers = computed<any[]>(() => {
+  const rows = showRetired.value ? allContainers.value : allContainers.value.filter((c: any) => !c.retired)
+  return [...rows].sort((a: any, b: any) => (a.state === 'running' ? 0 : 1) - (b.state === 'running' ? 0 : 1))
+})
 const cCols = [
   { title: '名称', key: 'name' }, { title: '镜像', key: 'image', ellipsis: { tooltip: true } },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  { title: '标记', key: 'retired', width: 80, render: (r: any) => r.retired ? h(NTag, { size: 'small', type: 'warning' }, { default: () => '已退役' }) : '—' },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   { title: '状态', key: 'state', render: (r: any) => h(NTag, { size: 'small', type: tagType(r.state) }, { default: () => r.state }) },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

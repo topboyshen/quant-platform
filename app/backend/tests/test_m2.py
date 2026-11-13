@@ -194,6 +194,10 @@ def test_m2_api(authed, engine, inbox):
     assert any(x["category"] == "os" for x in authed.get("/api/ops/units?include_os=true").json())
     inv = authed.get("/api/ops/inventory").json()
     assert inv["certs"]["data"][0]["target"] == "443" and inv["pg"]["data"]["connections"] >= 1
+    by_container = {c["name"]: c for c in inv["containers"]["data"]}
+    assert by_container["radar-grafana"]["retired"] is True
+    assert by_container["radar-quantdinger-backend"]["retired"] is True
+    assert by_container["radar-legacy-check"]["retired"] is False
     assert len(authed.get("/api/ops/alerts").json()) >= 1
     svc = authed.get("/api/dash/services").json()
     assert "unit_states" in svc
