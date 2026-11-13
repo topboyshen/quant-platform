@@ -1,4 +1,4 @@
-"""Built-in M1 jobs: ops.healthcheck, ops.backup, notify.send (shadow only)."""
+"""Built-in M1 jobs: ops.healthcheck, ops.backup, notify.send (shadow or live)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -8,7 +8,7 @@ import subprocess
 import urllib.request
 from pathlib import Path
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from qp.config import get_settings
@@ -16,6 +16,8 @@ from qp.jobs.registry import JobContext, job
 from qp.models.base import utcnow
 from qp.models.notify import DeliveryAttempt, Outbox
 from qp.models.ops import HealthCheck
+from qp.notify.render import render_outbox
+from qp.notify.telegram import NotifyConfigError, TelegramError, TelegramSender
 
 
 def _mem_available_mb() -> float | None:
@@ -29,13 +31,21 @@ def _mem_available_mb() -> float | None:
 
 
 def enqueue(s: Session, *, channel: str, recipient: str, dedup_key: str, body: str,
-            subject: str | None = None, source_job_run_id: int | None = None) -> bool:
-    """Insert into notify.outbox unless dedup_key exists. Mode is forced to shadow in M1."""
+            subject: str | None = None, source_job_run_id: int | None = None,
+            mode: str | None = None) -> bool:
+    """Insert into notify.outbox unless dedup_key exists.
+
+    ``mode`` defaults to ``QP_NOTIFY_MODE`` (shadow).  A module that has completed its
+    own live cutover passes ``mode="live"``; shadow rows are never sent retroactively.
+    """
+    effective = (mode if mode is not None else get_settings().notify_mode).strip().lower()
+    if effective not in {"shadow", "live"}:
+        effective = "shadow"
     exists = s.execute(select(Outbox.id).where(Outbox.dedup_key == dedup_key)).first()
     if exists:
         return False
     s.add(Outbox(channel=channel, recipient=recipient, dedup_key=dedup_key, body=body, subject=subject,
-                 mode="shadow", status="pending", source_job_run_id=source_job_run_id))
+                 mode=effective, status="pending", source_job_run_id=source_job_run_id))
     return True
 
 
@@ -117,19 +127,70 @@ def backup(ctx: JobContext) -> dict:
             "keep_days": st.backup_keep_days}
 
 
-@job("notify.send", "Process notify.outbox. M1: shadow sender only - records attempts, never sends",
-     schedule_hint="manual / future timer")
+def _notify_disabled(st) -> bool:
+    if st.notify_kill_switch:
+        return True
+    return Path(st.notify_disabled_file).exists()
+
+
+@job("notify.send", "Deliver notify.outbox: shadow rows are marked, live rows go to Telegram",
+     schedule_hint="every 2 min (qp-notify.timer)")
 def notify_send(ctx: JobContext) -> dict:
+    """Row mode is authoritative: ``shadow`` is marked, ``live`` is sent.
+
+    Live sends are fail-closed on missing credentials and stop immediately on the kill
+    switch (``QP_NOTIFY_KILL_SWITCH=1`` or the disabled file).  A row is retried on
+    network/429/5xx up to ``QP_NOTIFY_MAX_ATTEMPTS``; other 4xx responses are permanent.
+    """
     st = get_settings()
-    n = 0
+    counts = {"sent": 0, "shadowed": 0, "failed": 0, "retry": 0}
+    if _notify_disabled(st):
+        return {"ok": True, "skipped": "kill_switch", **counts}
+    max_attempts = max(1, st.notify_max_attempts)
+
     with Session(ctx.engine) as s:
-        rows = s.execute(select(Outbox).where(Outbox.status == "pending").order_by(Outbox.id).limit(100)
+        rows = s.execute(select(Outbox).where(Outbox.status == "pending").order_by(Outbox.id).limit(50)
                          .with_for_update(skip_locked=True)).scalars().all()
-        for o in rows:
-            # M1 hard rule: never send. Even if QP_NOTIFY_MODE says otherwise, only shadow is implemented.
-            s.add(DeliveryAttempt(outbox_id=o.id, mode="shadow", ok=None,
-                                  detail={"note": "shadow mode: not sent", "configured_mode": st.notify_mode}))
-            o.status, o.send_result, o.processed_at = "shadowed", "not_sent_shadow", utcnow()
-            n += 1
+        sender = None
+        if any(row.mode == "live" for row in rows):
+            try:
+                sender = TelegramSender.from_settings(st)
+            except NotifyConfigError as exc:
+                # Fail closed: nothing is marked or sent, rows stay pending for the next tick.
+                return {"ok": False, "error": str(exc), **counts}
+        for row in rows:
+            if row.mode != "live":
+                s.add(DeliveryAttempt(outbox_id=row.id, mode="shadow", ok=None,
+                                      detail={"note": "shadow mode: not sent",
+                                              "configured_mode": st.notify_mode}))
+                row.status, row.send_result, row.processed_at = "shadowed", "not_sent_shadow", utcnow()
+                counts["shadowed"] += 1
+                continue
+
+            prior = int(s.scalar(select(func.count()).select_from(DeliveryAttempt)
+                                 .where(DeliveryAttempt.outbox_id == row.id)) or 0)
+            attempt = prior + 1
+            try:
+                result = sender.send(render_outbox(row))
+            except TelegramError as exc:
+                s.add(DeliveryAttempt(outbox_id=row.id, mode="live", ok=False,
+                                      detail={"attempt": attempt, "error": exc.code,
+                                              "status_code": exc.status_code,
+                                              "retryable": exc.retryable,
+                                              "retry_after": exc.retry_after,
+                                              "detail": exc.detail}))
+                if exc.retryable and attempt < max_attempts:
+                    counts["retry"] += 1
+                else:
+                    row.status = "failed"
+                    row.send_result = f"failed:{exc.code}"[:32]
+                    row.processed_at = utcnow()
+                    counts["failed"] += 1
+                continue
+            s.add(DeliveryAttempt(outbox_id=row.id, mode="live", ok=True,
+                                  detail={"attempt": attempt, "message_id": result.message_id,
+                                          "latency_ms": result.latency_ms}))
+            row.status, row.send_result, row.processed_at = "sent", "sent", utcnow()
+            counts["sent"] += 1
         s.commit()
-    return {"ok": True, "shadowed": n, "sent": 0}
+    return {"ok": counts["failed"] == 0, **counts}

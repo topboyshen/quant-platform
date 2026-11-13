@@ -10,9 +10,11 @@ Two read-only inspections per trading day:
   carries the terminal status, first/latest attempts, per-target state counts, the macro
   slice, a conservative validity card and a conclusion that always says "不支持推荐".
 
-Notifications never leave qp in shadow mode: they are inserted into ``notify.outbox``
-with ``mode=shadow`` and the legacy namespaces ``watchdog:{date}:failure`` /
-``watchdog:{date}:daily``.  No Telegram token, chat id or delivery attempt is used.
+Notification mode is controlled by ``QP_SIGNALS_NOTIFY_MODE``.  In ``shadow`` the rows
+are inserted into ``notify.outbox`` with ``mode=shadow`` and the legacy namespaces
+``watchdog:{date}:failure`` / ``watchdog:{date}:daily``; no Telegram token, chat id or
+delivery attempt is used.  In ``live`` the same rows are inserted with ``mode=live``
+and are delivered by ``notify.send`` under its kill switch/retry policy.
 
 Contract note: 3.6 literally pages a 15:40 run that has been ``running`` for more than
 8 minutes.  The legacy ``defer_until_retry`` keeps both ``running`` and
@@ -31,6 +33,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from qp.config import get_settings
 from qp.models.signals import (DecisionOutcome, EodRun, MacroSlice, RiskSnapshot, TargetDecision,
                                TrendSignal)
 from qp.signals.eod import CST, now_cst, trading_day_status
@@ -440,17 +443,19 @@ def _enqueue(session: Session, *, trade_date: dt.date, kind: str,
              source_job_run_id: int | None) -> dict[str, Any]:
     from qp.jobs.builtin import enqueue  # local import avoids jobs <-> signals cycle
 
+    mode = "live" if get_settings().signals_notify_mode.strip().lower() == "live" else "shadow"
     namespace = f"watchdog:{trade_date.isoformat()}:{kind}"
     inserted = enqueue(
         session,
         channel="telegram",
-        recipient="shadow:signals-watchdog",
+        recipient="signals" if mode == "live" else "shadow:signals-watchdog",
         dedup_key=namespace,
         subject=subject,
         body=json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str),
         source_job_run_id=source_job_run_id,
+        mode=mode,
     )
-    return {"enqueued": inserted, "namespace": namespace, "mode": "shadow"}
+    return {"enqueued": inserted, "namespace": namespace, "mode": mode}
 
 
 def run_watchdog(session: Session, *, now: dt.datetime | None = None,
