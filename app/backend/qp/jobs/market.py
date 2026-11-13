@@ -510,11 +510,15 @@ def compare(s: Session) -> list[tuple[str, str, str, dict]]:
         expected = len(a | b)
         diffs_n = len(only_o) + len(only_q)
         st = _item_verdict(expected, 0, diffs_n)
+        outside = sorted(x for x in od if x < lo or x > hi)
         det = _cov(expected, expected, 0, diffs_n, range=[lo.isoformat(), hi.isoformat()], days=len(a),
+                   outside=len(outside),
                    **{f"{other}_only": [x.isoformat() for x in only_o[:20]],
                       "qp_only": [x.isoformat() for x in only_q[:20]]})
         out.append((f"calendar.{other}_vs_qp", st,
-                    f"{lo}..{hi}: {_cov_summary(expected, expected, 0, diffs_n)}；{other}-only {len(only_o)}, qp-only {len(only_q)}",
+                    f"{lo}..{hi}: {_cov_summary(expected, expected, 0, diffs_n)}；{other}-only {len(only_o)}, qp-only {len(only_q)}"
+                    + (f"；{other} 另有 {len(outside)} 天在区间外（{outside[0]}..{outside[-1]}），未参与比较"
+                       if outside else ""),
                     det))
     leg = s.execute(select(IndexClose).where(IndexClose.origin == "legacy",
                                              IndexClose.trade_date >= now_cst().date() - dt.timedelta(days=20))).scalars().all()
