@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from qp.api.main import Principal, get_db, require_auth
 from qp.models.research import (AiMessage, AiSession, AiTask, BacktestEquity, BacktestRun,
                                 BacktestTrade, Branch, ProfitObservation, ProfitPick, ProfitRun,
-                                Project)
+                                ProfitRunAttempt, Project)
 
 router = APIRouter(prefix="/api/research")
 
@@ -71,12 +71,32 @@ def backtest_detail(run_id: int, p: Principal = Depends(require_auth),
 def profit_runs(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
                 p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
     total = db.scalar(select(func.count()).select_from(ProfitRun)) or 0
-    rows = db.execute(select(ProfitRun).order_by(ProfitRun.signal_date.desc(), ProfitRun.id.desc())
-                      .limit(limit).offset(offset)).scalars()
+    rows = list(db.execute(select(ProfitRun).order_by(ProfitRun.signal_date.desc(), ProfitRun.id.desc())
+                           .limit(limit).offset(offset)).scalars())
+    attempts: dict[int, ProfitRunAttempt] = {}
+    ids = [r.id for r in rows]
+    if ids:
+        latest = db.execute(select(ProfitRunAttempt).where(ProfitRunAttempt.run_id.in_(ids))
+                            .order_by(ProfitRunAttempt.run_id, ProfitRunAttempt.generated_at.desc())).scalars()
+        for a in latest:
+            if a.run_id is not None:
+                attempts.setdefault(a.run_id, a)
+
+    def _blocked(r: ProfitRun) -> dict[str, Any]:
+        attempt = attempts.get(r.id)
+        doc = attempt.result_document if attempt and isinstance(attempt.result_document, dict) else {}
+        diag = doc.get("diagnostics") if isinstance(doc.get("diagnostics"), dict) else {}
+        suspended = diag.get("kind") == "oos_holding_interval_gap" and bool(diag.get("missing_end"))
+        return {"suspended": suspended,
+                "blocked_symbol": diag.get("symbol") if suspended else None,
+                "blocked_interval_start": diag.get("interval_start") if suspended else None,
+                "blocked_interval_end": diag.get("interval_end") if suspended else None}
+
     return {"total": total, "rows": [{
         "id": r.id, "signal_date": r.signal_date, "status": r.status,
         "candidate_count": r.candidate_count, "universe_count": r.universe_count,
-        "data_ready": r.data_ready, "reason": r.reason, "created_at": r.created_at} for r in rows]}
+        "data_ready": r.data_ready, "reason": r.reason, "created_at": r.created_at,
+        **_blocked(r)} for r in rows]}
 
 
 @router.get("/profit/runs/{run_id}/picks")

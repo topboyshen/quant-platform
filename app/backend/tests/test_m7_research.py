@@ -7,7 +7,8 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from qp.models.research import (AiMessage, AiSession, AiTask, BacktestEquity, BacktestRun,
-                                BacktestTrade, Branch, ProfitPick, ProfitRun, Project)
+                                BacktestTrade, Branch, ProfitPick, ProfitRun, ProfitRunAttempt,
+                                Project)
 
 NOW = dt.datetime(2026, 11, 12, 15, 30)
 
@@ -15,7 +16,7 @@ NOW = dt.datetime(2026, 11, 12, 15, 30)
 def cleanup(engine) -> None:
     with Session(engine) as session:
         for model in (BacktestEquity, BacktestTrade, BacktestRun, ProfitPick, ProfitRun,
-                      AiMessage, AiSession, AiTask, Branch, Project):
+                      ProfitRunAttempt, AiMessage, AiSession, AiTask, Branch, Project):
             session.execute(delete(model))
         session.commit()
 
@@ -35,6 +36,16 @@ def seed(engine) -> None:
         session.add(ProfitPick(id=108, run_id=47, symbol="sh600000", name="浦发银行", rank=1,
                                state="OPEN", signal_price=10.5, realized_return=0.01,
                                latest_unrealized_return=0.02, excess_return=0.005))
+        session.add(ProfitRun(id=48, signal_date=dt.date(2026, 11, 10), status="DATA_BLOCKED",
+                              candidate_count=0, data_ready=False,
+                              reason="OOS持有区间数据缺失：sh600825 2026-09-30→2026-10-14 缺终点"))
+        session.add(ProfitRunAttempt(
+            execution_id="00000000-0000-0000-0000-000000000048", run_id=48,
+            signal_date=dt.date(2026, 11, 10), status="DATA_BLOCKED", generated_at=NOW,
+            result_document={"diagnostics": {
+                "kind": "oos_holding_interval_gap", "symbol": "sh600825",
+                "missing_end": True, "interval_start": "2026-09-30",
+                "interval_end": "2026-10-14"}}))
         session.add(Project(id=1, public_id="proj-1", name="etf-trend", status="active",
                             revision=3, goal="improve"))
         session.add(Branch(id=1, public_id="branch-1", project_id=1, name="main",
@@ -73,7 +84,12 @@ def test_research_endpoints(engine, client):
         assert client.get("/api/research/backtests/999", headers=h).status_code == 404
 
         runs = client.get("/api/research/profit/runs", headers=h).json()
-        assert runs["total"] == 1 and runs["rows"][0]["candidate_count"] == 3
+        assert runs["total"] == 2
+        by_id = {r["id"]: r for r in runs["rows"]}
+        assert by_id[47]["candidate_count"] == 3 and by_id[47]["suspended"] is False
+        assert by_id[48]["suspended"] is True
+        assert by_id[48]["blocked_symbol"] == "sh600825"
+        assert by_id[48]["blocked_interval_end"] == "2026-10-14"
         picks = client.get("/api/research/profit/runs/47/picks", headers=h).json()
         assert picks["rows"][0]["symbol"] == "sh600000"
         assert client.get("/api/research/profit/runs/999/picks", headers=h).status_code == 404

@@ -12,12 +12,12 @@
   </n-space>
 </template>
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { NDataTable, NDrawer, NDrawerContent, NSpace, NText } from 'naive-ui'
+import { h, onMounted, ref } from 'vue'
+import { NDataTable, NDrawer, NDrawerContent, NSpace, NTag, NText } from 'naive-ui'
 import AsyncState from '../../components/AsyncState.vue'
 import { api } from '../../api/client'
 
-interface Run { id: number; signal_date: string | null; status: string | null; candidate_count: number | null; universe_count: number | null; data_ready: boolean | null; reason: string | null }
+interface Run { id: number; signal_date: string | null; status: string | null; candidate_count: number | null; universe_count: number | null; data_ready: boolean | null; reason: string | null; suspended?: boolean; blocked_symbol?: string | null; blocked_interval_start?: string | null; blocked_interval_end?: string | null }
 interface Pick { id: number; symbol: string | null; name: string | null; rank: number | null; state: string | null; realized_return: number | null; latest_unrealized_return: number | null; excess_return: number | null }
 
 const rows = ref<Run[]>([])
@@ -32,6 +32,14 @@ const columns = [
   { title: 'ID', key: 'id', width: 70 },
   { title: '信号日', key: 'signal_date', width: 110 },
   { title: '状态', key: 'status' },
+  {
+    title: '标记', key: 'suspended', width: 80,
+    render: (r: Run) => {
+      if (!r.suspended) return '—'
+      const tip = `${r.blocked_symbol || ''} ${r.blocked_interval_start || ''}→${r.blocked_interval_end || ''} 终点无 bar（停牌）`
+      return h('span', { title: tip }, [h(NTag, { size: 'small', type: 'warning' }, { default: () => '停牌' })])
+    },
+  },
   { title: '候选', key: 'candidate_count', width: 70 },
   { title: '股票池', key: 'universe_count', width: 80 },
   { title: '原因', key: 'reason' },
