@@ -1,6 +1,6 @@
 <template>
   <n-space vertical size="large">
-    <n-alert type="info" :bordered="false">影子模式：新平台独立抓取并只写入 qp 数据库；旧定时任务照常运行，旧数据只读导入用于对比。</n-alert>
+    <n-alert type="info" :bordered="false">qp 独立抓取行情数据并写入 qp 数据库；旧链已停止，旧数据仅用于只读对比。</n-alert>
     <n-tabs type="line" :value="active" @update:value="go">
       <n-tab v-for="t in tabs" :key="t.name" :name="t.name">{{ t.label }}</n-tab>
     </n-tabs>

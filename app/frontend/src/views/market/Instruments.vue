@@ -6,9 +6,9 @@
       <n-select v-model:value="index" :options="indexOpts" clearable placeholder="指数成分(最新)" style="width: 170px" />
       <n-select v-model:value="inQlib" :options="qlibOpts" style="width: 150px" />
       <n-button @click="reset">查询</n-button>
-      <span class="muted">共 {{ total }} 条</span>
+      <span class="muted">{{ loading ? '加载中…' : '共 ' + total + ' 条' }}</span>
     </n-space>
-    <n-data-table remote size="small" :bordered="false" :data="rows" :columns="cols" :pagination="pagination"
+    <n-data-table remote size="small" :bordered="false" :loading="loading" :data="rows" :columns="cols" :pagination="pagination"
       @update:page="(p: number) => { page = p; load() }" />
     <n-card title="板块分布"><EChart :option="pieOpt" height="240px" /></n-card>
   </n-space>
@@ -21,6 +21,7 @@ import { api } from '../../api/client'
 interface R { symbol: string; name: string | null; board: string | null; qlib_start: string | null; qlib_end: string | null; in_qlib: boolean }
 const q = ref(''), board = ref<string | null>(null), index = ref<string | null>(null), inQlib = ref<string>('all')
 const rows = ref<R[]>([]), total = ref(0), page = ref(1), boards = ref<Record<string, number>>({}), indexes = ref<Record<string, number>>({})
+const loading = ref(true)
 const PAGE = 50
 const BOARD: Record<string, string> = { main: '主板', star: '科创板', chinext: '创业板', bse: '北交所', index: '指数' }
 const boardOpts = Object.entries(BOARD).map(([value, label]) => ({ value, label }))
@@ -36,14 +37,19 @@ const cols = [
 const pieOpt = computed(() => ({ tooltip: { trigger: 'item' }, legend: { bottom: 0 },
   series: [{ type: 'pie', radius: ['40%', '70%'], data: Object.entries(boards.value).map(([k, v]) => ({ name: BOARD[k] || k || '未知', value: v })) }] }))
 async function load() {
-  const p = new URLSearchParams({ limit: String(PAGE), offset: String((page.value - 1) * PAGE) })
-  if (q.value) p.set('q', q.value)
-  if (board.value) p.set('board', board.value)
-  if (index.value) p.set('index', index.value)
-  if (inQlib.value !== 'all') p.set('in_qlib', inQlib.value)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const r = await api<any>(`/market/instruments?${p}`)
-  rows.value = r.rows; total.value = r.total; boards.value = r.boards; indexes.value = r.indexes
+  loading.value = true
+  try {
+    const p = new URLSearchParams({ limit: String(PAGE), offset: String((page.value - 1) * PAGE) })
+    if (q.value) p.set('q', q.value)
+    if (board.value) p.set('board', board.value)
+    if (index.value) p.set('index', index.value)
+    if (inQlib.value !== 'all') p.set('in_qlib', inQlib.value)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = await api<any>(`/market/instruments?${p}`)
+    rows.value = r.rows; total.value = r.total; boards.value = r.boards; indexes.value = r.indexes
+  } finally {
+    loading.value = false
+  }
 }
 function reset() { page.value = 1; load() }
 watch([board, index, inQlib], reset)

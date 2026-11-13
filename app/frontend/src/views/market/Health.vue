@@ -19,12 +19,6 @@
         <div class="muted">来源检查 {{ fmt(data?.qlib?.source?.at) }}，目录 {{ fmt(data?.qlib?.catalog?.at) }}</div>
       </n-card></n-gi>
     </n-grid>
-    <n-card title="旧 research-data 健康（上游只读镜像；不参与 qp 判定）">
-      <div>上游状态 <n-tag type="default" size="small">{{ lh?.status }}</n-tag>，模式 {{ lh?.businessMode }}，有效交易日 {{ lh?.effectiveTradeDate }}，生成 {{ fmt(lh?.generatedAt) }}</div>
-      <div>核心快照最近运行：{{ lh?.core_last_run?.status }} · 目标 {{ lh?.core_last_run?.target }} · {{ lh?.core_last_run?.reason }}</div>
-      <div class="muted">以上是上游自身状态，仅只读展示；qp 是否正常以上方检查表为准。</div>
-      <n-space style="margin-top: 6px"><n-tag v-for="(i, k) in lh?.issues || []" :key="k" size="small" type="default">{{ i.code || 'issue' }}（{{ i.severity }}）</n-tag></n-space>
-    </n-card>
     <n-card title="近 14 天检查结果"><EChart :option="histOpt" height="220px" /></n-card>
   </n-space>
 </template>
@@ -38,7 +32,6 @@ import { fmt } from '../../util'
 const data = ref<any>(null)
 const cat = computed(() => data.value?.qlib?.catalog?.data)
 const srcq = computed(() => data.value?.qlib?.source?.data)
-const lh = computed(() => data.value?.legacy_health?.data)
 const eod = computed(() => srcq.value?.latest_eod || srcq.value?.dolt_latest_eod || srcq.value?.github_release_tag)
 const eodSrc = computed(() => srcq.value?.latest_eod_source
   || (srcq.value?.dolt_latest_eod ? 'dolt' : (srcq.value?.github_release_tag ? 'github_release' : '-')))

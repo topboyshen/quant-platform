@@ -1,6 +1,6 @@
 <template>
   <n-space vertical size="large">
-    <n-card title="市场概览：新平台影子摘要 vs 旧 core-market（上涨/下跌/平盘）"><EChart :option="breadthOpt" height="300px" /></n-card>
+    <n-card title="市场概览：新平台摘要 vs 旧 core-market（只读对比，上涨/下跌/平盘）"><EChart :option="breadthOpt" height="300px" /></n-card>
     <n-grid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
       <n-gi span="2 m:1"><n-card title="覆盖率（有效/应有）">
         <n-data-table size="small" :bordered="false" :data="covRows" :columns="covCols" :max-height="260" />
