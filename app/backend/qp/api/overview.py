@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from qp import __version__
 from qp.api.main import Principal, get_db, require_auth
 from qp.models.base import utcnow
 from qp.models.market import HealthResult
@@ -16,6 +15,7 @@ from qp.models.notify import DeliveryAttempt, Outbox
 from qp.models.ops import JobRun
 from qp.models.reports import Report
 from qp.models.signals import EodRun
+from qp.release import release_info
 
 router = APIRouter(prefix="/api/overview")
 
@@ -52,8 +52,11 @@ def overview(p: Principal = Depends(require_auth), db: Session = Depends(get_db)
 
     outbox = dict(db.execute(select(Outbox.mode, func.count()).group_by(Outbox.mode)).all())
     attempts = db.scalar(select(func.count()).select_from(DeliveryAttempt)) or 0
+    info = release_info()
     return {
-        "version": __version__,
+        "version": info["version"],
+        "release_sha": info["sha"],
+        "release_base": info["base"],
         "health": health,
         "signals": signals,
         "reports": {"by_kind": by_kind, "latest_date": latest_report},
