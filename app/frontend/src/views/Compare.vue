@@ -1,6 +1,14 @@
 <template>
   <n-space vertical size="large">
-    <n-alert type="info" :bordered="false">每日对比新平台（影子）与旧输出；不一致写入告警表与 outbox（影子，不发送）。部分比较或缺数据记为跳过/证据不足，不能当作全部通过。</n-alert>
+    <n-alert type="info" :bordered="false">每日对比 qp 与旧系统的行情输出；不一致写入告警表（不再写 outbox）。部分比较或缺数据记为跳过/证据不足，不能当作全部通过。</n-alert>
+    <n-alert v-if="meta" type="warning" :bordered="false">
+      <div>旧链已于 {{ meta.legacy_chain_stopped_on }} 停止，legacy 侧数据不再更新，下面的“一致”只代表历史数据对得上，不代表当前仍在实时对账。</div>
+      <div class="muted" style="margin-top: 6px">
+        最近一次对比 {{ meta.last_compare_at ? fmt(meta.last_compare_at) : '—' }} ·
+        index_close：legacy {{ meta.index_close.legacy || '—' }} / qp {{ meta.index_close.qp || '—' }} ·
+        market_summary：legacy {{ meta.market_summary.legacy || '—' }} / qp {{ meta.market_summary.qp || '—' }}
+      </div>
+    </n-alert>
     <n-card v-for="run in runs" :key="run.at" size="small">
       <template #header>
         <n-space align="center" justify="space-between">
@@ -22,7 +30,9 @@ import { NAlert, NCard, NDataTable, NEmpty, NSpace, NTag } from 'naive-ui'
 import { api } from '../api/client'
 import { fmt } from '../util'
 interface C { run_at: string; item: string; status: string; summary: string; detail: Record<string, unknown> }
+interface Meta { last_compare_at: string | null; index_close: { legacy: string | null; qp: string | null }; market_summary: { legacy: string | null; qp: string | null }; legacy_chain_stopped_on: string }
 const rows = ref<C[]>([])
+const meta = ref<Meta | null>(null)
 function covOf(items: C[]) {
   const expected = items.length
   const compared = items.filter((r) => r.status === 'match' || r.status === 'mismatch').length
@@ -56,6 +66,9 @@ const cols = [
   { title: '差异', key: 'diffs', width: 60, render: (r: C) => num(r, 'diffs') },
   { title: '说明', key: 'summary' },
 ]
-onMounted(async () => { rows.value = await api<C[]>('/market/compare?runs=6') })
+onMounted(async () => {
+  const [r, m] = await Promise.all([api<C[]>('/market/compare?runs=6'), api<Meta>('/market/compare/meta')])
+  rows.value = r; meta.value = m
+})
 </script>
 <style scoped>.muted { color: #888; font-size: 13px; }</style>

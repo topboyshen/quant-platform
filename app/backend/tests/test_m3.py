@@ -199,6 +199,8 @@ def test_market_api(engine, market_env, monkeypatch):
     assert h["checks"] and h["legacy_health"]["data"]["status"] == "critical"
     assert c.get("/api/market/coverage").json()["summaries"]
     assert c.get("/api/market/compare").json()
+    cm = c.get("/api/market/compare/meta").json()
+    assert set(cm["index_close"]) == {"legacy", "qp"} and cm["legacy_chain_stopped_on"] == "2026-11-13"
     assert all(x["status"] == "match" for x in c.get("/api/market/imports").json()["latest"])
 
 

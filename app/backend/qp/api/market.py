@@ -126,6 +126,20 @@ def compare(runs: int = Query(6, ge=1, le=60), p: Principal = Depends(require_au
     return [_row(r, ("run_at", "item", "status", "summary", "detail")) for r in rows]
 
 
+@router.get("/compare/meta")
+def compare_meta(p: Principal = Depends(require_scope("market:read")),
+                 db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Show how current the two sides of the compare actually are."""
+    def latest_date(model, origin: str):
+        return db.scalar(select(func.max(model.trade_date)).where(model.origin == origin))
+
+    last_run = db.scalar(select(func.max(CompareResult.run_at)))
+    return {"last_compare_at": last_run,
+            "index_close": {"legacy": latest_date(IndexClose, "legacy"), "qp": latest_date(IndexClose, "qp")},
+            "market_summary": {"legacy": latest_date(MarketSummary, "legacy"), "qp": latest_date(MarketSummary, "qp")},
+            "legacy_chain_stopped_on": dt.date(2026, 11, 13)}
+
+
 @router.get("/imports")
 def imports(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
     sub = select(ImportLog.item, func.max(ImportLog.id).label("mid")).group_by(ImportLog.item).subquery()
