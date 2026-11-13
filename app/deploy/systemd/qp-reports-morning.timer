@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform M8 morning-chain snapshot (Mon-Fri 08:25, read-only)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 08:25:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@reports.import_morning_chain.service
+
+[Install]
+WantedBy=timers.target

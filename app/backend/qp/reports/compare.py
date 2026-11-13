@@ -189,6 +189,95 @@ def _s8_sources(session: Session) -> dict[str, Any]:
                   diffs=diffs, details={"checked": checked})
 
 
+MORNING_KIND = "morning_chain"
+FORBIDDEN_KEYS = {"chat_id", "message_id", "evidence", "attempts", "token", "secret"}
+
+
+def _keys(value: Any) -> set[str]:
+    out: set[str] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            out.add(str(key))
+            out |= _keys(item)
+    elif isinstance(value, list):
+        for item in value:
+            out |= _keys(item)
+    return out
+
+
+def _check_morning(session: Session, day: dt.date) -> list[dict[str, Any]]:
+    report = _latest_report(session, MORNING_KIND, day)
+    if report is None:
+        return []
+    payload = report.payload if isinstance(report.payload, dict) else {}
+    generation = payload.get("generation") or {}
+    seal = payload.get("seal") or {}
+    relay = payload.get("relay") or {}
+    alerts = payload.get("alerts")
+    classification = payload.get("classification") or {}
+
+    a1_diffs = []
+    if generation.get("target_date") != day.isoformat():
+        a1_diffs.append("generation_target_date")
+    if "status" not in generation or "child_exit_code" not in generation:
+        a1_diffs.append("generation_fields")
+    a1 = _check("A1", "FAIL" if a1_diffs else "PASS",
+                "generation state recorded" + ("" if not a1_diffs else " incomplete"),
+                diffs=a1_diffs, details={"status": generation.get("status"),
+                                         "exit": generation.get("child_exit_code")})
+
+    a2_diffs = []
+    if seal.get("state") != "SEALED":
+        a2_diffs.append("seal_state")
+    if seal.get("target_matches") is False or seal.get("report_sha_matches") is False:
+        a2_diffs.append("seal_binding")
+    if seal.get("digest_present") is not True:
+        a2_diffs.append("seal_digest_missing")
+    a2 = _check("A2", "FAIL" if a2_diffs else "PASS",
+                "seal is valid" + ("" if not a2_diffs else " invalid"),
+                diffs=a2_diffs, details={"report_sha256": seal.get("report_sha256")})
+
+    a3_diffs, a3_warn = [], []
+    if relay.get("target_matches") is False:
+        a3_diffs.append("relay_target_date")
+    if relay.get("produced_date") and relay["produced_date"] != day.isoformat():
+        a3_diffs.append("relay_produced_date")
+    if not relay.get("attempt") and not relay.get("delivery"):
+        a3_warn.append("relay_attempt_missing")
+    a3 = _check("A3", "FAIL" if a3_diffs else ("WARN" if a3_warn else "PASS"),
+                "relay evidence recorded" + ("" if not a3_diffs else " inconsistent"),
+                diffs=a3_diffs + a3_warn,
+                details={"attempt": (relay.get("attempt") or {}).get("status"),
+                         "delivery": (relay.get("delivery") or {}).get("status")})
+
+    a4_diffs, a4_warn = [], []
+    if alerts is None:
+        a4_warn.append("alert_state_missing")
+    elif classification.get("matches_legacy") is False:
+        a4_diffs += [f"missing_in_legacy:{x}" for x in classification.get("missing_in_legacy", [])]
+        a4_diffs += [f"extra_in_legacy:{x}" for x in classification.get("extra_in_legacy", [])]
+    a4 = _check("A4", "FAIL" if a4_diffs else ("WARN" if a4_warn else "PASS"),
+                "classification matches legacy alerts" + ("" if not a4_diffs else " differs"),
+                diffs=a4_diffs + a4_warn,
+                details={"state": classification.get("state")})
+
+    deliveries = session.execute(select(ReportDelivery)
+                                 .where(ReportDelivery.report_id == report.id)).scalars().all()
+    a5_diffs = [f"delivery_mode:{d.mode}" for d in deliveries if d.mode != "shadow"]
+    attempts = session.scalar(select(func.count()).select_from(DeliveryAttempt)) or 0
+    if attempts:
+        a5_diffs.append(f"delivery_attempt_rows={attempts}")
+    a5 = _check("A5", "FAIL" if a5_diffs else "PASS",
+                "morning chain stays read-only/shadow" + ("" if not a5_diffs else " violated"),
+                diffs=a5_diffs, details={"deliveries": len(deliveries)})
+
+    forbidden = sorted(_keys(payload) & FORBIDDEN_KEYS)
+    a6 = _check("A6", "FAIL" if forbidden else "PASS",
+                "no sensitive fields in the snapshot" + ("" if not forbidden else " violated"),
+                diffs=[f"forbidden_key:{k}" for k in forbidden])
+    return [a1, a2, a3, a4, a5, a6]
+
+
 def compare_reports(session: Session, *, day: dt.date, daily_dir: str | Path | None = None,
                     digest_path: str | Path | None = None,
                     hermes_originals: str | Path | None = None,
@@ -198,6 +287,7 @@ def compare_reports(session: Session, *, day: dt.date, daily_dir: str | Path | N
               _s3_execution(session, day), _s4_hermes(session, day, hermes_originals),
               _s5_frozen(session), _s6_shadow(session), _s7_receipts(session),
               _s8_sources(session)]
+    checks.extend(_check_morning(session, day))
     overall = _worst(checks)
     counts = Counter(c["status"] for c in checks)
     return {"schema_version": 1, "date": day.isoformat(),
