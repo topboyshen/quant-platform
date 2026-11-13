@@ -18,7 +18,9 @@ router = APIRouter(prefix="/api/settings")
 @router.get("")
 def settings(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
     user = db.scalar(select(User).where(User.username == p.name)) if p.kind == "user" else None
-    mode = get_settings().notify_mode
+    st = get_settings()
+    mode = st.notify_mode
+    signal_mode = st.signals_notify_mode
     info = release_info()
     return {
         "account": {
@@ -33,6 +35,8 @@ def settings(p: Principal = Depends(require_auth), db: Session = Depends(get_db)
             "version": info["version"],
             "release_sha": info["sha"],
             "notify_mode": mode,
-            "shadow_only": mode == "shadow",
+            "signals_notify_mode": signal_mode,
+            "notify_kill_switch": st.notify_kill_switch,
+            "shadow_only": mode == "shadow" and signal_mode == "shadow",
         },
     }

@@ -27,6 +27,8 @@ def test_settings_by_service_token(engine, client):
         assert data["account"]["kind"] == "service"
         assert data["platform"]["version"]
         assert data["platform"]["notify_mode"] == "shadow"
+        assert data["platform"]["signals_notify_mode"] == "shadow"
+        assert data["platform"]["notify_kill_switch"] is False
         assert data["platform"]["shadow_only"] is True
     finally:
         cleanup(engine)
