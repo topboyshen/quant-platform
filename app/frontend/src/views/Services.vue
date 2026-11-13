@@ -34,9 +34,14 @@ const pieOpt = computed(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cs: any[] = data.value?.containers?.data || []
   const cnt: Record<string, number> = {}
-  for (const c of cs) { const k = c.state !== 'running' ? c.state : (c.health || 'running'); cnt[k] = (cnt[k] || 0) + 1 }
+  for (const c of cs) {
+    const k = c.retired ? 'retired' : (c.state !== 'running' ? c.state : (c.health || 'running'))
+    cnt[k] = (cnt[k] || 0) + 1
+  }
+  const entries = Object.entries(cnt).sort(([a], [b]) => (a === 'retired' ? 1 : 0) - (b === 'retired' ? 1 : 0))
   return { tooltip: { trigger: 'item' }, legend: { bottom: 0 },
-    series: [{ type: 'pie', radius: ['40%', '70%'], data: Object.entries(cnt).map(([name, value]) => ({ name, value })) }] }
+    series: [{ type: 'pie', radius: ['40%', '70%'],
+      data: entries.map(([name, value]) => ({ name, value, itemStyle: name === 'retired' ? { color: '#f0a020' } : undefined })) }] }
 })
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const versions = computed<any[]>(() => {

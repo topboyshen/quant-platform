@@ -17,6 +17,7 @@ from qp.jobs.builtin import enqueue
 from qp.jobs.registry import JobContext, job
 from qp.models.base import utcnow
 from qp.models.ops import Alert, HealthCheck, Inventory, LegacyUnit
+from qp.retired import RETIRED_CONTAINERS
 
 INBOX = Path(os.getenv("QP_INBOX_FILE", "/var/lib/qp-inbox/legacy.json"))
 STALE_MIN = 30
@@ -38,20 +39,6 @@ CATEGORIES = [  # display only; order matters
     ("qp", r"^qp-"),
     ("ops", r"^(nng8-|quant-|mihomo|nginx|docker|postgresql)"),
 ]
-# M9: containers intentionally stopped.  They remain in the read-only inventory but
-# never page; a stopped retired container is an expected state, not a recovery claim.
-RETIRED_CONTAINERS = {
-    "radar-mihomo",
-    "radar-prometheus",
-    "radar-grafana",
-    "radar-alertmanager",
-    "radar-node-exporter",
-    "radar-quantdinger-backend",
-    "radar-quantdinger-frontend",
-    "radar-integration-api",
-    "radar-macro-risk",
-    "radar-runtime-observer",
-}
 
 
 def _ts(v: str | None) -> dt.datetime | None:

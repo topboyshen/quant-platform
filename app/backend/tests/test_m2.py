@@ -199,7 +199,11 @@ def test_m2_api(authed, engine, inbox):
     assert inv["certs"]["data"][0]["target"] == "443" and inv["pg"]["data"]["connections"] >= 1
     assert len(authed.get("/api/ops/alerts").json()) >= 1
     assert authed.get("/api/dash/coverage").json()["data"]["coverage"]["dates"][0]["date"] == "2026-11-10"
-    assert "unit_states" in authed.get("/api/dash/services").json()
+    svc = authed.get("/api/dash/services").json()
+    assert "unit_states" in svc
+    by_name = {c["name"]: c for c in svc["containers"]["data"]}
+    assert by_name["radar-grafana"]["retired"] is True
+    assert by_name["radar-legacy-check"]["retired"] is False
 
 
 def test_tokens(authed):

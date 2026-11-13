@@ -14,6 +14,7 @@ from qp.auth.sessions import create_service_token
 from qp.models.base import utcnow
 from qp.models.core import AuditEvent, ServiceToken
 from qp.models.ops import Alert, Inventory, LegacyUnit
+from qp.retired import RETIRED_CONTAINERS
 
 router = APIRouter(prefix="/api")
 
@@ -21,6 +22,14 @@ router = APIRouter(prefix="/api")
 def _inv(db: Session, kind: str) -> dict[str, Any] | None:
     r = db.get(Inventory, kind)
     return {"at": r.at, "data": r.data} if r else None
+
+
+def _mark_retired(inv: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Tag containers retired in M9 so the UI can show them as a separate slice."""
+    if not inv or not isinstance(inv.get("data"), list):
+        return inv
+    return {**inv, "data": [{**c, "retired": c.get("name") in RETIRED_CONTAINERS}
+                            for c in inv["data"] if isinstance(c, dict)]}
 
 
 @router.get("/ops/units")
@@ -63,7 +72,7 @@ def dash_services(p: Principal = Depends(require_auth), db: Session = Depends(ge
                         .where(LegacyUnit.present.is_(True)).group_by(LegacyUnit.category, LegacyUnit.kind,
                                                                       LegacyUnit.active_state)).all()
     return {"unit_states": [{"category": c, "kind": k, "active_state": a, "n": n} for c, k, a, n in by_cat],
-            "containers": _inv(db, "containers"), "projects": _inv(db, "dash.projects"),
+            "containers": _mark_retired(_inv(db, "containers")), "projects": _inv(db, "dash.projects"),
             "legacy_services": _inv(db, "dash.services")}
 
 
