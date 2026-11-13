@@ -132,6 +132,24 @@ def cmd_research_compare(a) -> int:
     return 0
 
 
+def cmd_decommission_inventory(a) -> int:
+    import json
+
+    from qp.decommission.inventory import collect, manifest_sha256
+
+    manifest = collect(paths=a.path)
+    manifest["sha256"] = manifest_sha256(manifest)
+    text = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+    if a.out:
+        from pathlib import Path
+        Path(a.out).write_text(text, encoding="utf-8")
+        print(json.dumps({"ok": True, "out": a.out, "sha256": manifest["sha256"],
+                          "totals": manifest["totals"]}, ensure_ascii=False))
+    else:
+        print(text, end="")
+    return 0
+
+
 def cmd_user_import_legacy(a) -> int:
     """Read one line '<username>\\t<password_hash>' from stdin (e.g. piped from a read-only QD query).
     Never prints the hash. Creates/updates the single core.user."""
@@ -201,6 +219,11 @@ def main(argv: list[str] | None = None) -> int:
     rpc.add_argument("--digest-json", default=os.getenv("QP_RESEARCH_DIGEST_JSON"))
     rpc.add_argument("--hermes-originals", default=os.getenv("QP_HERMES_ORIGINALS_DIR"))
     rpc.set_defaults(fn=cmd_reports_compare)
+    dc = sub.add_parser("decommission").add_subparsers(dest="sub", required=True)
+    dci = dc.add_parser("inventory")
+    dci.add_argument("--out", default=None)
+    dci.add_argument("--path", action="append", default=None)
+    dci.set_defaults(fn=cmd_decommission_inventory)
     us = sub.add_parser("user").add_subparsers(dest="sub", required=True)
     il = us.add_parser("import-legacy")
     il.add_argument("--stdin", action="store_true", required=True)
