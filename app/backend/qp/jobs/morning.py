@@ -19,7 +19,7 @@ DEFAULT_STATE_DIR = "/home/ubuntu/.local/state/signal-bus"
 
 @job("reports.import_morning_chain", "Snapshot the legacy morning chain into reports.* "
                                      "(read-only; no relay, no alerts)",
-     schedule_hint="Mon-Fri 08:25 CST (qp-reports-morning.timer)")
+     schedule_hint="Mon-Fri 08:25 CST (manual only; report timer removed 2026-11-13)")
 def import_morning_chain_job(ctx: JobContext) -> dict:
     raw_day = os.getenv("QP_REPORT_DATE", "").strip()
     day = (dt.date.fromisoformat(raw_day) if raw_day else dt.datetime.now(CST).date())

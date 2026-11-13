@@ -8,11 +8,8 @@ from qp.jobs.registry import JOBS
 DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
 
 
-def test_morning_timer_targets_registered_job():
-    text = (DEPLOY / "systemd" / "qp-reports-morning.timer").read_text(encoding="utf-8")
-    assert "Unit=qp-job@reports.import_morning_chain.service" in text
-    assert "08:25" in text and "Asia/Shanghai" in text
-    assert "Persistent=false" in text and "Persistent=true" not in text
+def test_morning_timer_is_removed_and_job_is_manual():
+    assert not (DEPLOY / "systemd" / "qp-reports-morning.timer").exists()
     assert "reports.import_morning_chain" in JOBS
 
 
@@ -24,6 +21,7 @@ def test_runbook_documents_acl_window_switch_and_rollback():
     assert "切换" in text and "回滚" in text
     assert "A1" in text and "A6" in text
     assert "chat_id" in text
+    assert "已删除" in text and "手工" in text
 
 
 def test_env_example_lists_m8_keys():

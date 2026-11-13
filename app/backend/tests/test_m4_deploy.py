@@ -12,9 +12,7 @@ TIMERS = {
     "qp-signals-watchdog.timer": ("qp-job@signals.watchdog.service", "15:40"),
     "qp-signals-repair.timer": ("qp-job@signals.total_amount_repair.service", "15:47"),
     "qp-signals-outcomes.timer": ("qp-job@signals.outcomes.service", "16:10"),
-    "qp-signals-digest.timer": ("qp-job@signals.execution_digest.service", "08:35"),
 }
-DAILY_TIMERS = {"qp-signals-digest.timer"}
 EXPORT_TIMERS = {
     "qp-signals-export.timer": ("qp-signals-export@today.service", "16:20"),
     "qp-signals-export-previous.timer": ("qp-signals-export@yesterday.service", "08:45"),
@@ -35,13 +33,12 @@ def test_job_timers_target_registered_shadow_jobs():
         assert job in JOBS and job.startswith("signals."), job
 
 
-def test_digest_timer_runs_every_day_so_friday_is_covered():
-    # Legacy quant-execution-digest.timer is daily. A Mon-Fri digest at 08:35
-    # would never produce Friday's digest, because that run happens on Saturday.
-    assert "OnCalendar=*-*-* 08:35:00 Asia/Shanghai" in _read("qp-signals-digest.timer")
+def test_digest_timer_is_removed():
+    # 2026-11-13: the report/auto-generation chain was deleted. The digest job
+    # remains registered for manual runs, but no timer may schedule it.
+    assert not (DEPLOY / "systemd" / "qp-signals-digest.timer").exists()
+    assert "signals.execution_digest" in JOBS
     for name in TIMERS:
-        if name in DAILY_TIMERS:
-            continue
         assert "OnCalendar=Mon..Fri *-*-*" in _read(name), name
 
 

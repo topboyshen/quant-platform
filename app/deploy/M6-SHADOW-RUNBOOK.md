@@ -1,6 +1,7 @@
 # M6 报告模块影子部署与验收 Runbook
 
-状态：**开发中（M6.1–M6.6），未部署**。部署需单独授权；真实 Telegram 发送不在 M6 开启。
+状态：**开发完成；报告自动生成链已于 2026-11-13 删除**。`qp-reports-*.timer` 已从仓库移除，
+`reports.*` jobs 仅保留手工执行；真实 Telegram 发送未开启。
 
 影子期 qp 只读旧报告文件与 Hermes ledger，只写自己的 `reports`/`notify` schema；不写
 `trading-radar` 状态、不改 Hermes cron、不发消息、不触发旧任务。
@@ -17,7 +18,7 @@
 | 投递/回执 | `qp/reports/delivery.py`、`qp/reports/receipts.py` |
 | 对比 | `qp/reports/compare.py` + `qp reports compare`（S1–S8） |
 | 任务 | `qp/jobs/reports.py`：`reports.import_daily|research_digest|execution_digest|profit_summary|health_summary|shadow_deliver|import_receipts|compare` |
-| 定时器 | `app/deploy/systemd/qp-reports-*.timer`（8 个，全部 `Persistent=false`） |
+| 定时器 | 已删除（2026-11-13）；不再自动运行，jobs 仅手工执行 |
 | 配置样例 | `app/deploy/qp.env.example`（M6 段） |
 
 ## 2. 源访问前置（只读，需单独授权）
@@ -56,29 +57,17 @@ QP_HERMES_EXECUTIONS_DB=/home/ubuntu/.hermes/cron/executions.db
 QP_REPORTS_REPORT_DIR=/var/lib/qp/report-reports
 ```
 
-## 4. systemd
+## 4. 定时器（已删除）
+
+2026-11-13 报告自动生成链已下线：`app/deploy/systemd/qp-reports-*.timer` 不再存在，
+生产 `/etc/systemd/system` 也没有对应 unit。`qp/jobs/reports.py` 的 jobs 保留，仅可手工执行：
 
 ```bash
-sudo install -m 0644 app/deploy/systemd/qp-reports-*.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now \
-  qp-reports-daily.timer qp-reports-research-digest.timer qp-reports-execution-digest.timer \
-  qp-reports-profit.timer qp-reports-health.timer qp-reports-shadow-deliver.timer \
-  qp-reports-receipts.timer qp-reports-compare.timer
+sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
+  /opt/qp/current/venv/bin/qp job run reports.import_daily'
 ```
 
-| timer | 时点（CST） | job |
-|---|---|---|
-| `qp-reports-profit.timer` | 工作日 15:20 | `reports.import_profit_summary` |
-| `qp-reports-health.timer` | 工作日 15:45 | `reports.import_health_summary` |
-| `qp-reports-daily.timer` | 工作日 16:40 | `reports.import_daily` |
-| `qp-reports-research-digest.timer` | 每日 16:50 | `reports.import_research_digest` |
-| `qp-reports-execution-digest.timer` | 每日 09:00 | `reports.import_execution_digest` |
-| `qp-reports-shadow-deliver.timer` | 每日 18:30 | `reports.shadow_deliver` |
-| `qp-reports-receipts.timer` | 每日 18:40 | `reports.import_receipts` |
-| `qp-reports-compare.timer` | 每日 18:50 | `reports.compare` |
-
-全部 `Persistent=false`：停机不补跑、不补发。
+不要再从旧 release 的 `deploy/systemd/` 重新安装这些 timer。
 
 ## 5. 上线自检
 
@@ -123,7 +112,7 @@ sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
 
 ## 8. 回滚
 
-1. `sudo systemctl disable --now qp-reports-*.timer`。
+1. 报告 timer 已不存在；若从旧 release 恢复过，先 `sudo systemctl disable --now 'qp-reports-*.timer'`。
 2. `/opt/qp/current` 切回上一版本，重启 `qp-api`。
 3. 保留 `reports` schema 与报告文件；不删表、不删证据。
 4. 如已授权 ACL：按 §2 撤销；旧系统未被修改。

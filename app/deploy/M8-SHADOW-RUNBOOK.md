@@ -1,7 +1,8 @@
 # M8 早报链影子部署与验收 Runbook
 
-状态：**M8.1–M8.5 开发完成，未部署**。M8 交付的是**影子快照 + 对比**；把生成/relay/告警
-真正迁到 qp 并停旧 timer，需要单独的切换授权（本文 §8 给出切换前置条件）。
+状态：**M8.1–M8.5 开发完成；早报链影子 timer 已于 2026-11-13 删除**。M8 交付的是
+**影子快照 + 对比**；`reports.import_morning_chain` 仅保留手工执行。把生成/relay/告警
+真正迁到 qp 需要单独的切换授权（本文 §8 给出切换前置条件）。
 
 影子期 qp 只读 AStock / signal-bus 的产物，只写自己的 `reports` schema；不触发旧任务、
 不发 Telegram、不改旧 timer、不写旧目录。
@@ -14,7 +15,7 @@
 | 分类 | `qp/morning/classify.py`（expected atoms vs 旧告警 atoms） |
 | 快照 | `qp/morning/chain.py` → `reports.report(kind=morning_chain)` |
 | 任务 | `qp/jobs/morning.py`：`reports.import_morning_chain` |
-| 定时器 | `app/deploy/systemd/qp-reports-morning.timer`（工作日 08:25，`Persistent=false`） |
+| 定时器 | 已删除（2026-11-13）；job 仅手工执行 |
 | 对比 | `qp reports compare` 自动包含 A1–A6（存在 `morning_chain` 报告时） |
 | 配置样例 | `app/deploy/qp.env.example`（M8 段） |
 
@@ -54,12 +55,14 @@ QP_SIGNAL_BUS_ROOT=/home/ubuntu/signal-bus
 QP_SIGNAL_BUS_STATE=/home/ubuntu/.local/state/signal-bus
 ```
 
-## 4. systemd
+## 4. 定时器（已删除）
+
+2026-11-13 早报链影子 timer 已下线：`app/deploy/systemd/qp-reports-morning.timer` 不再存在，
+生产 `/etc/systemd/system` 也没有对应 unit。job 保留，仅可手工执行：
 
 ```bash
-sudo install -m 0644 app/deploy/systemd/qp-reports-morning.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now qp-reports-morning.timer
+sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
+  /opt/qp/current/venv/bin/qp job run reports.import_morning_chain'
 ```
 
 ## 5. 上线自检
@@ -108,6 +111,6 @@ sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
 
 ## 10. 回滚
 
-1. `sudo systemctl disable --now qp-reports-morning.timer`。
+1. 早报链影子 timer 已不存在；若从旧 release 恢复过，先 `sudo systemctl disable --now qp-reports-morning.timer`。
 2. `/opt/qp/current` 切回上一版本，重启 `qp-api`。
 3. 保留 `reports` 数据与快照；如已授权 ACL，按 §2 撤销。旧链路未被修改，无需恢复。

@@ -35,7 +35,7 @@ HERMES_HEALTH_JOB = "026a1083d9e0"
 
 @job("reports.import_daily", "Freeze the legacy daily research summary into reports.* "
                              "(read-only legacy file; no delivery)",
-     schedule_hint="Mon-Fri 16:40 CST (qp-reports-daily.timer)")
+     schedule_hint="Mon-Fri 16:40 CST (manual only; report timer removed 2026-11-13)")
 def import_daily_job(ctx: JobContext) -> dict:
     root = os.getenv("QP_LEGACY_DAILY_DIR", DEFAULT_LEGACY_DAILY_DIR).strip()
     raw_day = os.getenv("QP_REPORT_DATE", "").strip()
@@ -57,7 +57,7 @@ def import_daily_job(ctx: JobContext) -> dict:
 
 @job("reports.import_research_digest", "Freeze the legacy research digest JSON into reports.* "
                                        "(read-only file; no delivery)",
-     schedule_hint="daily 16:50 CST (qp-reports-research-digest.timer)")
+     schedule_hint="daily 16:50 CST (manual only; report timer removed 2026-11-13)")
 def import_research_digest_job(ctx: JobContext) -> dict:
     path = Path(os.getenv("QP_RESEARCH_DIGEST_JSON", DEFAULT_RESEARCH_DIGEST))
     if not path.is_file():
@@ -73,7 +73,7 @@ def import_research_digest_job(ctx: JobContext) -> dict:
 
 @job("reports.import_execution_digest", "Archive the M4 execution digest reference into reports.* "
                                         "(no recomputation, no send)",
-     schedule_hint="daily 09:00 CST (qp-reports-execution-digest.timer)")
+     schedule_hint="daily 09:00 CST (manual only; report timer removed 2026-11-13)")
 def import_execution_digest_job(ctx: JobContext) -> dict:
     raw_day = os.getenv("QP_REPORT_DATE", "").strip()
     day = (dt.date.fromisoformat(raw_day) if raw_day
@@ -106,20 +106,20 @@ def _import_hermes(ctx: JobContext, *, job_env: str, default_job: str) -> dict:
 
 @job("reports.import_profit_summary", "Freeze the Hermes profit summary into reports.* "
                                       "(read-only archive; no delivery)",
-     schedule_hint="Mon-Fri 15:20 CST (qp-reports-profit.timer)")
+     schedule_hint="Mon-Fri 15:20 CST (manual only; report timer removed 2026-11-13)")
 def import_profit_summary_job(ctx: JobContext) -> dict:
     return _import_hermes(ctx, job_env="QP_HERMES_PROFIT_JOB", default_job=HERMES_PROFIT_JOB)
 
 
 @job("reports.import_health_summary", "Freeze the Hermes Profit Radar health summary into "
                                       "reports.* (read-only archive; no delivery)",
-     schedule_hint="Mon-Fri 15:45 CST (qp-reports-health.timer)")
+     schedule_hint="Mon-Fri 15:45 CST (manual only; report timer removed 2026-11-13)")
 def import_health_summary_job(ctx: JobContext) -> dict:
     return _import_hermes(ctx, job_env="QP_HERMES_HEALTH_JOB", default_job=HERMES_HEALTH_JOB)
 
 
 @job("reports.shadow_deliver", "Mark frozen reports as shadow deliveries (never sends)",
-     schedule_hint="daily 18:30 CST (qp-reports-shadow-deliver.timer)")
+     schedule_hint="daily 18:30 CST (manual only; report timer removed 2026-11-13)")
 def shadow_deliver_job(ctx: JobContext) -> dict:
     raw_day = os.getenv("QP_REPORT_DATE", "").strip()
     day = (dt.date.fromisoformat(raw_day) if raw_day
@@ -136,7 +136,7 @@ def shadow_deliver_job(ctx: JobContext) -> dict:
 
 @job("reports.import_receipts", "Record Hermes delivery receipts for frozen reports "
                                 "(read-only SQLite; no send)",
-     schedule_hint="daily 18:40 CST (qp-reports-receipts.timer)")
+     schedule_hint="daily 18:40 CST (manual only; report timer removed 2026-11-13)")
 def import_receipts_job(ctx: JobContext) -> dict:
     deliveries_db = os.getenv("QP_HERMES_DELIVERIES_DB", DEFAULT_HERMES_DELIVERIES_DB)
     executions_db = os.getenv("QP_HERMES_EXECUTIONS_DB", DEFAULT_HERMES_EXECUTIONS_DB)
@@ -150,7 +150,7 @@ def import_receipts_job(ctx: JobContext) -> dict:
 
 
 @job("reports.compare", "S1-S8 report shadow comparison (read-only; report only)",
-     schedule_hint="daily 18:50 CST (qp-reports-compare.timer)")
+     schedule_hint="daily 18:50 CST (manual only; report timer removed 2026-11-13)")
 def compare_job(ctx: JobContext) -> dict:
     raw_day = os.getenv("QP_REPORT_DATE", "").strip()
     day = (dt.date.fromisoformat(raw_day) if raw_day

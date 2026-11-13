@@ -103,7 +103,7 @@ def outcomes_job(ctx: JobContext) -> dict:
 
 @job("signals.execution_digest",
      "Previous-day approved-signal digest; write files + shadow row, never POST",
-     schedule_hint="Daily 08:35 CST (legacy timer; shadow only)")
+     schedule_hint="manual only (digest timer removed 2026-11-13)")
 def execution_digest_job(ctx: JobContext) -> dict:
     with Session(ctx.engine) as session:
         out = build_previous_day_digest(session, now=now_cst())

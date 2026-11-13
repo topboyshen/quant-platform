@@ -86,10 +86,11 @@ sudo install -m 0644 app/deploy/systemd/qp-signals-*.service \
 sudo systemctl daemon-reload
 sudo systemctl enable --now qp-signals-export.timer qp-signals-export-previous.timer \
   qp-signals-eod.timer qp-signals-eod-retry.timer qp-signals-watchdog.timer \
-  qp-signals-repair.timer qp-signals-outcomes.timer qp-signals-digest.timer
+  qp-signals-repair.timer qp-signals-outcomes.timer
 ```
 
 所有 timer 均为 `Persistent=false`：停机不补跑，不产生补发或补算。
+`qp-signals-digest.timer` 已于 2026-11-13 删除；`signals.execution_digest` 仅可手工运行。
 
 ## 3. 上线自检
 

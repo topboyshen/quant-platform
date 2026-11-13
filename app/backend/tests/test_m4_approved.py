@@ -316,7 +316,7 @@ def test_digest_builder_keeps_zero_row_message():
     assert body["items"] == []
 
 
-def test_digest_job_is_registered_shadow_only():
+def test_digest_job_is_registered_manual_only():
     assert "signals.execution_digest" in JOBS
     hint = JOBS["signals.execution_digest"].schedule_hint or ""
-    assert "08:35" in hint and "shadow" in hint
+    assert "manual only" in hint and "timer removed" in hint
