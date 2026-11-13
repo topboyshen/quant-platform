@@ -17,14 +17,15 @@ const rows = ref<Outcome[]>([])
 const total = ref(0)
 const loading = ref(false)
 const error = ref('')
+function pct(v: number | null) { return v == null ? '—' : (v * 100).toFixed(2) + '%' }
 const columns = [
   { title: '代码', key: 'code', width: 90 },
   { title: '名称', key: 'name' },
   { title: '决策日', key: 'decision_date', width: 110 },
   { title: '持有', key: 'horizon_sessions', width: 70 },
-  { title: '净收益', key: 'net_return', width: 90 },
-  { title: '基准', key: 'benchmark_return', width: 90 },
-  { title: '超额', key: 'excess_return', width: 90 },
+  { title: '净收益', key: 'net_return', width: 100, render: (r: Outcome) => pct(r.net_return) },
+  { title: '基准', key: 'benchmark_return', width: 100, render: (r: Outcome) => pct(r.benchmark_return) },
+  { title: '超额', key: 'excess_return', width: 100, render: (r: Outcome) => pct(r.excess_return) },
   { title: '成交', key: 'fill_status', width: 90 },
 ]
 onMounted(async () => {
