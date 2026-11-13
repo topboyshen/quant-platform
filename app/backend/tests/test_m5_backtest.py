@@ -23,7 +23,7 @@ def qd_tables(status: str = "success", equity_rows: int = 2) -> dict[str, list[d
     now = dt.datetime(2026, 8, 20, 15, 30)
     return {
         "qd_backtest_runs": [{
-            "run_id": 7, "user_id": 1, "strategy_id": 3, "strategy_name": "etf-trend",
+            "id": 7, "user_id": 1, "strategy_id": 3, "strategy_name": "etf-trend",
             "run_type": "backtest", "market": "cn", "symbol": "510300",
             "timeframe": "1d", "start_date": "2025-01-01", "end_date": "2026-08-01",
             "initial_capital": 100000, "commission": 0.0003, "slippage": 0.0,

@@ -33,6 +33,7 @@ class TableSpec:
     pk: str | tuple[str, ...]
     source_table: str
     json_columns: tuple[str, ...] = ()
+    column_map: tuple[tuple[str, str], ...] = ()
 
     @property
     def pk_columns(self) -> tuple[str, ...]:
@@ -62,7 +63,8 @@ PHASE2_SPECS: tuple[TableSpec, ...] = (
 
 QD_SPECS: tuple[TableSpec, ...] = (
     TableSpec(BacktestRun, "run_id", "qd_backtest_runs",
-              json_columns=("strategy_config", "config_snapshot", "result_json")),
+              json_columns=("strategy_config", "config_snapshot", "result_json"),
+              column_map=(("id", "run_id"),)),
     TableSpec(BacktestEquity, ("run_id", "point_index"), "qd_backtest_equity_points"),
     TableSpec(BacktestTrade, ("run_id", "trade_index"), "qd_backtest_trades",
               json_columns=("payload_json",)),
@@ -103,16 +105,18 @@ PROFIT_SPECS: tuple[TableSpec, ...] = (
 
 def _normalize(spec: TableSpec, row: dict[str, Any]) -> dict[str, Any] | None:
     columns = {c.name for c in spec.model.__table__.columns}
+    mapping = dict(spec.column_map)
     out: dict[str, Any] = {}
     for key, value in row.items():
-        if key not in columns:
+        target = mapping.get(key, key)
+        if target not in columns:
             continue
-        if key in spec.json_columns and isinstance(value, (str, bytes)):
+        if target in spec.json_columns and isinstance(value, (str, bytes)):
             try:
                 value = json.loads(value)
             except ValueError:
                 value = {}
-        out[key] = value
+        out[target] = value
     for key in spec.pk_columns:
         if out.get(key) in (None, ""):
             return None
