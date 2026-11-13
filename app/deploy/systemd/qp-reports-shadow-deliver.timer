@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform M6 shadow delivery records (daily 18:30)
+
+[Timer]
+OnCalendar=*-*-* 18:30:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@reports.shadow_deliver.service
+
+[Install]
+WantedBy=timers.target

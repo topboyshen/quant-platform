@@ -72,6 +72,36 @@ def cmd_shadow_compare(a) -> int:
     return 0
 
 
+def cmd_reports_compare(a) -> int:
+    import datetime as dt
+
+    from sqlalchemy.orm import Session
+
+    from qp.db import get_engine
+    from qp.reports.compare import compare_reports, write_report
+
+    try:
+        day = dt.date.fromisoformat(a.date)
+    except ValueError:
+        print(json.dumps({"ok": False, "error": "bad_date"}))
+        return 2
+    with Session(get_engine()) as session:
+        result = compare_reports(session, day=day, daily_dir=a.daily_dir,
+                                 digest_path=a.digest_json,
+                                 hermes_originals=a.hermes_originals)
+    files = write_report(result, a.out) if a.out else []
+    print(json.dumps({"date": result["date"], "overall": result["overall"],
+                      "gate_ok": result["gate_ok"], "counts": result["counts"],
+                      "checks": [{"id": c["id"], "status": c["status"], "summary": c["summary"]}
+                                 for c in result["checks"]],
+                      "files": files}, ensure_ascii=False))
+    if result["overall"] == "FAIL":
+        return 1
+    if result["overall"] == "BLOCKED":
+        return 2
+    return 0
+
+
 def cmd_research_compare(a) -> int:
     from sqlalchemy.orm import Session
 
@@ -163,6 +193,14 @@ def main(argv: list[str] | None = None) -> int:
     rc.add_argument("--phase2-db", default=os.getenv("QP_PHASE2_DB", "/var/lib/research-system-phase2/phase2.db"))
     rc.add_argument("--qd-dsn", default=os.getenv("QP_QD_DSN"))
     rc.set_defaults(fn=cmd_research_compare)
+    rp = sub.add_parser("reports").add_subparsers(dest="sub", required=True)
+    rpc = rp.add_parser("compare")
+    rpc.add_argument("--date", required=True)
+    rpc.add_argument("--out", default=None)
+    rpc.add_argument("--daily-dir", default=os.getenv("QP_LEGACY_DAILY_DIR"))
+    rpc.add_argument("--digest-json", default=os.getenv("QP_RESEARCH_DIGEST_JSON"))
+    rpc.add_argument("--hermes-originals", default=os.getenv("QP_HERMES_ORIGINALS_DIR"))
+    rpc.set_defaults(fn=cmd_reports_compare)
     us = sub.add_parser("user").add_subparsers(dest="sub", required=True)
     il = us.add_parser("import-legacy")
     il.add_argument("--stdin", action="store_true", required=True)

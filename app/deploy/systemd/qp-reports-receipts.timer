@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform M6 Hermes receipt ingestion (daily 18:40)
+
+[Timer]
+OnCalendar=*-*-* 18:40:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@reports.import_receipts.service
+
+[Install]
+WantedBy=timers.target
