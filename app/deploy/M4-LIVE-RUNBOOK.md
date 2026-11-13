@@ -41,7 +41,8 @@ QP_NOTIFY_DISABLED_FILE=/etc/qp/notify.disabled
 QP_TELEGRAM_BOT_TOKEN_FILE=/etc/qp/telegram_bot_token
 QP_TELEGRAM_CHAT_ID_FILE=/etc/qp/telegram_chat_id
 QP_TELEGRAM_API_BASE=https://api.telegram.org
-QP_TELEGRAM_PROXY=
+# nnG8: api.telegram.org is not directly reachable; use the local mihomo proxy.
+QP_TELEGRAM_PROXY=http://127.0.0.1:7890
 QP_TELEGRAM_TIMEOUT_SEC=10
 QP_NOTIFY_MAX_ATTEMPTS=5
 ```
