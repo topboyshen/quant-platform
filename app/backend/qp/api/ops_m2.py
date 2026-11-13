@@ -1,6 +1,7 @@
 """M2 API: task center (read-only legacy units), inventory/monitors, alerts, dashboard replacements, service tokens."""
 from __future__ import annotations
 
+import datetime as dt
 import re
 from typing import Any
 
@@ -84,19 +85,63 @@ def _latest_health(db: Session, check: str) -> dict[str, Any]:
 
 
 def _qp_coverage(db: Session) -> dict[str, Any]:
-    """qp-native coverage, shown alongside the frozen legacy dashboard export."""
+    """qp-native coverage only: market tables, qlib catalog, health results."""
     qlib = db.execute(select(QlibStatus).where(QlibStatus.kind == "catalog")
                       .order_by(QlibStatus.at.desc(), QlibStatus.id.desc()).limit(1)).scalar_one_or_none()
     qd = qlib.data if qlib else {}
     update = qd.get("update_status") or {}
     snap = _latest_health(db, "snapshot.qp_current")
     cmp = _latest_health(db, "compare.latest")
-    legacy = _latest_health(db, "collector.market_reader")
     idx = db.execute(select(func.max(IndexClose.trade_date), func.count(func.distinct(IndexClose.symbol)))
                      .where(IndexClose.origin == "qp")).one()
     cal = db.execute(select(func.max(TradingDay.date)).where(TradingDay.origin == "qp")).scalar_one_or_none()
+
+    today = dt.date.today()
+    days = db.execute(select(TradingDay.date).where(
+        TradingDay.origin == "qp", TradingDay.is_open.is_(True), TradingDay.date <= today)
+        .order_by(TradingDay.date.desc()).limit(20)).scalars().all()
+    days = sorted(days)
+    counts = dict(db.execute(
+        select(IndexClose.trade_date, func.count(func.distinct(IndexClose.symbol)))
+        .where(IndexClose.origin == "qp", IndexClose.trade_date.in_(days))
+        .group_by(IndexClose.trade_date)).all()) if days else {}
+    qlib_latest = qd.get("calendar_last")
+    recent = [{"date": d.isoformat(), "index_symbols": int(counts.get(d, 0)),
+               "qlib": bool(qlib_latest and d.isoformat() <= qlib_latest)} for d in days]
+
+    issues: list[dict[str, Any]] = []
+    if not qd:
+        issues.append({"code": "qlib_catalog_missing", "severity": "warning",
+                       "summary": "no qlib catalog snapshot"})
+    else:
+        if update.get("status") not in (None, "current"):
+            issues.append({"code": "qlib_status", "severity": "warning",
+                           "summary": f"qlib update status {update.get('status')}"})
+        if qlib_latest is None:
+            issues.append({"code": "qlib_calendar_missing", "severity": "warning",
+                           "summary": "qlib calendar_last missing"})
+    if snap.get("lag") not in (None, 0):
+        issues.append({"code": "snapshot_lag", "severity": "warning",
+                       "summary": f"qp snapshot lag {snap.get('lag')} day(s)"})
+    if cmp.get("diffs") or cmp.get("missing") or (
+            cmp.get("compared") is not None and cmp.get("expected") is not None
+            and cmp["compared"] < cmp["expected"]):
+        issues.append({"code": "compare_gap", "severity": "critical",
+                       "summary": f"compare {cmp.get('compared')}/{cmp.get('expected')} "
+                                  f"diffs={cmp.get('diffs')} missing={cmp.get('missing')}"})
+    if idx[0] is None:
+        issues.append({"code": "index_close_missing", "severity": "critical",
+                       "summary": "no qp index_close rows"})
+    elif days and idx[0] < days[-1]:
+        issues.append({"code": "index_close_lag", "severity": "warning",
+                       "summary": f"index_close {idx[0]} < latest qp open day {days[-1]}"})
+    if cal is None:
+        issues.append({"code": "calendar_missing", "severity": "warning",
+                       "summary": "no qp trading calendar"})
+
     return {
-        "qlib": {"latest": qd.get("calendar_last"), "instruments": qd.get("instruments"),
+        "at": utcnow().isoformat(),
+        "qlib": {"latest": qlib_latest, "instruments": qd.get("instruments"),
                  "calendar_days": qd.get("calendar_days"), "active": qd.get("active_on_last"),
                  "status": update.get("status"), "target_date": update.get("targetDate")},
         "snapshot": {"latest": snap.get("latest"), "expected": snap.get("expected"), "lag": snap.get("lag")},
@@ -105,17 +150,14 @@ def _qp_coverage(db: Session) -> dict[str, Any]:
         "index_close": {"latest": idx[0].isoformat() if idx and idx[0] else None,
                         "symbols": int(idx[1]) if idx and idx[1] is not None else 0},
         "calendar": {"qp_max": cal.isoformat() if cal else None},
-        "legacy": {"mode": legacy.get("legacy_mode"), "status": legacy.get("legacy_status"),
-                   "effective": legacy.get("legacy_effective")},
+        "recent": recent,
+        "issues": issues,
     }
 
 
 @router.get("/dash/coverage")
 def dash_coverage(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
-    inv = _inv(db, "dash.coverage")
-    if inv is None:
-        return {"at": None, "data": None, "qp": _qp_coverage(db)}
-    return {**inv, "qp": _qp_coverage(db)}
+    return _qp_coverage(db)
 
 
 # ---- service tokens ----

@@ -198,14 +198,14 @@ def test_m2_api(authed, engine, inbox):
     inv = authed.get("/api/ops/inventory").json()
     assert inv["certs"]["data"][0]["target"] == "443" and inv["pg"]["data"]["connections"] >= 1
     assert len(authed.get("/api/ops/alerts").json()) >= 1
-    assert authed.get("/api/dash/coverage").json()["data"]["coverage"]["dates"][0]["date"] == "2026-11-10"
     svc = authed.get("/api/dash/services").json()
     assert "unit_states" in svc
     by_name = {c["name"]: c for c in svc["containers"]["data"]}
     assert by_name["radar-grafana"]["retired"] is True
     assert by_name["radar-legacy-check"]["retired"] is False
     cov = authed.get("/api/dash/coverage").json()
-    assert {"qlib", "snapshot", "compare", "index_close", "calendar", "legacy"} <= set(cov["qp"])
+    assert {"qlib", "snapshot", "compare", "index_close", "calendar", "recent", "issues"} <= set(cov)
+    assert isinstance(cov["recent"], list) and isinstance(cov["issues"], list)
 
 
 def test_tokens(authed):
