@@ -185,3 +185,18 @@ app.include_router(_market_router)
 from qp.api.hooks import router as _hooks_router  # noqa: E402
 
 app.include_router(_hooks_router)
+from qp.api.overview import router as _overview_router  # noqa: E402
+
+app.include_router(_overview_router)
+from qp.api.research import router as _research_router  # noqa: E402
+
+app.include_router(_research_router)
+from qp.api.signals import router as _signals_router  # noqa: E402
+
+app.include_router(_signals_router)
+from qp.api.reports import router as _reports_router  # noqa: E402
+
+app.include_router(_reports_router)
+from qp.api.settings import router as _settings_router  # noqa: E402
+
+app.include_router(_settings_router)

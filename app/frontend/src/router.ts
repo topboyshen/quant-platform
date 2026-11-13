@@ -4,7 +4,6 @@ import Layout from './views/Layout.vue'
 import Login from './views/Login.vue'
 
 // Route-level code splitting: every page (and ECharts) is a lazy chunk.
-const Placeholder = () => import('./views/Placeholder.vue')
 
 export const NAV = [
   { path: '/', name: 'overview', label: '总览' },
@@ -13,6 +12,7 @@ export const NAV = [
   { path: '/signals', name: 'signals', label: '信号' },
   { path: '/reports', name: 'reports', label: '报告' },
   { path: '/ops', name: 'ops', label: '运维' },
+  { path: '/settings', name: 'settings', label: '设置' },
 ]
 
 export const router = createRouter({
@@ -32,9 +32,29 @@ export const router = createRouter({
             { path: 'imports', name: 'market-imports', component: () => import('./views/market/Imports.vue') },
           ],
         },
-        { path: 'research', name: 'research', component: Placeholder, props: { title: '研究' } },
-        { path: 'signals', name: 'signals', component: Placeholder, props: { title: '信号' } },
-        { path: 'reports', name: 'reports', component: Placeholder, props: { title: '报告' } },
+        {
+          path: 'research', component: () => import('./views/research/ResearchLayout.vue'), children: [
+            { path: '', name: 'research-backtests', component: () => import('./views/research/Backtests.vue') },
+            { path: 'profit', name: 'research-profit', component: () => import('./views/research/Profit.vue') },
+            { path: 'ai', name: 'research-ai', component: () => import('./views/research/Ai.vue') },
+            { path: 'projects', name: 'research-projects', component: () => import('./views/research/Projects.vue') },
+          ],
+        },
+        {
+          path: 'signals', component: () => import('./views/signals/SignalsLayout.vue'), children: [
+            { path: '', name: 'signals-runs', component: () => import('./views/signals/Runs.vue') },
+            { path: 'trends', name: 'signals-trends', component: () => import('./views/signals/Trends.vue') },
+            { path: 'outcomes', name: 'signals-outcomes', component: () => import('./views/signals/Outcomes.vue') },
+            { path: 'compare', name: 'signals-compare', component: () => import('./views/signals/Compare.vue') },
+          ],
+        },
+        {
+          path: 'reports', component: () => import('./views/reports/ReportsLayout.vue'), children: [
+            { path: '', name: 'reports-center', component: () => import('./views/reports/Center.vue') },
+            { path: 'deliveries', name: 'reports-deliveries', component: () => import('./views/reports/Deliveries.vue') },
+          ],
+        },
+        { path: 'settings', name: 'settings', component: () => import('./views/Settings.vue') },
         {
           path: 'ops', component: () => import('./views/OpsLayout.vue'), children: [
             { path: '', name: 'ops', component: () => import('./views/Ops.vue') },
