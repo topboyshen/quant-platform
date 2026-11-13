@@ -1,7 +1,7 @@
 <template>
   <n-space vertical>
     <AsyncState :loading="loading" :error="error" :empty="!loading && !error && !rows.length" emptyText="暂无投递记录">
-    <n-text depth="3">共 {{ total }} 次投递（影子期 mode 应为 shadow，回执单独记录）</n-text>
+    <n-text depth="3">共 {{ total }} 次历史投递（回执单独记录）</n-text>
     <n-data-table :columns="columns" :data="rows" :loading="loading" size="small" />
   </AsyncState>
   </n-space>
