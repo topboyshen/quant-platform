@@ -204,6 +204,8 @@ def test_m2_api(authed, engine, inbox):
     by_name = {c["name"]: c for c in svc["containers"]["data"]}
     assert by_name["radar-grafana"]["retired"] is True
     assert by_name["radar-legacy-check"]["retired"] is False
+    cov = authed.get("/api/dash/coverage").json()
+    assert {"qlib", "snapshot", "compare", "index_close", "calendar", "legacy"} <= set(cov["qp"])
 
 
 def test_tokens(authed):

@@ -13,6 +13,7 @@ from qp.api.main import Principal, check_same_origin, get_db, require_auth
 from qp.auth.sessions import create_service_token
 from qp.models.base import utcnow
 from qp.models.core import AuditEvent, ServiceToken
+from qp.models.market import HealthResult, IndexClose, QlibStatus, TradingDay
 from qp.models.ops import Alert, Inventory, LegacyUnit
 from qp.retired import RETIRED_CONTAINERS
 
@@ -76,9 +77,45 @@ def dash_services(p: Principal = Depends(require_auth), db: Session = Depends(ge
             "legacy_services": _inv(db, "dash.services")}
 
 
+def _latest_health(db: Session, check: str) -> dict[str, Any]:
+    row = db.execute(select(HealthResult).where(HealthResult.check == check)
+                     .order_by(HealthResult.run_at.desc(), HealthResult.id.desc()).limit(1)).scalar_one_or_none()
+    return row.detail if row else {}
+
+
+def _qp_coverage(db: Session) -> dict[str, Any]:
+    """qp-native coverage, shown alongside the frozen legacy dashboard export."""
+    qlib = db.execute(select(QlibStatus).where(QlibStatus.kind == "catalog")
+                      .order_by(QlibStatus.at.desc(), QlibStatus.id.desc()).limit(1)).scalar_one_or_none()
+    qd = qlib.data if qlib else {}
+    update = qd.get("update_status") or {}
+    snap = _latest_health(db, "snapshot.qp_current")
+    cmp = _latest_health(db, "compare.latest")
+    legacy = _latest_health(db, "collector.market_reader")
+    idx = db.execute(select(func.max(IndexClose.trade_date), func.count(func.distinct(IndexClose.symbol)))
+                     .where(IndexClose.origin == "qp")).one()
+    cal = db.execute(select(func.max(TradingDay.date)).where(TradingDay.origin == "qp")).scalar_one_or_none()
+    return {
+        "qlib": {"latest": qd.get("calendar_last"), "instruments": qd.get("instruments"),
+                 "calendar_days": qd.get("calendar_days"), "active": qd.get("active_on_last"),
+                 "status": update.get("status"), "target_date": update.get("targetDate")},
+        "snapshot": {"latest": snap.get("latest"), "expected": snap.get("expected"), "lag": snap.get("lag")},
+        "compare": {"compared": cmp.get("compared"), "expected": cmp.get("expected"),
+                    "missing": cmp.get("missing"), "diffs": cmp.get("diffs")},
+        "index_close": {"latest": idx[0].isoformat() if idx and idx[0] else None,
+                        "symbols": int(idx[1]) if idx and idx[1] is not None else 0},
+        "calendar": {"qp_max": cal.isoformat() if cal else None},
+        "legacy": {"mode": legacy.get("legacy_mode"), "status": legacy.get("legacy_status"),
+                   "effective": legacy.get("legacy_effective")},
+    }
+
+
 @router.get("/dash/coverage")
-def dash_coverage(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any] | None:
-    return _inv(db, "dash.coverage")
+def dash_coverage(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
+    inv = _inv(db, "dash.coverage")
+    if inv is None:
+        return {"at": None, "data": None, "qp": _qp_coverage(db)}
+    return {**inv, "qp": _qp_coverage(db)}
 
 
 # ---- service tokens ----

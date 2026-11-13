@@ -1,11 +1,15 @@
 <template>
   <n-space vertical size="large">
-    <span class="muted">来源：旧看板导出（只读），快照 {{ fmt(cov?.at) }}；有效交易日 {{ c?.effectiveTradeDate || '-' }}</span>
+    <n-alert v-if="qp" type="info" show-icon>
+      <div><b>qp 当前</b>：qlib {{ qp.qlib.latest || '-' }} · snapshot {{ qp.snapshot.latest || '-' }}（lag {{ qp.snapshot.lag ?? '-' }}） · compare {{ qp.compare.compared ?? '-' }}/{{ qp.compare.expected ?? '-' }}（差异 {{ qp.compare.diffs ?? '-' }}） · index_close {{ qp.index_close.latest || '-' }} · calendar 至 {{ qp.calendar.qp_max || '-' }}</div>
+      <div v-if="qp.legacy.mode">下方为旧看板导出（{{ qp.legacy.mode }}，旧看板有效交易日 {{ qp.legacy.effective || '-' }}，状态 {{ qp.legacy.status || '-' }}）；其 critical 为历史缺口，不代表 qp 当前健康。</div>
+    </n-alert>
+    <span class="muted">来源：旧看板导出（{{ qp?.legacy?.mode || '只读' }}），快照 {{ fmt(cov?.at) }}；旧看板有效交易日 {{ c?.effectiveTradeDate || '-' }}</span>
     <n-grid :cols="3" :x-gap="16" responsive="screen" item-responsive>
       <n-gi span="3 m:1"><n-card title="Qlib 覆盖率"><EChart :option="gaugeOpt" height="240px" /></n-card></n-gi>
       <n-gi span="3 m:2"><n-card title="每日快照分类（最近 60 天）"><EChart :option="barOpt" height="240px" /></n-card></n-gi>
     </n-grid>
-    <n-card title="当前问题">
+    <n-card :title="qp?.legacy?.mode === 'FROZEN' ? '旧看板问题（历史，FROZEN）' : '当前问题'">
       <n-space vertical>
         <div v-for="(it, i) in issues" :key="i">· {{ typeof it === 'string' ? it : JSON.stringify(it) }}</div>
         <span v-if="!issues.length" class="muted">无</span>
@@ -18,13 +22,15 @@
 </template>
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { NCard, NDataTable, NGi, NGrid, NSpace } from 'naive-ui'
+import { NAlert, NCard, NDataTable, NGi, NGrid, NSpace } from 'naive-ui'
 import EChart from '../components/EChart.vue'
 import { api } from '../api/client'
 import { fmt } from '../util'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const cov = ref<any>(null)
 const c = computed(() => cov.value?.data)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const qp = computed<any>(() => cov.value?.qp)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const dates = computed<any[]>(() => [...(c.value?.coverage?.dates || [])].sort((a, b) => String(b.date).localeCompare(String(a.date))))
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
