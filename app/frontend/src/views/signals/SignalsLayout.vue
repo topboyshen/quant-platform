@@ -3,6 +3,7 @@
     <n-h2 style="margin: 0">信号</n-h2>
     <n-tabs type="line" :value="active" @update:value="go">
       <n-tab name="runs">EOD 运行</n-tab>
+      <n-tab name="pool">ETF 研究池</n-tab>
       <n-tab name="trends">趋势信号</n-tab>
       <n-tab name="outcomes">结果</n-tab>
       <n-tab name="compare">影子对比</n-tab>

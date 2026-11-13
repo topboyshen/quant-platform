@@ -43,6 +43,7 @@ export const router = createRouter({
         {
           path: 'signals', component: () => import('./views/signals/SignalsLayout.vue'), children: [
             { path: '', name: 'signals-runs', component: () => import('./views/signals/Runs.vue') },
+            { path: 'pool', name: 'signals-pool', component: () => import('./views/signals/EtfPool.vue') },
             { path: 'trends', name: 'signals-trends', component: () => import('./views/signals/Trends.vue') },
             { path: 'outcomes', name: 'signals-outcomes', component: () => import('./views/signals/Outcomes.vue') },
             { path: 'compare', name: 'signals-compare', component: () => import('./views/signals/Compare.vue') },

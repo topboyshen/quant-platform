@@ -94,5 +94,27 @@ def test_compare_reads_shadow_report(engine, client, tmp_path: Path, monkeypatch
         cleanup(engine)
 
 
+def test_etf_pool_returns_the_configured_universe(engine, client):
+    cleanup(engine)
+    try:
+        seed(engine)
+        h = {"authorization": f"Bearer {_token(engine)}"}
+        data = client.get("/api/signals/etf-pool?date=2026-11-12", headers=h).json()
+        assert data["decision_date"] == "2026-11-12"
+        assert len(data["items"]) == 40
+        item = next(i for i in data["items"] if i["code"] == "510300")
+        assert item["state"] == "allowed" and item["risk_action"] == "allowed"
+        assert item["reference_close"] == 4.12 and len(item["signals"]) == 1
+        other = next(i for i in data["items"] if i["code"] != "510300")
+        assert other["state"] == "missing"
+        assert data["counts"]["allowed"] == 1 and data["counts"]["missing"] == 39
+
+        latest = client.get("/api/signals/etf-pool", headers=h).json()
+        assert latest["decision_date"] == "2026-11-12"
+        assert client.get("/api/signals/etf-pool?date=bad", headers=h).status_code == 422
+    finally:
+        cleanup(engine)
+
+
 def test_signals_requires_auth(client):
     assert client.get("/api/signals/runs").status_code == 401
