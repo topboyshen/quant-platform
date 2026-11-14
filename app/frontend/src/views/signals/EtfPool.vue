@@ -67,7 +67,7 @@ const columns = [
   { title: '代码', key: 'code', width: 90 },
   { title: '名称', key: 'name' },
   { title: '板块', key: 'sector', width: 100 },
-  { title: '状态', key: 'state', width: 110 },
+  { title: '状态', key: 'state', width: 132 },
   { title: '风控', key: 'risk_action', width: 90 },
   { title: '原因', key: 'reason_code', width: 140 },
   { title: '收盘', key: 'reference_close', width: 90 },
