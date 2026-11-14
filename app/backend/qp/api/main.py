@@ -131,6 +131,9 @@ def login(body: LoginIn, req: Request, resp: Response, db: Session = Depends(get
     user.last_login_at = utcnow()
     token = create_session(db, user, st.session_ttl_hours, ip, req.headers.get("user-agent"))
     db.add(AuditEvent(actor=user.username, action="login", ok=True, ip=ip, detail=detail))
+    # get_db commits during teardown, after the response is sent; commit here so a
+    # client that calls /api/auth/me immediately after login cannot race the session row.
+    db.commit()
     resp.set_cookie(st.cookie_name, token, max_age=st.session_ttl_hours * 3600, path=st.cookie_path,
                     secure=st.cookie_secure, httponly=True, samesite="lax")
     return {"username": user.username, "role": user.role}

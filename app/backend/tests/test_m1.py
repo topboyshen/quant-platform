@@ -4,7 +4,7 @@ import sys
 
 import bcrypt
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 PW = "correct horse battery staple"
@@ -118,6 +118,47 @@ def test_healthcheck_failure_goes_to_shadow_outbox(engine, monkeypatch):
     run_job(engine, "ops.healthcheck", trigger="test")
     with Session(engine) as s:
         assert s.execute(select(Outbox).where(Outbox.status == "pending")).scalars().first() is None
+
+
+def test_login_commits_session_before_returning(engine):
+    """The SPA calls /api/auth/me right after login; the session row must already be visible."""
+    from qp.api.main import LoginIn, login
+    from qp.auth.passwords import hash_password
+    from qp.models.core import AuditEvent, Session as DbSession, User
+
+    class Req:
+        headers: dict = {}
+        cookies: dict = {}
+        client = type("Client", (), {"host": "127.0.0.1"})()
+
+    class Resp:
+        def set_cookie(self, *args, **kwargs):
+            pass
+
+    with Session(engine) as s:
+        s.execute(delete(DbSession).where(DbSession.user_id.in_(
+            select(User.id).where(User.username == "commitprobe"))))
+        s.execute(delete(AuditEvent).where(AuditEvent.actor == "commitprobe"))
+        s.execute(delete(User).where(User.username == "commitprobe"))
+        s.add(User(username="commitprobe", password_hash=hash_password(PW),
+                   hash_scheme="argon2", role="admin", source="test"))
+        s.commit()
+    try:
+        with Session(engine) as s:
+            login(LoginIn(username="commitprobe", password=PW), Req(), Resp(), db=s)
+            # no commit here: another connection must already see the session row
+            with engine.connect() as c:
+                count = c.execute(text(
+                    "select count(*) from core.session s join core.user u on u.id = s.user_id "
+                    "where u.username = 'commitprobe'")).scalar()
+            assert count == 1
+    finally:
+        with Session(engine) as s:
+            s.execute(delete(DbSession).where(DbSession.user_id.in_(
+                select(User.id).where(User.username == "commitprobe"))))
+            s.execute(delete(AuditEvent).where(AuditEvent.actor == "commitprobe"))
+            s.execute(delete(User).where(User.username == "commitprobe"))
+            s.commit()
 
 
 def test_healthcheck_backup_freshness(engine, monkeypatch, tmp_path):
