@@ -25,7 +25,7 @@ const opt = (sym: string) => {
   const lg = rows.value.filter((r) => r.symbol === sym && r.origin === 'legacy')
   const dates = [...new Set([...qp, ...lg].map((r) => r.trade_date))].sort()
   const m = (a: R[]) => { const x = new Map(a.map((r) => [r.trade_date, r.close])); return dates.map((d) => x.get(d) ?? null) }
-  return { tooltip: { trigger: 'axis' }, legend: { data: ['新平台', '旧缓存'] }, grid: { left: 50, right: 10, top: 30, bottom: 30 },
+  return { tooltip: { trigger: 'axis' }, legend: { top: 0, data: ['新平台', '旧缓存'] }, grid: { left: 50, right: 10, top: 36, bottom: 40 },
     xAxis: { type: 'category', data: dates }, yAxis: { type: 'value', scale: true },
     series: [{ name: '新平台', type: 'line', data: m(qp), showSymbol: false, connectNulls: true },
       { name: '旧缓存', type: 'line', data: m(lg), symbolSize: 8, lineStyle: { opacity: 0 } }] }

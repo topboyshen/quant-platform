@@ -4,7 +4,7 @@
       <n-input-number v-model:value="year" :min="2005" :max="2030" style="width: 120px" />
       <span class="muted">新平台(Dolt)：{{ meta('qp') }}；旧日历(akshare)：{{ meta('legacy') }}；旧 Qlib：{{ meta('qlib') }}</span>
     </n-space>
-    <n-card :title="`${year} 交易日（新平台，绿=开市；红框=与旧日历不一致）`"><EChart :option="calOpt" height="220px" /></n-card>
+    <n-card :title="`${year} 交易日（新平台，绿=开市；红框=与旧日历不一致）`"><div class="cal-wrap"><EChart :option="calOpt" height="220px" /></div></n-card>
     <n-card title="差异">
       <div>仅旧日历开市：{{ diff.legacyOnly.join('、') || '无' }}</div>
       <div>仅新平台开市：{{ diff.qpOnly.join('、') || '无' }}</div>
@@ -48,4 +48,11 @@ async function load() { data.value = await api(`/market/calendar?year=${year.val
 watch(year, load)
 onMounted(load)
 </script>
-<style scoped>.muted { color: #888; font-size: 13px; }</style>
+<style scoped>
+.muted { color: #888; font-size: 13px; }
+.cal-wrap { overflow-x: auto; }
+@media (max-width: 860px) {
+  /* 53 weeks need room; let the phone scroll instead of shrinking cells to 2px */
+  .cal-wrap > div { min-width: 820px; }
+}
+</style>

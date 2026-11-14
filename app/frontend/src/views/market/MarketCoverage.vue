@@ -29,7 +29,7 @@ const breadthOpt = computed(() => {
   const ser = (o: string, label: string, stack: string) => (['up', 'down', 'flat'] as const).map((k, i) => ({
     name: `${label}${['上涨', '下跌', '平盘'][i]}`, type: 'bar', stack, data: get(o, k),
     itemStyle: { color: ['#d03050', '#18a058', '#a0a0a0'][i], opacity: o === 'qp' ? 1 : 0.55 } }))
-  return { tooltip: { trigger: 'axis' }, legend: { type: 'scroll' }, grid: { left: 50, right: 10, top: 40, bottom: 30 },
+  return { tooltip: { trigger: 'axis' }, legend: { type: 'scroll', top: 0, textStyle: { fontSize: 10 } }, grid: { left: 50, right: 10, top: 56, bottom: 30 },
     xAxis: { type: 'category', data: dates }, yAxis: { type: 'value' }, series: [...ser('legacy', '旧', 'legacy'), ...ser('qp', '新', 'qp')] }
 })
 const covRows = computed(() => sums.value.map((s) => ({ origin: s.origin === 'qp' ? '新平台' : '旧', date: s.trade_date,
