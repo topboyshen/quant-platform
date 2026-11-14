@@ -1,3 +1,4 @@
+import { nextTick } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { auth } from './api/client'
 import Layout from './views/Layout.vue'
@@ -77,6 +78,15 @@ export const router = createRouter({
 
 let authed: boolean | null = null
 export function setAuthed(v: boolean | null) { authed = v }
+
+// Phone tab strips scroll horizontally (styles.css); keep the active tab in view
+// on every route change, including direct links into a later tab.
+router.afterEach(() => {
+  nextTick(() => requestAnimationFrame(() => {
+    document.querySelector('.n-tabs-tab--active')
+      ?.scrollIntoView({ inline: 'center', block: 'nearest' })
+  }))
+})
 
 router.beforeEach(async (to) => {
   if (to.meta.public) return true
