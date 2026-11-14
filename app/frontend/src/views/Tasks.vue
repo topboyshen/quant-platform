@@ -10,7 +10,7 @@
       </n-switch>
       <n-select v-model:value="stateFilter" :options="stateOpts" style="width: 150px" />
       <n-input v-model:value="q" placeholder="搜索名称" clearable style="width: 220px" />
-      <span class="muted">共 {{ rows.length }} 条</span>
+      <span class="muted">共 {{ rows.length }} 条<template v-if="snapshotAt"> · 快照 {{ snapshotAge }}</template></span>
     </n-space>
     <n-data-table size="small" :bordered="false" :data="rows" :columns="cols" :pagination="{ pageSize: 30 }" />
   </n-space>
@@ -23,16 +23,24 @@ import { fmt, tagType } from '../util'
 interface U { scope: string; name: string; kind: string; description: string; active_state: string; result: string | null; category: string; activates: string | null; triggered_by: string | null; last_trigger: string | null; next_elapse: string | null; last_exit: string | null; run_user: string | null }
 const all = ref<U[]>([]), scope = ref(''), kind = ref('timer'), category = ref<string | null>(null), includeOs = ref(false), q = ref('')
 const stateFilter = ref('')
+const snapshotAt = ref<string | null>(null)
+const snapshotAge = computed(() => {
+  if (!snapshotAt.value) return ''
+  const min = Math.max(0, Math.round((Date.now() - new Date(snapshotAt.value).getTime()) / 60000))
+  return min < 1 ? '刚刚' : `${min} 分钟前`
+})
 const stateOpts = [{ label: '全部状态', value: '' }, { label: 'active', value: 'active' }, { label: 'inactive', value: 'inactive' }, { label: 'failed', value: 'failed' }, { label: 'activating', value: 'activating' }]
 const scopeOpts = [{ label: '全部范围', value: '' }, { label: '系统', value: 'system' }, { label: '用户(ubuntu)', value: 'user' }]
 const kindOpts = [{ label: '全部类型', value: '' }, { label: '定时器', value: 'timer' }, { label: '服务', value: 'service' }]
 const catOpts = ['morning_chain', 'research', 'radar', 'quantdinger', 'data', 'hermes', 'qp', 'ops', 'other', 'os'].map((c) => ({ label: c, value: c }))
 const rows = computed(() => all.value.filter((u) =>
   (!q.value || u.name.includes(q.value)) && (!stateFilter.value || u.active_state === stateFilter.value)))
-const now = Date.now()
+// compare against the collector snapshot, not page-load time: the list is up to
+// ten minutes old and every-minute timers would otherwise look overdue.
 const nextCell = (r: U) => {
   if (!r.next_elapse) return '-'
-  const overdue = r.active_state === 'active' && new Date(r.next_elapse).getTime() < now
+  const overdue = !!snapshotAt.value && r.active_state === 'active'
+    && new Date(r.next_elapse).getTime() < new Date(snapshotAt.value).getTime()
   return overdue
     ? h(NTag, { size: 'small', type: 'warning' }, { default: () => `${fmt(r.next_elapse)}（已过期）` })
     : fmt(r.next_elapse)
@@ -51,7 +59,12 @@ async function load() {
   if (kind.value) p.set('kind', kind.value)
   if (category.value) p.set('category', category.value)
   if (includeOs.value) p.set('include_os', 'true')
-  all.value = await api<U[]>(`/ops/units?${p}`)
+  const [units, inv] = await Promise.all([
+    api<U[]>(`/ops/units?${p}`),
+    api<{ collector: { at: string } | null }>('/ops/inventory'),
+  ])
+  all.value = units
+  snapshotAt.value = inv.collector?.at || null
 }
 watch([scope, kind, category, includeOs], load)
 onMounted(load)
