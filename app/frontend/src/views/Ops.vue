@@ -4,7 +4,7 @@
       <n-h2 style="margin: 0">运维</n-h2>
       <n-button size="small" :loading="loading" @click="load">刷新</n-button>
     </n-space>
-    <n-card title="健康检查（最近一次）">
+    <n-card title="健康检查（各检查最新值）">
       <n-space>
         <n-tag v-for="c in health?.checks || []" :key="c.check" :type="c.ok ? 'success' : 'error'" :title="c.at ? '观测于 ' + fmt(c.at) : undefined">
           {{ c.check }}<template v-if="c.value !== null">：{{ c.value }}</template>
