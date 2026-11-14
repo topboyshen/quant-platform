@@ -90,6 +90,12 @@ def test_compare_reads_shadow_report(engine, client, tmp_path: Path, monkeypatch
         r = client.get("/api/signals/compare?date=2026-11-12", headers=h)
         assert r.status_code == 200 and r.json()["overall"] == "PASS"
         assert client.get("/api/signals/compare?date=bad", headers=h).status_code == 422
+        # no date: newest report wins once there are several
+        newer = {"date": "2026-11-13", "overall": "FAIL", "checks": []}
+        (tmp_path / "2026-11-13.compare.json").write_text(json.dumps(newer), encoding="utf-8")
+        assert client.get("/api/signals/compare", headers=h).json()["overall"] == "FAIL"
+        (tmp_path / "2026-11-13.compare.json").unlink()
+        assert client.get("/api/signals/compare", headers=h).json()["overall"] == "PASS"
     finally:
         cleanup(engine)
 

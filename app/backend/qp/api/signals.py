@@ -142,12 +142,18 @@ def etf_pool(date: str | None = None, p: Principal = Depends(require_auth),
 
 
 @router.get("/compare")
-def compare(date: str, p: Principal = Depends(require_auth)) -> dict[str, Any]:
+def compare(date: str | None = None, p: Principal = Depends(require_auth)) -> dict[str, Any]:
+    root = Path(os.getenv("QP_SHADOW_REPORT_DIR", DEFAULT_SHADOW_DIR))
+    if date is None:
+        # default to the newest report; the shadow window ended with the legacy chain
+        files = sorted(root.glob("*.compare.json"))
+        if not files:
+            raise HTTPException(status_code=404, detail="no compare reports")
+        return json.loads(files[-1].read_text(encoding="utf-8"))
     try:
         day = dt.date.fromisoformat(date)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="bad date") from exc
-    root = Path(os.getenv("QP_SHADOW_REPORT_DIR", DEFAULT_SHADOW_DIR))
     path = root / f"{day.isoformat()}.compare.json"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="compare report not found")
