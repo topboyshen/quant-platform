@@ -10,4 +10,6 @@ export default defineConfig({
     rollupOptions: { output: { manualChunks: { echarts: ['echarts/core', 'echarts/charts', 'echarts/components', 'echarts/renderers'], 'naive-ui': ['naive-ui'], vue: ['vue', 'vue-router'] } } },
   },
   server: { proxy: { '/next/api': { target: 'http://127.0.0.1:18800', rewrite: (p) => p.replace(/^\/next/, '') } } },
+  // `vite preview` is used by the Playwright smoke job in CI.
+  preview: { proxy: { '/next/api': { target: 'http://127.0.0.1:18800', rewrite: (p) => p.replace(/^\/next/, '') } } },
 })
