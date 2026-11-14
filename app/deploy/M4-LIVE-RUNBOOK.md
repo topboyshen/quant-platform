@@ -109,3 +109,31 @@ sudo touch /etc/qp/notify.disabled      # 或文件级 kill switch
 - `notify.send` 在缺密钥时 fail-closed：job `failed`，行保持 pending，不发送、不标记。
 - 4xx（除 429）视为永久失败；429/5xx/网络错误才重试。
 - 关闭报告链后，`notify.outbox` 不应再出现 `report:` 或 `morning:` 新行。
+
+## 9. 影子 allowed 样本（验证用，M12）
+
+当风控长期拦截全部触发信号时，`decision_outcome` 没有样本可验证趋势规则。影子通道把「趋势触发但被风控拦截」的决策复制到独立表并计算前瞻收益，**只用于验证**。
+
+| 项 | 值 |
+|---|---|
+| 表 | `signals.shadow_signal` / `signals.shadow_outcome`（`0012`） |
+| 记录 | `signals.shadow_record`，Mon-Fri 15:36 CST（EOD 之后） |
+| 结果 | `signals.shadow_outcomes`，Mon-Fri 16:15 CST（outcomes 之后） |
+| 视图 | 页面 信号 → 影子样本；API `GET /api/signals/shadow` |
+| 验收摘要 | `qp signals acceptance` 的 `strategy.shadow`（samples/outcomes/last_sample_date） |
+
+回填与手工执行：
+
+```bash
+sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
+  /opt/qp/current/venv/bin/qp signals shadow-record --since 2026-08-01'
+sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
+  /opt/qp/current/venv/bin/qp signals shadow-outcomes'
+```
+
+不变量：
+
+- 只记录 `decision_state=blocked`、`raw_trigger_count>0`、`data_status=ok`，取当日最后一次 success/partial run；
+- 不进 `notify.outbox`、不进记录链、不改 `target_decision`/`decision_outcome` 的任何统计；
+- 未到期显示“待到期”，限价无法成交记 `unfilled`，从不按 0 收益处理；
+- 记录幂等：`(decision_date, code)` 与 `(shadow_id, horizon)` 唯一。

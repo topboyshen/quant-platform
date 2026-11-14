@@ -22,6 +22,7 @@ const ROUTES = [
   ['/market', '行情'],
   ['/research', '研究'],
   ['/signals', '信号'],
+  ['/signals/shadow', '信号'],
   ['/reports', '报告'],
   ['/ops', '运维'],
   ['/settings', '设置'],
