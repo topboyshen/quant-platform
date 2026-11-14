@@ -1,0 +1,11 @@
+/* Phone layout: keep table columns readable by letting the table body scroll
+   horizontally instead of squeezing every column into 390px. */
+@media (max-width: 860px) {
+  .n-data-table .n-data-table-base-table-body { overflow-x: auto; }
+  .n-data-table .n-data-table-table { min-width: 760px; }
+  .qp-content { padding: 12px !important; }
+}
+
+@media (max-width: 860px) {
+  .n-card > .n-card-header { padding: 16px 16px 8px; }
+}

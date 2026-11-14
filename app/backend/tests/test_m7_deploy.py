@@ -40,3 +40,11 @@ def test_layout_collapses_navigation_on_narrow_screens():
     text = (FRONTEND / "src" / "views" / "Layout.vue").read_text(encoding="utf-8")
     assert "menu-toggle" in text and "@media (max-width: 860px)" in text
     assert "n-drawer" in text.lower() and "navOpen" in text
+
+def test_mobile_styles_keep_tables_scrollable():
+    css = (FRONTEND / "src" / "styles.css").read_text(encoding="utf-8")
+    assert "@media (max-width: 860px)" in css
+    assert "n-data-table-base-table-body" in css and "overflow-x: auto" in css
+    assert "n-data-table-table" in css and "min-width" in css
+    main = (FRONTEND / "src" / "main.ts").read_text(encoding="utf-8")
+    assert "styles.css" in main

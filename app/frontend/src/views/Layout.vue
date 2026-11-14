@@ -12,7 +12,7 @@
         <n-menu :value="active" :options="menu" @update:value="go" />
       </n-drawer-content>
     </n-drawer>
-    <n-layout-content content-style="padding: 20px;">
+    <n-layout-content content-class="qp-content" content-style="padding: 20px;">
       <router-view />
     </n-layout-content>
   </n-layout>
