@@ -5,7 +5,7 @@
       共 {{ total }} 条
     </n-text>
     <AsyncState :loading="loading" :error="error" :empty="!loading && !error && !rows.length" emptyText="暂无影子样本（风控放行或未触发时不会产生）">
-      <n-data-table :columns="columns" :data="rows" :loading="loading" size="small" />
+      <n-data-table :columns="columns" :data="rows" :loading="loading" size="small" :scroll-x="960" />
     </AsyncState>
   </n-space>
 </template>
@@ -16,6 +16,9 @@ import AsyncState from '../../components/AsyncState.vue'
 import { api } from '../../api/client'
 
 const HORIZONS = [1, 3, 5, 10, 20]
+const RISK_LABEL: Record<string, string> = {
+  ok: '正常', warning: '预警', critical: '严重', growth_blocked: '成长受限', unavailable: '不可用',
+}
 interface Cell { net_return: number | null; excess_return: number | null; fill_status: string }
 interface Sample {
   id: number; decision_date: string; code: string; name: string
@@ -30,6 +33,9 @@ const error = ref('')
 function pct(v: number | null | undefined) {
   return v == null ? '—' : (v * 100).toFixed(2) + '%'
 }
+function risk(row: Sample) {
+  return row.risk_level ? (RISK_LABEL[row.risk_level] || row.risk_level) : '—'
+}
 function cell(row: Sample, horizon: number) {
   const value = row.outcomes[String(horizon)]
   if (!value) return '待到期'
@@ -37,9 +43,9 @@ function cell(row: Sample, horizon: number) {
 }
 const columns = [
   { title: '代码', key: 'code', width: 90 },
-  { title: '名称', key: 'name' },
+  { title: '名称', key: 'name', minWidth: 160 },
   { title: '决策日', key: 'decision_date', width: 110 },
-  { title: '风控', key: 'risk_level', width: 110 },
+  { title: '风控', key: 'risk_level', width: 110, render: (r: Sample) => risk(r) },
   ...HORIZONS.map((h) => ({
     title: `${h}日`, key: `h${h}`, width: 90,
     render: (r: Sample) => cell(r, h),

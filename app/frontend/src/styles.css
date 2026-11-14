@@ -11,6 +11,11 @@
 
 @media (max-width: 860px) {
   .n-card > .n-card-header { padding: 16px 16px 8px; }
+  /* Tab strips with 5+ tabs overflow a phone; let the strip scroll instead of clipping. */
+  .n-tabs .n-tabs-nav { overflow-x: auto; scrollbar-width: none; }
+  .n-tabs .n-tabs-nav::-webkit-scrollbar { display: none; }
+  .n-tabs .n-tabs-nav-scroll-content { min-width: max-content; }
+  .n-tabs .n-tabs-tab { padding-left: 10px; padding-right: 10px; font-size: 13px; }
 }
 
 /* Fixed-width drawers must never exceed the phone viewport. */

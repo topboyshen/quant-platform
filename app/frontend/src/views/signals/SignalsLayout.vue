@@ -13,7 +13,7 @@
   </n-space>
 </template>
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NH2, NSpace, NTab, NTabs } from 'naive-ui'
 
@@ -21,4 +21,14 @@ const route = useRoute()
 const router = useRouter()
 const active = computed(() => String(route.name || 'signals-runs').replace('signals-', ''))
 function go(name: string) { router.push({ name: `signals-${name}` }) }
+
+// On a phone the tab strip scrolls; make sure the active tab is in view.
+function revealActiveTab() {
+  nextTick(() => {
+    document.querySelector('.n-tabs-tab--active')
+      ?.scrollIntoView({ inline: 'center', block: 'nearest' })
+  })
+}
+onMounted(revealActiveTab)
+watch(() => route.name, revealActiveTab)
 </script>
