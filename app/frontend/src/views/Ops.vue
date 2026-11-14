@@ -16,8 +16,19 @@
         （全局 {{ health?.outbox.mode ?? '-' }}<template v-if="health?.outbox.signals_mode"> · 信号 {{ health.outbox.signals_mode }}</template><template v-if="health?.outbox.kill_switch"> · 紧急停止已启用</template>）
       </p>
     </n-card>
-    <n-card title="任务">
-      <n-data-table :columns="jobCols" :data="jobs" size="small" :bordered="false" />
+    <n-card>
+      <template #header>
+        <n-space align="center">
+          <span>任务</span>
+          <n-tag size="small" type="default">定时 {{ scheduledCount }}</n-tag>
+          <n-tag v-if="manualCount" size="small" type="default">手动 {{ manualCount }}</n-tag>
+          <n-switch v-model:value="showManual" size="small" :disabled="!manualCount">
+            <template #checked>显示手动任务</template>
+            <template #unchecked>隐藏手动任务</template>
+          </n-switch>
+        </n-space>
+      </template>
+      <n-data-table :columns="jobCols" :data="visibleJobs" size="small" :bordered="false" />
     </n-card>
     <n-card>
       <template #header>
@@ -45,7 +56,12 @@ interface Job { name: string; schedule_hint: string | null; last_status: string 
 interface Health { checks: { check: string; ok: boolean; value: number | null; at?: string }[]; outbox: { pending: number; shadowed: number; sent?: number; failed?: number; mode?: string; signals_mode?: string; kill_switch?: boolean } }
 
 const runs = ref<Run[]>([]), jobs = ref<Job[]>([]), health = ref<Health | null>(null), loading = ref(false)
-const jobFilter = ref<string | null>(null), onlyProblems = ref(false)
+const jobFilter = ref<string | null>(null), onlyProblems = ref(false), showManual = ref(false)
+// "manual only" / "manual one-off" jobs never fire on their own (report timers were removed)
+const isManual = (j: Job) => !!j.schedule_hint && j.schedule_hint.toLowerCase().includes("manual")
+const manualCount = computed(() => jobs.value.filter(isManual).length)
+const scheduledCount = computed(() => jobs.value.length - manualCount.value)
+const visibleJobs = computed(() => (showManual.value ? jobs.value : jobs.value.filter((j) => !isManual(j))))
 const jobOptions = computed(() => [...new Set(runs.value.map((r) => r.job_name))].sort()
   .map((n) => ({ label: n, value: n })))
 const filteredRuns = computed(() => runs.value.filter((r) =>
