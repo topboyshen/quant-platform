@@ -3,6 +3,9 @@
 @media (max-width: 860px) {
   .n-data-table .n-data-table-base-table-body { overflow-x: auto; }
   .n-data-table .n-data-table-table { min-width: 760px; }
+  /* keep cells on one line; the table body scrolls instead of wrapping mid-word */
+  .n-data-table .n-data-table-th,
+  .n-data-table .n-data-table-td { white-space: nowrap; }
   .qp-content { padding: 12px !important; }
 }
 

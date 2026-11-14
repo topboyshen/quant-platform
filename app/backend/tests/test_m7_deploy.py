@@ -46,5 +46,6 @@ def test_mobile_styles_keep_tables_scrollable():
     assert "@media (max-width: 860px)" in css
     assert "n-data-table-base-table-body" in css and "overflow-x: auto" in css
     assert "n-data-table-table" in css and "min-width" in css
+    assert "white-space: nowrap" in css
     main = (FRONTEND / "src" / "main.ts").read_text(encoding="utf-8")
     assert "styles.css" in main
