@@ -18,7 +18,7 @@
     </n-card>
     <n-card>
       <template #header>
-        <n-space align="center">
+        <n-space align="center" :wrap="true">
           <span>任务</span>
           <n-tag size="small" type="default">定时 {{ scheduledCount }}</n-tag>
           <n-tag v-if="manualCount" size="small" type="default">手动 {{ manualCount }}</n-tag>
@@ -32,7 +32,7 @@
     </n-card>
     <n-card>
       <template #header>
-        <n-space align="center">
+        <n-space align="center" :wrap="true">
           <span>最近任务运行</span>
           <n-select v-model:value="jobFilter" size="small" clearable placeholder="按任务筛选" style="width: 220px"
                     :options="jobOptions" />
@@ -74,18 +74,28 @@ const checkTitle = (c: { check: string; at?: string }) =>
   (EXPECTED_FAIL.has(c.check) ? '直连不可达为预期，实际发送经 127.0.0.1:7890 代理' : '')
   + (c.at ? `${EXPECTED_FAIL.has(c.check) ? ' · ' : ''}观测于 ${fmt(c.at)}` : '')
 const fmt = (s: string | null) => (s ? new Date(s).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '-')
-const statusTag = (s: string | null) => h(NTag, { size: 'small', type: s === 'succeeded' ? 'success' : s === 'failed' ? 'error' : 'default' }, { default: () => s || '-' })
+const STATUS_LABEL: Record<string, string> = {
+  succeeded: '成功', failed: '失败', running: '运行中',
+  skipped_dup: '重复跳过', skipped_locked: '锁占用跳过',
+}
+const statusTag = (s: string | null) => h(NTag,
+  { size: 'small', type: s === 'succeeded' ? 'success' : s === 'failed' ? 'error' : 'default' },
+  { default: () => (s ? (STATUS_LABEL[s] || s) : '-') })
 
 const jobCols: DataTableColumns<Job> = [
-  { title: '任务', key: 'name' }, { title: '调度', key: 'schedule_hint' },
-  { title: '最近状态', key: 'last_status', render: (r) => statusTag(r.last_status) },
-  { title: '最近开始 (CST)', key: 'last_started_at', render: (r) => fmt(r.last_started_at) },
+  { title: '任务', key: 'name', minWidth: 180 },
+  { title: '最近状态', key: 'last_status', width: 100, render: (r) => statusTag(r.last_status) },
+  { title: '最近开始 (CST)', key: 'last_started_at', width: 160, render: (r) => fmt(r.last_started_at) },
+  { title: '调度', key: 'schedule_hint', minWidth: 240, ellipsis: { tooltip: true } },
 ]
 const runCols: DataTableColumns<Run> = [
-  { title: 'ID', key: 'id', width: 70 }, { title: '任务', key: 'job_name' },
-  { title: '状态', key: 'status', render: (r) => statusTag(r.status) }, { title: '触发', key: 'trigger' },
-  { title: '开始 (CST)', key: 'started_at', render: (r) => fmt(r.started_at) },
-  { title: '耗时 s', key: 'duration_s' }, { title: '错误', key: 'error', ellipsis: { tooltip: true } },
+  { title: '任务', key: 'job_name', minWidth: 180 },
+  { title: '状态', key: 'status', width: 110, render: (r) => statusTag(r.status) },
+  { title: '开始 (CST)', key: 'started_at', width: 160, render: (r) => fmt(r.started_at) },
+  { title: '耗时 s', key: 'duration_s', width: 80 },
+  { title: '触发', key: 'trigger', width: 80 },
+  { title: 'ID', key: 'id', width: 70 },
+  { title: '错误', key: 'error', minWidth: 200, ellipsis: { tooltip: true } },
 ]
 
 async function load() {
