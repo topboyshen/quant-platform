@@ -66,7 +66,7 @@
               <n-divider style="margin: 8px 0" />
               <n-space vertical size="small">
                 <n-text v-for="j in data.jobs.recent" :key="j.id" depth="3">
-                  #{{ j.id }} {{ j.job_name }} · {{ j.status }} · {{ j.started_at }}
+                  #{{ j.id }} {{ j.job_name }} · {{ j.status }} · {{ fmt(j.started_at) }}
                 </n-text>
                 <n-text v-if="!data.jobs.recent.length" depth="3">暂无任务记录</n-text>
               </n-space>
