@@ -1,4 +1,8 @@
-"""M8 morning-chain shadow job: snapshot the legacy chain after 08:15."""
+"""M8 morning-chain shadow job: read-only snapshot of the legacy chain.
+
+ARCHIVED 2026-11-14: the report generation chain was deleted by request and is not
+restored; this job is manual-only and has no timer.
+"""
 from __future__ import annotations
 
 import datetime as dt
@@ -19,7 +23,7 @@ DEFAULT_STATE_DIR = "/home/ubuntu/.local/state/signal-bus"
 
 @job("reports.import_morning_chain", "Snapshot the legacy morning chain into reports.* "
                                      "(read-only; no relay, no alerts)",
-     schedule_hint="Mon-Fri 08:25 CST (manual only; report timer removed 2026-11-13)")
+     schedule_hint="manual only (M8 archived 2026-11-14; report timers removed 2026-11-13)")
 def import_morning_chain_job(ctx: JobContext) -> dict:
     raw_day = os.getenv("QP_REPORT_DATE", "").strip()
     day = (dt.date.fromisoformat(raw_day) if raw_day else dt.datetime.now(CST).date())

@@ -212,6 +212,28 @@ def cmd_chain_compare(a) -> int:
     return 0 if out.get("ok") else 1
 
 
+def cmd_signals_acceptance(a) -> int:
+    """M4 live acceptance invariants for one decision date (default: latest run)."""
+    import datetime as dt
+    from qp.db import session_scope
+    from qp.signals import acceptance
+    today = dt.date.fromisoformat(a.today) if a.today else dt.date.today()
+    with session_scope() as s:
+        if a.date:
+            day = dt.date.fromisoformat(a.date)
+        else:
+            day = acceptance.latest_decision_date(s, today)
+            if day is None:
+                print(json.dumps({"ok": False, "error": "no_runs"}, ensure_ascii=False))
+                return 2
+        out = acceptance.evaluate(s, day, today=today)
+    text = json.dumps(out, ensure_ascii=False, indent=2, default=str)
+    if a.out:
+        Path(a.out).write_text(text + "\n", encoding="utf-8")
+    print(text)
+    return 0 if out["verdict"] != "FAIL" else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="qp")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -254,6 +276,12 @@ def main(argv: list[str] | None = None) -> int:
     cc = ch.add_parser("compare")
     cc.add_argument("--date", required=True)
     cc.set_defaults(fn=cmd_chain_compare)
+    sg = sub.add_parser("signals").add_subparsers(dest="sub", required=True)
+    sa = sg.add_parser("acceptance")
+    sa.add_argument("--date", default=None, help="decision date (default: latest run on/before --today)")
+    sa.add_argument("--today", default=None, help="reference date for maturity math")
+    sa.add_argument("--out", default=None)
+    sa.set_defaults(fn=cmd_signals_acceptance)
     dc = sub.add_parser("decommission").add_subparsers(dest="sub", required=True)
     dci = dc.add_parser("inventory")
     dci.add_argument("--out", default=None)

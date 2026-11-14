@@ -136,6 +136,21 @@ def outcomes_job(ctx: JobContext) -> dict:
     return out
 
 
+@job("signals.acceptance",
+     "M4 live acceptance invariants for the latest decision day (replaces legacy compare)",
+     schedule_hint="Mon-Fri 16:50 CST (after outcomes 16:10 and index_close 16:30)")
+def acceptance_job(ctx: JobContext) -> dict:
+    from qp.signals import acceptance
+    today = now_cst().date()
+    with Session(ctx.engine) as session:
+        day = acceptance.latest_decision_date(session, today)
+        if day is None:
+            return {"ok": False, "reason": "no_runs"}
+        out = acceptance.evaluate(session, day, today=today)
+    out["ok"] = out["verdict"] != "FAIL"
+    return out
+
+
 @job("signals.execution_digest",
      "Previous-day approved-signal digest; write files + shadow row, never POST",
      schedule_hint="manual only (digest timer removed 2026-11-13)")

@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform M4 live acceptance invariants at 16:50 CST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 16:50:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@signals.acceptance.service
+
+[Install]
+WantedBy=timers.target

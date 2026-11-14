@@ -13,6 +13,26 @@ def test_morning_timer_is_removed_and_job_is_manual():
     assert "reports.import_morning_chain" in JOBS
 
 
+def test_no_report_or_morning_timer_units():
+    timers = [p.name for p in (DEPLOY / "systemd").glob("*.timer")]
+    assert not [name for name in timers if "report" in name or "morning" in name]
+    for name in timers:
+        assert "reports." not in name, name
+
+
+def test_report_jobs_are_manual_only():
+    for name, spec in JOBS.items():
+        if name.startswith("reports."):
+            assert (spec.schedule_hint or "").startswith("manual only"), (name, spec.schedule_hint)
+
+
+def test_runbook_records_archive_decision():
+    text = (DEPLOY / "M8-SHADOW-RUNBOOK.md").read_text(encoding="utf-8")
+    assert "已归档（2026-11-14）" in text
+    assert "不再恢复" in text
+    assert "已作废" in text
+
+
 def test_runbook_documents_acl_window_switch_and_rollback():
     text = (DEPLOY / "M8-SHADOW-RUNBOOK.md").read_text(encoding="utf-8")
     assert "setfacl" in text and "AStock_AI_System" in text
