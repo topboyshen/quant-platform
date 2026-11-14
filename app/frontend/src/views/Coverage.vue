@@ -13,7 +13,7 @@
           </template>
           <n-statistic :value="cov?.qlib?.latest || '-'" />
           <div class="muted">instruments {{ cov?.qlib?.instruments ?? '-' }} · calendar {{ cov?.qlib?.calendar_days ?? '-' }} 天 · active {{ cov?.qlib?.active ?? '-' }}</div>
-          <div v-if="cov?.qlib?.planned_date || cov?.qlib?.target_date" class="muted">目标 {{ cov.qlib.planned_date || cov.qlib.target_date }}{{ cov.qlib.status !== 'current' && cov.qlib.failure_stage ? ' · 失败于 ' + cov.qlib.failure_stage : '' }}</div>
+          <div v-if="cov?.qlib?.planned_date || cov?.qlib?.target_date" class="muted">目标 {{ cov.qlib.target_date || cov.qlib.planned_date }}{{ cov.qlib.status !== 'current' && cov.qlib.failure_stage ? ' · 失败于 ' + cov.qlib.failure_stage : '' }}</div>
         </n-card>
       </n-gi>
       <n-gi span="5 m:1">
