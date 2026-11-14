@@ -109,6 +109,20 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
     return out
 
 
+@job("signals.chain_import_history",
+     "One-off: import existing target_decision/decision_outcome rows as legacy.v0 chain history",
+     schedule_hint="manual only (record chain history import)")
+def chain_import_history_job(ctx: JobContext) -> dict:
+    from qp.signals import chain, chain_import
+    if not chain.enabled():
+        return {"ok": True, "skipped": "record_chain_disabled"}
+    with Session(ctx.engine) as session:
+        out = chain_import.import_history(session, apply=True)
+        session.commit()
+    out["ok"] = True
+    return out
+
+
 @job("signals.outcomes", "Collect matured 1/3/5/10/20-session outcomes for swing decisions",
      schedule_hint="Mon-Fri 16:10 CST")
 def outcomes_job(ctx: JobContext) -> dict:

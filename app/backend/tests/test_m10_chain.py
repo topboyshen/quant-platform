@@ -8,7 +8,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from qp.models.chain import (ChainAttempt, ChainDecision, ChainEligibility, ChainOutcome, ChainState)
+from qp.models.chain import (ChainAttempt, ChainDecision, ChainEligibility, ChainImportRegister,
+                             ChainOutcome, ChainState)
 from qp.models.market import TradingDay
 from qp.models.signals import DecisionOutcome, EodRun, TargetDecision
 from qp.signals import chain
@@ -97,7 +98,7 @@ def _decisions() -> list[dict]:
 def _cleanup(engine) -> None:
     with Session(engine) as session:
         from qp.models.chain import ChainSnapshot, ChainSnapshotItem
-        for model in (ChainSnapshotItem, ChainSnapshot, ChainOutcome, ChainState,
+        for model in (ChainSnapshotItem, ChainSnapshot, ChainImportRegister, ChainOutcome, ChainState,
                       ChainEligibility, ChainAttempt, ChainDecision):
             session.execute(text(f"ALTER TABLE signals.{model.__tablename__} DISABLE TRIGGER USER"))
             session.execute(model.__table__.delete())
@@ -336,3 +337,88 @@ def test_pool_page_has_record_chain_tab():
         assert label in panel, label
     assert "/signals/chain/snapshot" in panel and "/signals/chain/decisions" in panel
     assert "/signals/chain/decision/" in panel
+
+def test_history_import_dry_run_then_apply_is_idempotent(engine, chain_on):
+    from qp.signals import chain_import
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    _calendar(engine, DAY + dt.timedelta(days=30))
+    run_id = _run(engine)
+    partial_day = DAY + dt.timedelta(days=30)
+    with Session(engine) as session:
+        partial = EodRun(decision_date=partial_day, attempt_no=1, status="partial",
+                         decision_outcome="partial", target_count=1, evaluated_count=1,
+                         failed_count=0, signal_count=1, allowed_signal_count=1,
+                         blocked_signal_count=0, reason_codes=[])
+        partial.started_at = dt.datetime.combine(partial_day, dt.time(15, 30), tzinfo=CST)
+        partial.finished_at = partial.started_at + dt.timedelta(minutes=3)
+        session.add(partial)
+        session.commit()
+        partial_run = partial.run_id
+    with Session(engine) as session:
+        rows = []
+        for code, state, trigger, risk in (("510300", "allowed", 1, "allowed"),
+                                           ("510500", "no_trigger", 0, "allowed"),
+                                           ("159915", "blocked", 1, "blocked")):
+            rows.append(TargetDecision(run_id=run_id, decision_date=DAY, code=code,
+                                       data_status="ok", decision_state=state,
+                                       risk_action=risk, reason_code="r",
+                                       raw_trigger_count=trigger, raw_signals=[],
+                                       validation_split="live_oos"))
+        rows.append(TargetDecision(run_id=partial_run, decision_date=partial_day, code="510300",
+                                   data_status="ok", decision_state="allowed",
+                                   risk_action="allowed", reason_code="r",
+                                   raw_trigger_count=1, raw_signals=[],
+                                   validation_split="live_oos"))
+        session.add_all(rows)
+        session.flush()
+        allowed = rows[0]
+        for horizon in (1, 3):
+            session.add(DecisionOutcome(decision_id=allowed.id, horizon_sessions=horizon,
+                                        entry_date=DAY + dt.timedelta(days=1),
+                                        exit_date=DAY + dt.timedelta(days=horizon),
+                                        entry_price=10.0, exit_price=10.2,
+                                        gross_return=0.02, net_return=0.019,
+                                        fill_status="filled"))
+        session.commit()
+    try:
+        with Session(engine) as session:
+            dry = chain_import.import_history(session, apply=False)
+            session.rollback()
+        assert dry["source_decisions"] == 4 and dry["source_outcomes"] == 2
+        assert dry["new_decisions"] == 4 and dry["new_outcomes"] == 2
+        assert dry["eligibility"]["eligible"] == 1
+        assert dry["eligibility"]["run_incomplete"] == 1
+        with Session(engine) as session:
+            assert session.scalar(select(func.count()).select_from(ChainDecision)) == 0
+
+        with Session(engine) as session:
+            first = chain_import.import_history(session, apply=True)
+            session.commit()
+        assert first["new_decisions"] == 4 and first["new_outcomes"] == 2
+        assert all(item["ok"] for item in first["reconcile"])
+        with Session(engine) as session:
+            assert session.scalar(select(func.count()).select_from(ChainDecision)) == 4
+            assert session.scalar(select(func.count()).select_from(ChainOutcome)) == 2
+            assert session.scalar(select(func.count()).select_from(ChainImportRegister)) == 6
+            origins = set(session.scalars(select(ChainDecision.origin)))
+            assert origins == {"migrated_v1"}
+            kinds = set(session.scalars(select(ChainOutcome.source_kind)))
+            assert kinds == {"migrated_v1"}
+            uid = session.scalar(select(ChainDecision.decision_uid).where(
+                ChainDecision.trade_date == partial_day))
+            assert session.scalar(select(ChainEligibility.reason_code).where(
+                ChainEligibility.decision_uid == uid)) == "run_incomplete"
+
+        with Session(engine) as session:
+            again = chain_import.import_history(session, apply=True)
+            session.commit()
+        assert again["new_decisions"] == 0 and again["new_outcomes"] == 0
+    finally:
+        _cleanup(engine)
+        with Session(engine) as session:
+            session.execute(DecisionOutcome.__table__.delete())
+            session.execute(TargetDecision.__table__.delete())
+            session.execute(EodRun.__table__.delete().where(
+                EodRun.decision_date.in_([DAY, partial_day])))
+            session.commit()

@@ -185,6 +185,21 @@ def cmd_user_import_legacy(a) -> int:
     return 0
 
 
+def cmd_chain_import_history(a) -> int:
+    """Dry-run by default; --apply requires QP_RECORD_CHAIN=1."""
+    import datetime as dt
+    from qp.db import session_scope
+    from qp.signals import chain, chain_import
+    if a.apply and not chain.enabled():
+        print("refusing: QP_RECORD_CHAIN is not enabled", file=sys.stderr)
+        return 3
+    since = dt.date.fromisoformat(a.since) if a.since else None
+    with session_scope() as s:
+        out = chain_import.import_history(s, apply=a.apply, since=since)
+    print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="qp")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -219,6 +234,11 @@ def main(argv: list[str] | None = None) -> int:
     rpc.add_argument("--digest-json", default=os.getenv("QP_RESEARCH_DIGEST_JSON"))
     rpc.add_argument("--hermes-originals", default=os.getenv("QP_HERMES_ORIGINALS_DIR"))
     rpc.set_defaults(fn=cmd_reports_compare)
+    ch = sub.add_parser("chain").add_subparsers(dest="sub", required=True)
+    ci = ch.add_parser("import-history")
+    ci.add_argument("--apply", action="store_true")
+    ci.add_argument("--since", default=None)
+    ci.set_defaults(fn=cmd_chain_import_history)
     dc = sub.add_parser("decommission").add_subparsers(dest="sub", required=True)
     dci = dc.add_parser("inventory")
     dci.add_argument("--out", default=None)
