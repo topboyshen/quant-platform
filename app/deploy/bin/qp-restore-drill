@@ -1,0 +1,202 @@
+#!/bin/bash
+# qp-restore-drill: restore a qp dump into a scratch database and prove it is usable.
+#
+#   1. restore the newest (or --dump) custom-format dump as the qp role
+#   2. replay `qp db upgrade` on the restored copy (validates migrations on real data)
+#   3. compare schema shape (table set, signals triggers) and alembic head with live
+#   4. check FK integrity and print the recovery point (latest decision/chain dates)
+#   5. run the M4 live acceptance against the restored copy
+#   6. report PASS/FAIL and drop the scratch database (unless --keep)
+#
+# Row counts are NOT compared with live: a backup is a point in time and live moves.
+# Run as root (uses sudo -u postgres / sudo -u qp). Never writes to the live DB.
+set -euo pipefail
+DUMP=""
+DB="qp_restore_drill"
+LIVE="qp"
+KEEP=0
+OUT=""
+SKIP_ACCEPTANCE=0
+BACKUP_DIR="${QP_BACKUP_DIR:-/var/lib/qp/backups}"
+RELEASE="${QP_RELEASE:-/opt/qp/current}"
+SCHEMAS="core market research signals reports ops notify archive execution"
+
+usage() { sed -n '2,13p' "$0"; exit 2; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dump) DUMP="$2"; shift 2 ;;
+    --db) DB="$2"; shift 2 ;;
+    --live) LIVE="$2"; shift 2 ;;
+    --out) OUT="$2"; shift 2 ;;
+    --release) RELEASE="$2"; shift 2 ;;
+    --skip-acceptance) SKIP_ACCEPTANCE=1; shift ;;
+    --keep) KEEP=1; shift ;;
+    -h|--help) usage ;;
+    *) echo "unknown argument: $1" >&2; usage ;;
+  esac
+done
+
+[ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 2; }
+[ "$DB" != "$LIVE" ] || { echo "refusing: scratch db == live db" >&2; exit 2; }
+
+if [ -z "$DUMP" ]; then
+  DUMP=$(ls -1t "$BACKUP_DIR"/qp-*.dump 2>/dev/null | head -1 || true)
+fi
+[ -n "$DUMP" ] && [ -f "$DUMP" ] || { echo "no dump found in $BACKUP_DIR" >&2; exit 2; }
+[ -x "$RELEASE/venv/bin/qp" ] || { echo "no qp venv at $RELEASE" >&2; exit 2; }
+
+psqlq() { sudo -u postgres psql -v ON_ERROR_STOP=1 -At -d "$1" -c "$2"; }
+qp_scratch() {
+  sudo -u qp env QP_DATABASE_URL="postgresql+psycopg:///$(printf '%s' "$DB" | sed 's/[^A-Za-z0-9_]/_/g')" \
+    bash -c "cd '$RELEASE/backend' && '$RELEASE/venv/bin/qp' $*"
+}
+TMP=$(mktemp -d)
+chmod 0711 "$TMP"   # qp must be able to reach the acceptance output dir
+trap 'rm -rf "$TMP"' EXIT
+
+echo "== dump"
+ls -l "$DUMP"
+SHA=$(sha256sum "$DUMP" | awk '{print $1}')
+echo "sha256=$SHA"
+
+echo "== create scratch $DB"
+psqlq postgres "select pg_terminate_backend(pid) from pg_stat_activity where datname='$DB' and pid <> pg_backend_pid()" >/dev/null
+psqlq postgres "drop database if exists $DB" >/dev/null
+psqlq postgres "create database $DB owner qp" >/dev/null
+
+echo "== restore $(date +%T)"
+START=$(date +%s)
+sudo -u qp pg_restore --no-owner --exit-on-error -d "$DB" "$DUMP"
+SECONDS_RESTORE=$(( $(date +%s) - START ))
+echo "restored in ${SECONDS_RESTORE}s"
+PRE_REV=$(psqlq "$DB" "select version_num from ops.alembic_version")
+echo "dump_alembic=$PRE_REV"
+
+FAILED=0
+fail() { echo "FAIL: $*"; FAILED=$((FAILED + 1)); }
+
+echo "== replay migrations $(date +%T)"
+START=$(date +%s)
+qp_scratch "db upgrade" > "$TMP/upgrade.log" 2>&1 || { cat "$TMP/upgrade.log"; fail "db upgrade failed"; }
+SECONDS_UPGRADE=$(( $(date +%s) - START ))
+tail -1 "$TMP/upgrade.log" || true
+echo "upgrade in ${SECONDS_UPGRADE}s"
+
+echo "== alembic"
+LIVE_REV=$(psqlq "$LIVE" "select version_num from ops.alembic_version")
+REST_REV=$(psqlq "$DB" "select version_num from ops.alembic_version")
+echo "live=$LIVE_REV restored=$REST_REV"
+[ "$LIVE_REV" = "$REST_REV" ] || fail "alembic revision differs"
+
+echo "== schemas"
+for s in $SCHEMAS; do
+  n=$(psqlq "$DB" "select count(*) from information_schema.schemata where schema_name='$s'")
+  [ "$n" = 1 ] || fail "schema $s missing"
+done
+
+echo "== table set"
+psqlq "$DB" "select n.nspname||'.'||c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+             where c.relkind='r' and n.nspname in ('core','market','research','signals','reports','ops','notify','archive','execution')
+             order by 1" > "$TMP/tables.restored"
+psqlq "$LIVE" "select n.nspname||'.'||c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+               where c.relkind='r' and n.nspname in ('core','market','research','signals','reports','ops','notify','archive','execution')
+               order by 1" > "$TMP/tables.live"
+if ! diff -q "$TMP/tables.live" "$TMP/tables.restored" >/dev/null; then
+  fail "table set differs"
+  diff "$TMP/tables.live" "$TMP/tables.restored" | sed -n 1,20p
+fi
+echo "tables restored=$(wc -l < "$TMP/tables.restored") live=$(wc -l < "$TMP/tables.live")"
+
+echo "== triggers"
+TRIG_LIVE=$(psqlq "$LIVE" "select count(*) from pg_trigger t join pg_class c on c.oid=t.tgrelid
+                           join pg_namespace n on n.oid=c.relnamespace where not t.tgisinternal and n.nspname='signals'")
+TRIG_REST=$(psqlq "$DB" "select count(*) from pg_trigger t join pg_class c on c.oid=t.tgrelid
+                         join pg_namespace n on n.oid=c.relnamespace where not t.tgisinternal and n.nspname='signals'")
+echo "signals triggers live=$TRIG_LIVE restored=$TRIG_REST"
+[ "$TRIG_LIVE" = "$TRIG_REST" ] || fail "signals trigger count differs"
+
+echo "== integrity"
+ORPHANS=$(psqlq "$DB" "select count(*) from signals.decision_outcome o
+                       left join signals.target_decision d on d.id=o.decision_id where d.id is null")
+[ "$ORPHANS" = 0 ] || fail "orphan decision_outcome rows=$ORPHANS"
+CHAIN_ORPHANS=$(psqlq "$DB" "select count(*) from signals.chain_decision c
+                             left join signals.chain_batch b on b.batch_key=c.batch_key where b.batch_key is null")
+[ "$CHAIN_ORPHANS" = 0 ] || fail "orphan chain_decision rows=$CHAIN_ORPHANS"
+# Older runs used a 10-ETF universe; only a 40-target run must have exactly 40 decisions.
+BAD_RUNS=$(psqlq "$DB" "select count(*) from signals.eod_run r
+                        where (select count(*) from signals.target_decision d where d.run_id=r.run_id) > r.target_count
+                           or (r.target_count = 40 and r.status in ('success','partial')
+                               and (select count(*) from signals.target_decision d where d.run_id=r.run_id) <> 40)")
+[ "$BAD_RUNS" = 0 ] || fail "runs without 40 decisions=$BAD_RUNS"
+echo "orphans decision_outcome=$ORPHANS chain_decision=$CHAIN_ORPHANS runs_without_40=$BAD_RUNS"
+
+echo "== recovery point"
+LAST_DEC=$(psqlq "$DB" "select coalesce(max(decision_date)::text,'') from signals.eod_run")
+LAST_CHAIN=$(psqlq "$DB" "select coalesce(max(trade_date)::text,'') from signals.chain_decision")
+N_DEC=$(psqlq "$DB" "select count(*) from signals.target_decision")
+N_OUT=$(psqlq "$DB" "select count(*) from signals.decision_outcome")
+N_CHAIN=$(psqlq "$DB" "select count(*) from signals.chain_decision")
+N_REPORT=$(psqlq "$DB" "select count(*) from reports.report")
+N_USER=$(psqlq "$DB" "select count(*) from core.user")
+echo "last_eod=$LAST_DEC last_chain=$LAST_CHAIN decisions=$N_DEC outcomes=$N_OUT chain=$N_CHAIN reports=$N_REPORT users=$N_USER"
+
+echo "== acceptance"
+ACC_VERDICT="skipped"
+if [ "$SKIP_ACCEPTANCE" = 0 ] && [ -n "$LAST_DEC" ]; then
+  install -d -o qp -g qp -m 0750 "$TMP/acc"
+  ACC_OUT="$TMP/acc/acceptance.json"
+  if qp_scratch "signals acceptance --date '$LAST_DEC' --out '$ACC_OUT'" > "$TMP/acceptance.log" 2>&1; then :; fi
+  if [ -f "$ACC_OUT" ]; then
+    ACC_VERDICT=$(sudo -u qp python3 -c "import json;print(json.load(open('$ACC_OUT'))['verdict'])")
+    echo "acceptance($LAST_DEC)=$ACC_VERDICT"
+    [ "$ACC_VERDICT" != "FAIL" ] || { cat "$TMP/acceptance.log" | tail -20; fail "acceptance failed on restored data"; }
+  else
+    tail -20 "$TMP/acceptance.log" || true
+    fail "acceptance did not produce a report"
+  fi
+else
+  echo "acceptance skipped (no eod_run or --skip-acceptance)"
+fi
+
+VERDICT=PASS
+[ "$FAILED" = 0 ] || VERDICT=FAIL
+echo "== verdict $VERDICT failures=$FAILED"
+
+if [ -n "$OUT" ]; then
+  {
+    echo "verdict=$VERDICT"
+    echo "dump=$DUMP"
+    echo "sha256=$SHA"
+    echo "restore_seconds=$SECONDS_RESTORE"
+    echo "dump_alembic=$PRE_REV"
+    echo "upgrade_seconds=$SECONDS_UPGRADE"
+    echo "alembic_live=$LIVE_REV"
+    echo "alembic_restored=$REST_REV"
+    echo "tables_live=$(wc -l < "$TMP/tables.live")"
+    echo "tables_restored=$(wc -l < "$TMP/tables.restored")"
+    echo "triggers_signals_live=$TRIG_LIVE"
+    echo "triggers_signals_restored=$TRIG_REST"
+    echo "last_eod=$LAST_DEC"
+    echo "last_chain=$LAST_CHAIN"
+    echo "decisions=$N_DEC"
+    echo "outcomes=$N_OUT"
+    echo "chain_decisions=$N_CHAIN"
+    echo "reports=$N_REPORT"
+    echo "users=$N_USER"
+    echo "acceptance=$ACC_VERDICT"
+    echo "failures=$FAILED"
+    echo "checked_at=$(date -Is)"
+  } > "$OUT"
+  echo "report=$OUT"
+fi
+
+if [ "$KEEP" = 1 ]; then
+  echo "kept database $DB"
+else
+  psqlq postgres "select pg_terminate_backend(pid) from pg_stat_activity where datname='$DB' and pid <> pg_backend_pid()" >/dev/null
+  psqlq postgres "drop database $DB" >/dev/null
+  echo "dropped database $DB"
+fi
+
+[ "$VERDICT" = PASS ]

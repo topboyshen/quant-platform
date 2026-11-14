@@ -1,6 +1,7 @@
 """M7.6 frontend package: router coverage, shared state usage, runbook."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 APP = Path(__file__).resolve().parents[2]
@@ -50,6 +51,17 @@ def test_mobile_styles_keep_tables_scrollable():
     assert ".n-drawer" in css and "max-width: 100vw" in css
     main = (FRONTEND / "src" / "main.ts").read_text(encoding="utf-8")
     assert "styles.css" in main
+
+def test_restore_drill_is_guarded_and_self_verifying():
+    path = DEPLOY / "bin" / "qp-restore-drill"
+    assert path.exists() and os.access(path, os.X_OK)
+    script = path.read_text(encoding="utf-8")
+    assert "refusing: scratch db == live db" in script
+    assert "--exit-on-error" in script and "--no-owner" in script
+    assert "drop database if exists $DB" in script
+    assert "db upgrade" in script and "signals acceptance" in script
+    assert "drop database $DB" in script
+
 
 def test_release_prune_keeps_current_and_newest():
     script = (DEPLOY / "bin" / "qp-release-prune").read_text(encoding="utf-8")
