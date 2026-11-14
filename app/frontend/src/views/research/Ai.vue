@@ -26,6 +26,7 @@ import { onMounted, ref } from 'vue'
 import { NCard, NDataTable, NDrawer, NDrawerContent, NSpace, NTabPane, NTabs, NText } from 'naive-ui'
 import AsyncState from '../../components/AsyncState.vue'
 import { api } from '../../api/client'
+import { fmt } from '../../util'
 
 interface Task { id: number; market: string | null; symbol: string | null; model: string | null; status: string | null; decision: string | null; confidence: number | null; created_at: string | null }
 interface Session { id: string; title: string | null; market: string | null; symbol: string | null; updated_at: string | null }
@@ -53,7 +54,7 @@ const sessionColumns = [
   { title: 'ID', key: 'id', width: 220 },
   { title: '标题', key: 'title' },
   { title: '代码', key: 'symbol', width: 100 },
-  { title: '更新时间', key: 'updated_at', width: 180 },
+  { title: '更新时间 (CST)', key: 'updated_at', width: 180, render: (r: Session) => fmt(r.updated_at) },
 ]
 function sessionProps(row: Session) { return { style: 'cursor: pointer', onClick: async () => {
   current.value = row

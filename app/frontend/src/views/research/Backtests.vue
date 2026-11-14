@@ -31,6 +31,7 @@ import { onMounted, ref } from 'vue'
 import { NButton, NDataTable, NDescriptions, NDescriptionsItem, NDrawer, NDrawerContent, NH4, NInput, NSpace, NText } from 'naive-ui'
 import AsyncState from '../../components/AsyncState.vue'
 import { api } from '../../api/client'
+import { fmt } from '../../util'
 
 interface Run { run_id: number; strategy_name: string | null; symbol: string | null; timeframe: string | null; status: string | null; created_at: string | null }
 interface Detail { run: Run; equity: { index: number; time: string | null; value: number | null }[]; trades: { index: number; time: string | null; side: string | null; price: number | null; amount: number | null; profit: number | null; reason: string | null }[]; counts: { equity_points: number; trades: number } }
@@ -49,11 +50,11 @@ const columns = [
   { title: '代码', key: 'symbol', width: 100 },
   { title: '周期', key: 'timeframe', width: 80 },
   { title: '状态', key: 'status', width: 100 },
-  { title: '创建时间', key: 'created_at', width: 180 },
+  { title: '创建时间 (CST)', key: 'created_at', width: 180, render: (r: Run) => fmt(r.created_at) },
 ]
 const tradeColumns = [
   { title: '#', key: 'index', width: 50 },
-  { title: '时间', key: 'time', width: 160 },
+  { title: '时间 (CST)', key: 'time', width: 160, render: (r: { time: string }) => fmt(r.time) },
   { title: '方向', key: 'side', width: 70 },
   { title: '价格', key: 'price', width: 90 },
   { title: '盈亏', key: 'profit', width: 90 },
