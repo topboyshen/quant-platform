@@ -16,8 +16,6 @@ jobs:
     defaults:
       run:
         working-directory: app/backend
-    env:
-      QP_TEST_PGDATA: ${{ runner.temp }}/qp-pgdata
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,6 +28,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[test]" pgserver
       - name: Test
+        env:
+          QP_TEST_PGDATA: ${{ runner.temp }}/qp-pgdata
         run: python -m pytest -q
 
   frontend:
