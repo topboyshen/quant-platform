@@ -323,3 +323,16 @@ def test_chain_api_snapshot_decisions_detail(engine, client, chain_on):
         assert client.get("/api/signals/chain/decision/qd_missing", headers=headers).status_code == 404
     finally:
         _cleanup(engine)
+
+def test_pool_page_has_record_chain_tab():
+    from pathlib import Path
+    views = Path(__file__).resolve().parents[2] / "frontend" / "src" / "views" / "signals"
+    pool = (views / "EtfPool.vue").read_text(encoding="utf-8")
+    panel = (views / "ChainPanel.vue").read_text(encoding="utf-8")
+    assert 'tab="研究池"' in pool and 'tab="记录链"' in pool and "<ChainPanel" in pool
+    for label in ("检查", "触发", "风控拦截", "风控放行", "进入样本"):
+        assert label in panel, label
+    for label in ("待成熟", "合格且成熟", "历史排除", "成员无决策", "触发缺资格"):
+        assert label in panel, label
+    assert "/signals/chain/snapshot" in panel and "/signals/chain/decisions" in panel
+    assert "/signals/chain/decision/" in panel

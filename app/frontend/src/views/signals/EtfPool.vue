@@ -1,4 +1,6 @@
 <template>
+  <n-tabs v-model:value="tab" type="line">
+    <n-tab-pane name="pool" tab="研究池">
   <n-space vertical>
     <n-space align="center">
       <n-date-picker v-model:value="ts" type="date" clearable placeholder="最新交易日" />
@@ -35,17 +37,24 @@
       </n-drawer-content>
     </n-drawer>
   </n-space>
+    </n-tab-pane>
+    <n-tab-pane name="chain" tab="记录链">
+      <ChainPanel />
+    </n-tab-pane>
+  </n-tabs>
 </template>
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { NButton, NCard, NDataTable, NDatePicker, NDescriptions, NDescriptionsItem, NDrawer, NDrawerContent, NEmpty, NH4, NSpace, NTag, NText } from 'naive-ui'
+import { NButton, NCard, NDataTable, NDatePicker, NDescriptions, NDescriptionsItem, NDrawer, NDrawerContent, NEmpty, NH4, NSpace, NTabPane, NTabs, NTag, NText } from 'naive-ui'
 import AsyncState from '../../components/AsyncState.vue'
+import ChainPanel from './ChainPanel.vue'
 import { api } from '../../api/client'
 
 interface Signal { signal_type: string; period: string; data_date: string | null; title: string; confidence: number | null }
 interface Item { code: string; name: string; sector: string; state: string; risk_action: string | null; risk_level: string | null; reason_code: string | null; reference_close: number | null; raw_trigger_count: number | null; signals: Signal[] }
 interface Pool { decision_date: string | null; counts: Record<string, number>; items: Item[] }
 
+const tab = ref('pool')
 const ts = ref<number | null>(null)
 const data = ref<Pool | null>(null)
 const items = ref<Item[]>([])
