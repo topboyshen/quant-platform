@@ -1,0 +1,48 @@
+#!/bin/bash
+# Keep only the newest N qp releases (default 5) plus whatever /opt/qp/current
+# points at. Every release carries its own venv (~90MB), so unbounded growth
+# eventually trips the 85% root-disk health check.
+#
+# Usage: qp-release-prune [--dry-run]
+# Env:   QP_RELEASE_KEEP (default 5), QP_RELEASE_ROOT (default /opt/qp/releases)
+set -euo pipefail
+
+ROOT=${QP_RELEASE_ROOT:-/opt/qp/releases}
+KEEP=${QP_RELEASE_KEEP:-5}
+DRY_RUN=0
+[ "${1:-}" = "--dry-run" ] && DRY_RUN=1
+
+if ! [[ "$KEEP" =~ ^[0-9]+$ ]] || [ "$KEEP" -lt 2 ]; then
+    echo "refusing: QP_RELEASE_KEEP must be an integer >= 2 (current + previous)" >&2
+    exit 2
+fi
+[ -d "$ROOT" ] || { echo "nothing to do: $ROOT missing"; exit 0; }
+
+current=$(readlink -f /opt/qp/current 2>/dev/null || true)
+current_name=${current##*/}
+
+mapfile -t releases < <(find "$ROOT" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V)
+total=${#releases[@]}
+echo "root=$ROOT releases=$total keep=$KEEP current=${current_name:-none} dry_run=$DRY_RUN"
+if [ "$total" -le "$KEEP" ]; then
+    echo "nothing to do"
+    exit 0
+fi
+
+removed=0
+for ((i = 0; i < total - KEEP; i++)); do
+    name=${releases[$i]}
+    if [ "$name" = "$current_name" ]; then
+        echo "skip current $name"
+        continue
+    fi
+    if [ "$DRY_RUN" = 1 ]; then
+        echo "would remove $name"
+        continue
+    fi
+    echo "removing $name"
+    rm -rf "${ROOT:?}/$name"
+    removed=$((removed + 1))
+done
+echo "removed=$removed"
+df -h / | tail -1

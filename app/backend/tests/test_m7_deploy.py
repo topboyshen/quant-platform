@@ -50,3 +50,14 @@ def test_mobile_styles_keep_tables_scrollable():
     assert ".n-drawer" in css and "max-width: 100vw" in css
     main = (FRONTEND / "src" / "main.ts").read_text(encoding="utf-8")
     assert "styles.css" in main
+
+def test_release_prune_keeps_current_and_newest():
+    script = (DEPLOY / "bin" / "qp-release-prune").read_text(encoding="utf-8")
+    assert "QP_RELEASE_KEEP" in script and "--dry-run" in script
+    assert "readlink -f /opt/qp/current" in script
+    assert '"$name" = "$current_name"' in script
+    assert "sort -V" in script
+    service = (DEPLOY / "systemd" / "qp-release-prune.service").read_text(encoding="utf-8")
+    assert "QP_RELEASE_KEEP=5" in service and "/usr/local/sbin/qp-release-prune" in service
+    timer = (DEPLOY / "systemd" / "qp-release-prune.timer").read_text(encoding="utf-8")
+    assert "04:10" in timer and "Persistent=false" in timer and "Asia/Shanghai" in timer

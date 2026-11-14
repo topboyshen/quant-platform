@@ -1,0 +1,14 @@
+[Unit]
+Description=quant-platform release retention (keep newest 5 releases plus current)
+# Deletes only old /opt/qp/releases/<name> directories; /opt/qp/current is never touched.
+
+[Service]
+Type=oneshot
+Environment=QP_RELEASE_KEEP=5
+ExecStart=/usr/local/sbin/qp-release-prune
+Nice=15
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/qp/releases

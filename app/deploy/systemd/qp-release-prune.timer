@@ -1,0 +1,10 @@
+[Unit]
+Description=quant-platform release retention daily 04:10 CST
+
+[Timer]
+OnCalendar=*-*-* 04:10:00 Asia/Shanghai
+Persistent=false
+Unit=qp-release-prune.service
+
+[Install]
+WantedBy=timers.target
