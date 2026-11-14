@@ -6,7 +6,7 @@
     </n-space>
     <n-card title="健康检查（各检查最新值）">
       <n-space>
-        <n-tag v-for="c in health?.checks || []" :key="c.check" :type="c.ok ? 'success' : 'error'" :title="c.at ? '观测于 ' + fmt(c.at) : undefined">
+        <n-tag v-for="c in health?.checks || []" :key="c.check" :type="checkType(c)" :title="checkTitle(c)">
           {{ c.check }}<template v-if="c.value !== null">：{{ c.value }}</template>
         </n-tag>
         <span v-if="!health?.checks?.length" class="muted">暂无记录</span>
@@ -19,14 +19,25 @@
     <n-card title="任务">
       <n-data-table :columns="jobCols" :data="jobs" size="small" :bordered="false" />
     </n-card>
-    <n-card title="最近任务运行">
-      <n-data-table :columns="runCols" :data="runs" size="small" :bordered="false" :pagination="{ pageSize: 20 }" />
+    <n-card>
+      <template #header>
+        <n-space align="center">
+          <span>最近任务运行</span>
+          <n-select v-model:value="jobFilter" size="small" clearable placeholder="按任务筛选" style="width: 220px"
+                    :options="jobOptions" />
+          <n-switch v-model:value="onlyProblems" size="small">
+            <template #checked>只看非成功</template>
+            <template #unchecked>全部状态</template>
+          </n-switch>
+        </n-space>
+      </template>
+      <n-data-table :columns="runCols" :data="filteredRuns" size="small" :bordered="false" :pagination="{ pageSize: 20 }" />
     </n-card>
   </n-space>
 </template>
 <script setup lang="ts">
-import { h, onMounted, ref } from 'vue'
-import { NButton, NCard, NDataTable, NH2, NSpace, NTag, type DataTableColumns } from 'naive-ui'
+import { computed, h, onMounted, ref } from 'vue'
+import { NButton, NCard, NDataTable, NH2, NSelect, NSpace, NSwitch, NTag, type DataTableColumns } from 'naive-ui'
 import { api } from '../api/client'
 
 interface Run { id: number; job_name: string; status: string; trigger: string; started_at: string; duration_s: number | null; error: string | null }
@@ -34,6 +45,18 @@ interface Job { name: string; schedule_hint: string | null; last_status: string 
 interface Health { checks: { check: string; ok: boolean; value: number | null; at?: string }[]; outbox: { pending: number; shadowed: number; sent?: number; failed?: number; mode?: string; signals_mode?: string; kill_switch?: boolean } }
 
 const runs = ref<Run[]>([]), jobs = ref<Job[]>([]), health = ref<Health | null>(null), loading = ref(false)
+const jobFilter = ref<string | null>(null), onlyProblems = ref(false)
+const jobOptions = computed(() => [...new Set(runs.value.map((r) => r.job_name))].sort()
+  .map((n) => ({ label: n, value: n })))
+const filteredRuns = computed(() => runs.value.filter((r) =>
+  (!jobFilter.value || r.job_name === jobFilter.value) && (!onlyProblems.value || r.status !== 'succeeded')))
+// telegram_direct is expected to fail: qp sends through the local proxy only.
+const EXPECTED_FAIL = new Set(['inv:egress.telegram_direct.ms'])
+const checkType = (c: { check: string; ok: boolean }) =>
+  (c.ok ? 'success' : EXPECTED_FAIL.has(c.check) ? 'default' : 'error')
+const checkTitle = (c: { check: string; at?: string }) =>
+  (EXPECTED_FAIL.has(c.check) ? '直连不可达为预期，实际发送经 127.0.0.1:7890 代理' : '')
+  + (c.at ? `${EXPECTED_FAIL.has(c.check) ? ' · ' : ''}观测于 ${fmt(c.at)}` : '')
 const fmt = (s: string | null) => (s ? new Date(s).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '-')
 const statusTag = (s: string | null) => h(NTag, { size: 'small', type: s === 'succeeded' ? 'success' : s === 'failed' ? 'error' : 'default' }, { default: () => s || '-' })
 
