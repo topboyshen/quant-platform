@@ -141,9 +141,9 @@ def outcomes_job(ctx: JobContext) -> dict:
      schedule_hint="Mon-Fri 15:36 CST (after EOD; no notification)")
 def shadow_record_job(ctx: JobContext) -> dict:
     from qp.signals import shadow
-    today = now_cst().date()
     with Session(ctx.engine) as session:
-        out = shadow.record(session, decision_date=today)
+        # every date: a late EOD is picked up by the next run instead of being skipped
+        out = shadow.record(session)
         session.commit()
     out["ok"] = True
     return out
