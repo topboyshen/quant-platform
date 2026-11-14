@@ -214,6 +214,27 @@ def test_m2_api(authed, engine, inbox):
     assert {"status", "planned_date", "failure_stage", "update_at"} <= set(cov["qlib"])
 
 
+def test_ops_jobs_and_health(authed, engine, inbox):
+    from qp.jobs import run_job
+    from qp.models.ops import JobRun
+
+    inbox.write_text(json.dumps(snap()))
+    run_job(engine, "ops.inventory")
+    with Session(engine) as s:
+        s.add(JobRun(job_name="ops.inventory", status="skipped_locked", trigger="manual",
+                     started_at=datetime.now(timezone.utc)))
+        s.commit()
+    jobs = {j["name"]: j for j in authed.get("/api/ops/jobs").json()}
+    # a no-op attempt must not mask the real outcome
+    assert jobs["ops.inventory"]["last_status"] == "succeeded"
+
+    h = authed.get("/api/ops/health").json()
+    names = [c["check"] for c in h["checks"]]
+    assert len(names) == len(set(names)) and "inv:host.disk_free_gb" in names
+    assert all(c["at"] for c in h["checks"])
+    assert {"pending", "shadowed", "sent", "failed", "mode", "signals_mode"} <= set(h["outbox"])
+
+
 def test_tokens(authed):
     from fastapi.testclient import TestClient
     from qp.api.main import app

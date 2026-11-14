@@ -6,12 +6,15 @@
     </n-space>
     <n-card title="健康检查（最近一次）">
       <n-space>
-        <n-tag v-for="c in health?.checks || []" :key="c.check" :type="c.ok ? 'success' : 'error'">
+        <n-tag v-for="c in health?.checks || []" :key="c.check" :type="c.ok ? 'success' : 'error'" :title="c.at ? '观测于 ' + fmt(c.at) : undefined">
           {{ c.check }}<template v-if="c.value !== null">：{{ c.value }}</template>
         </n-tag>
         <span v-if="!health?.checks?.length" class="muted">暂无记录</span>
       </n-space>
-      <p class="muted">通知 outbox：待处理 {{ health?.outbox.pending ?? '-' }}，影子 {{ health?.outbox.shadowed ?? '-' }}（模式：shadow，不发送）</p>
+      <p class="muted">
+        通知 outbox：待处理 {{ health?.outbox.pending ?? '-' }} · 影子 {{ health?.outbox.shadowed ?? '-' }} · 已发送 {{ health?.outbox.sent ?? '-' }} · 失败 {{ health?.outbox.failed ?? '-' }}
+        （全局 {{ health?.outbox.mode ?? '-' }}<template v-if="health?.outbox.signals_mode"> · 信号 {{ health.outbox.signals_mode }}</template><template v-if="health?.outbox.kill_switch"> · 紧急停止已启用</template>）
+      </p>
     </n-card>
     <n-card title="任务">
       <n-data-table :columns="jobCols" :data="jobs" size="small" :bordered="false" />
@@ -28,7 +31,7 @@ import { api } from '../api/client'
 
 interface Run { id: number; job_name: string; status: string; trigger: string; started_at: string; duration_s: number | null; error: string | null }
 interface Job { name: string; schedule_hint: string | null; last_status: string | null; last_started_at: string | null }
-interface Health { checks: { check: string; ok: boolean; value: number | null }[]; outbox: { pending: number; shadowed: number } }
+interface Health { checks: { check: string; ok: boolean; value: number | null; at?: string }[]; outbox: { pending: number; shadowed: number; sent?: number; failed?: number; mode?: string; signals_mode?: string; kill_switch?: boolean } }
 
 const runs = ref<Run[]>([]), jobs = ref<Job[]>([]), health = ref<Health | null>(null), loading = ref(false)
 const fmt = (s: string | null) => (s ? new Date(s).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '-')

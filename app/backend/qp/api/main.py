@@ -154,7 +154,11 @@ def me(p: Principal = Depends(require_auth)) -> Principal:
 def ops_jobs(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     out = []
     for d in db.execute(select(JobDef).order_by(JobDef.name)).scalars():
-        last = db.execute(select(JobRun).where(JobRun.job_name == d.name).order_by(JobRun.id.desc()).limit(1)).scalar_one_or_none()
+        # skipped_locked is a no-op attempt while another run holds the lock; it must not
+        # mask the real outcome of the job.
+        last = db.execute(select(JobRun).where(JobRun.job_name == d.name,
+                                               JobRun.status != "skipped_locked")
+                          .order_by(JobRun.id.desc()).limit(1)).scalar_one_or_none()
         out.append({"name": d.name, "description": d.description, "schedule_hint": d.schedule_hint,
                     "enabled": d.enabled, "last_status": last.status if last else None,
                     "last_started_at": last.started_at if last else None})
@@ -175,15 +179,18 @@ def ops_job_runs(limit: int = 50, job: str | None = None, p: Principal = Depends
 
 @app.get("/api/ops/health", dependencies=[Depends(require_scope("ops:read"))])
 def ops_health(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
-    latest_run = db.execute(select(func.max(HealthCheck.job_run_id))).scalar_one_or_none()
-    checks = []
-    if latest_run is not None:
-        checks = [{"check": h.check, "ok": h.ok, "value": h.value, "at": h.at, "detail": h.detail}
-                  for h in db.execute(select(HealthCheck).where(HealthCheck.job_run_id == latest_run)
-                                      .order_by(HealthCheck.check)).scalars()]
-    pending = db.execute(select(func.count()).select_from(Outbox).where(Outbox.status == "pending")).scalar_one()
-    shadowed = db.execute(select(func.count()).select_from(Outbox).where(Outbox.status == "shadowed")).scalar_one()
-    return {"checks": checks, "outbox": {"pending": pending, "shadowed": shadowed, "mode": "shadow"}}
+    # healthcheck and inventory write different checks in alternating runs; show the
+    # latest observation per check instead of only the most recent run's rows.
+    checks = [{"check": h.check, "ok": h.ok, "value": h.value, "at": h.at, "detail": h.detail}
+              for h in db.execute(select(HealthCheck).distinct(HealthCheck.check)
+                                  .order_by(HealthCheck.check, HealthCheck.at.desc())).scalars()]
+    counts = dict(db.execute(select(Outbox.status, func.count()).group_by(Outbox.status)).all())
+    st = get_settings()
+    return {"checks": checks,
+            "outbox": {"pending": counts.get("pending", 0), "shadowed": counts.get("shadowed", 0),
+                       "sent": counts.get("sent", 0), "failed": counts.get("failed", 0),
+                       "mode": st.notify_mode, "signals_mode": st.signals_notify_mode,
+                       "kill_switch": st.notify_kill_switch}}
 
 
 from qp.api.ops_m2 import router as _m2_router  # noqa: E402

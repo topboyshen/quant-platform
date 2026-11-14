@@ -15,8 +15,8 @@ from qp.signals.repair import run_repair
 from qp.signals.watchdog import latest_retryable_run, run_watchdog
 
 
-@job("signals.eod", "Swing EOD shadow: 40-ETF trend scan + macro-risk gate -> signals.*",
-     schedule_hint="Mon-Fri 15:30 CST (legacy 15:30; shadow run only)")
+@job("signals.eod", "Swing EOD: 40-ETF trend scan + macro-risk gate -> signals.*",
+     schedule_hint="Mon-Fri 15:30 CST (legacy 15:30; notifications live since 2026-11-13)")
 def eod_job(ctx: JobContext) -> dict:
     today = now_cst().date()
     with Session(ctx.engine) as session:
