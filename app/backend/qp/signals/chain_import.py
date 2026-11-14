@@ -27,6 +27,8 @@ LEGACY_PROTOCOL = "qp.record-chain.v1"
 
 
 def _legacy_policy(session: Session, now: dt.datetime) -> None:
+    # eligibility rows reference the shared eligibility policy as well as the legacy rule
+    chain._ensure_policies(session, now)
     definition = {"engine": "legacy", "version": "v0", "protocol_version": LEGACY_PROTOCOL}
     session.execute(pg_insert(ChainPolicy).values(
         policy_version=LEGACY_RULE, kind="rule", definition=definition,

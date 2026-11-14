@@ -97,9 +97,11 @@ def _decisions() -> list[dict]:
 
 def _cleanup(engine) -> None:
     with Session(engine) as session:
-        from qp.models.chain import ChainSnapshot, ChainSnapshotItem
+        from qp.models.chain import (ChainBatch, ChainPolicy, ChainSnapshot, ChainSnapshotItem,
+                                     ChainUniverse, ChainUniverseMember)
         for model in (ChainSnapshotItem, ChainSnapshot, ChainImportRegister, ChainOutcome, ChainState,
-                      ChainEligibility, ChainAttempt, ChainDecision):
+                      ChainEligibility, ChainAttempt, ChainDecision, ChainBatch,
+                      ChainUniverseMember, ChainUniverse, ChainPolicy):
             session.execute(text(f"ALTER TABLE signals.{model.__tablename__} DISABLE TRIGGER USER"))
             session.execute(model.__table__.delete())
             session.execute(text(f"ALTER TABLE signals.{model.__tablename__} ENABLE TRIGGER USER"))
