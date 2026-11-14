@@ -102,6 +102,9 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
     today = now_cst().date()
     with Session(ctx.engine) as session:
         out = chain.build_snapshot(session, business_date=today)
+        if out.get("ok"):
+            from qp.signals import chain_compare
+            out["compare"] = chain_compare.compare(session, today)
         session.commit()
     if out.get("reason") == "no_batch":
         return {"ok": True, "skipped": "no_batch", "business_date": today.isoformat()}
