@@ -12,7 +12,7 @@
           <n-descriptions :column="2" size="small" bordered>
             <n-descriptions-item label="状态">{{ detail.report.status }}</n-descriptions-item>
             <n-descriptions-item label="内容 sha">{{ detail.report.content_sha256.slice(0, 16) }}…</n-descriptions-item>
-            <n-descriptions-item label="冻结时间">{{ detail.report.frozen_at || '—' }}</n-descriptions-item>
+            <n-descriptions-item label="冻结时间">{{ fmt(detail.report.frozen_at) }}</n-descriptions-item>
             <n-descriptions-item label="投递">{{ detail.deliveries.length }}</n-descriptions-item>
           </n-descriptions>
           <n-h4>正文</n-h4>
@@ -32,6 +32,7 @@ import { onMounted, ref } from 'vue'
 import { NCard, NDataTable, NDescriptions, NDescriptionsItem, NDrawer, NDrawerContent, NH4, NSelect, NSpace, NText } from 'naive-ui'
 import AsyncState from '../../components/AsyncState.vue'
 import { api } from '../../api/client'
+import { fmt } from '../../util'
 
 interface Report { id: number; kind: string; business_date: string; version: number; status: string; content_sha256: string; frozen_at: string | null }
 interface Source { id: number; source: string; locator: string | null; sha256: string | null }
@@ -52,7 +53,7 @@ const columns = [
   { title: '业务日', key: 'business_date', width: 110 },
   { title: '版本', key: 'version', width: 70 },
   { title: '状态', key: 'status', width: 90 },
-  { title: '冻结时间', key: 'frozen_at', width: 180 },
+  { title: '冻结时间 (CST)', key: 'frozen_at', width: 180, render: (r: Report) => fmt(r.frozen_at) },
 ]
 const sourceColumns = [
   { title: '来源', key: 'source', width: 160 },

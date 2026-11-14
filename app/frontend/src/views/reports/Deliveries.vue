@@ -11,6 +11,7 @@ import { onMounted, ref } from 'vue'
 import { NDataTable, NSpace, NText } from 'naive-ui'
 import AsyncState from '../../components/AsyncState.vue'
 import { api } from '../../api/client'
+import { fmt } from '../../util'
 
 interface Row { id: number; kind: string; business_date: string; version: number; channel: string; mode: string; status: string; sent_at: string | null; receipt_status: string | null; received_at: string | null }
 const rows = ref<Row[]>([])
@@ -25,7 +26,7 @@ const columns = [
   { title: '模式', key: 'mode', width: 80 },
   { title: '发送状态', key: 'status', width: 100 },
   { title: '回执状态', key: 'receipt_status', width: 100 },
-  { title: '回执时间', key: 'received_at', width: 180 },
+  { title: '回执时间 (CST)', key: 'received_at', width: 180, render: (r: Row) => fmt(r.received_at) },
 ]
 onMounted(async () => {
   loading.value = true

@@ -12,3 +12,6 @@
 @media (max-width: 860px) {
   .n-card > .n-card-header { padding: 16px 16px 8px; }
 }
+
+/* Fixed-width drawers must never exceed the phone viewport. */
+.n-drawer { max-width: 100vw; }
