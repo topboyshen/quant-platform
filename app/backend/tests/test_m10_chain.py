@@ -422,3 +422,39 @@ def test_history_import_dry_run_then_apply_is_idempotent(engine, chain_on):
             session.execute(EodRun.__table__.delete().where(
                 EodRun.decision_date.in_([DAY, partial_day])))
             session.commit()
+
+def test_chain_compare_matches_legacy_counts(engine, chain_on):
+    from qp.signals import chain_compare
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    try:
+        with Session(engine) as session:
+            run = session.get(EodRun, run_id)
+            decisions = _decisions()
+            for row in decisions:
+                session.add(TargetDecision(
+                    run_id=run_id, decision_date=DAY, code=row["code"], name=row["name"],
+                    data_status=row["data_status"], decision_state=row["decision_state"],
+                    risk_action=row["risk_action"], reason_code=row["reason_code"],
+                    raw_trigger_count=row["raw_trigger_count"], raw_signals=[],
+                    validation_split=row["validation_split"]))
+            session.commit()
+        with Session(engine) as session:
+            assert chain_compare.compare(session, DAY)["reason"] == "no_snapshot"
+            chain.register_run(session, run=session.get(EodRun, run_id),
+                               decisions=_decisions(), run_status="success")
+            chain.build_snapshot(session, business_date=DAY)
+            session.commit()
+        with Session(engine) as session:
+            out = chain_compare.compare(session, DAY)
+        assert out["ok"] and out["diffs"] == []
+        assert out["checks"][0] == {"item": "checked", "chain": 3, "legacy": 3, "match": True}
+        assert out["legacy"]["triggered"] == 2 and out["legacy"]["risk_blocked"] == 1
+    finally:
+        _cleanup(engine)
+        with Session(engine) as session:
+            session.execute(DecisionOutcome.__table__.delete())
+            session.execute(TargetDecision.__table__.delete())
+            session.execute(EodRun.__table__.delete().where(EodRun.decision_date == DAY))
+            session.commit()

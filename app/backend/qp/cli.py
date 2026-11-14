@@ -200,6 +200,18 @@ def cmd_chain_import_history(a) -> int:
     return 0
 
 
+def cmd_chain_compare(a) -> int:
+    """Shadow comparison of the chain snapshot against the legacy signals tables."""
+    import datetime as dt
+    from qp.db import session_scope
+    from qp.signals import chain_compare
+    day = dt.date.fromisoformat(a.date)
+    with session_scope() as s:
+        out = chain_compare.compare(s, day)
+    print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
+    return 0 if out.get("ok") else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="qp")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -239,6 +251,9 @@ def main(argv: list[str] | None = None) -> int:
     ci.add_argument("--apply", action="store_true")
     ci.add_argument("--since", default=None)
     ci.set_defaults(fn=cmd_chain_import_history)
+    cc = ch.add_parser("compare")
+    cc.add_argument("--date", required=True)
+    cc.set_defaults(fn=cmd_chain_compare)
     dc = sub.add_parser("decommission").add_subparsers(dest="sub", required=True)
     dci = dc.add_parser("inventory")
     dci.add_argument("--out", default=None)
