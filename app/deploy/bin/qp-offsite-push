@@ -1,0 +1,28 @@
+#!/bin/bash
+# Push the newest qp database dumps to Quant-Server (second offsite copy).
+#
+# Runs as the qp user from qp-offsite-push.timer. The qp SSH key on Quant-Server is
+# restricted to `rrsync -wo ~/qp-offsite-backups`, so this key cannot open a shell.
+# rrsync maps the destination root itself: the rsync target is `host:` with no path.
+set -euo pipefail
+SRC=/var/lib/qp/backups
+STAGE=/var/lib/qp/offsite-stage
+DEST=${QP_OFFSITE_DEST:-ubuntu@111.229.252.186:}
+KEY=${QP_OFFSITE_KEY:-/var/lib/qp/.ssh/id_ed25519}
+KEEP=${QP_OFFSITE_KEEP:-14}
+SSH_CMD="ssh -i $KEY -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/var/lib/qp/.ssh/known_hosts"
+
+rm -rf "$STAGE"
+mkdir -p "$STAGE"
+chmod 700 "$STAGE"
+mapfile -t files < <(ls -1t "$SRC"/qp-*.dump 2>/dev/null | head -n "$KEEP")
+if [ "${#files[@]}" -eq 0 ]; then
+  echo "no dumps in $SRC" >&2
+  exit 1
+fi
+for f in "${files[@]}"; do
+  cp -l "$f" "$STAGE/$(basename "$f")"
+done
+rsync -a --delete -e "$SSH_CMD" "$STAGE/" "$DEST"
+rm -rf "$STAGE"
+echo "pushed ${#files[@]} dumps to Quant-Server"

@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform quarterly backup restore drill (Jan/Apr/Jul/Oct 1st 04:30 CST)
+
+[Timer]
+OnCalendar=*-01,04,07,10-01 04:30:00 Asia/Shanghai
+AccuracySec=1h
+Persistent=true
+Unit=qp-restore-drill.service
+
+[Install]
+WantedBy=timers.target

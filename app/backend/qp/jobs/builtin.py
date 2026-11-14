@@ -54,6 +54,19 @@ def enqueue(s: Session, *, channel: str, recipient: str, dedup_key: str, body: s
 # window. Retry briefly so a planned restart is not recorded as a health failure.
 API_PROBE_ATTEMPTS = int(os.getenv("QP_HEALTHCHECK_API_ATTEMPTS", "3"))
 API_PROBE_DELAY_SEC = float(os.getenv("QP_HEALTHCHECK_API_DELAY_SEC", "1.5"))
+BACKUP_MAX_AGE_HOURS = float(os.getenv("QP_BACKUP_MAX_AGE_HOURS", "36"))
+
+
+def _backup_age_hours(directory: str) -> float | None:
+    """Age of the newest qp-*.dump, or None when there is no dump at all."""
+    d = Path(directory)
+    if not d.is_dir():
+        return None
+    dumps = list(d.glob("qp-*.dump"))
+    if not dumps:
+        return None
+    newest = max(dumps, key=lambda p: p.stat().st_mtime)
+    return (time.time() - newest.stat().st_mtime) / 3600
 
 
 def _probe_api(url: str) -> tuple[bool, dict]:
@@ -88,6 +101,10 @@ def healthcheck(ctx: JobContext) -> dict:
     checks.append(("mem_available_mb", mem is None or mem >= 600, round(mem, 1) if mem else None, {}))
     api_ok, api_detail = _probe_api(st.api_health_url)
     checks.append(("api", api_ok, None, api_detail))
+    backup_age = _backup_age_hours(st.backup_dir)
+    checks.append(("backup_age_hours", backup_age is not None and backup_age <= BACKUP_MAX_AGE_HOURS,
+                   round(backup_age, 1) if backup_age is not None else None,
+                   {"max": BACKUP_MAX_AGE_HOURS}))
     ok = all(c[1] for c in checks)
     with Session(ctx.engine) as s:
         for name, cok, val, det in checks:

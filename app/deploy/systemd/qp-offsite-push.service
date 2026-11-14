@@ -1,0 +1,12 @@
+[Unit]
+Description=push the newest qp dumps to Quant-Server (second offsite copy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=qp
+Group=qp
+ExecStart=/usr/local/sbin/qp-offsite-push
+TimeoutStartSec=10min
+Nice=10

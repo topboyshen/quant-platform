@@ -24,6 +24,7 @@ HORIZONS = (1, 3, 5, 10, 20)
 DUE_MIN_RATIO = 0.8
 OUTCOME_LOOKBACK_SESSIONS = 30
 INDEX_SYMBOLS_EXPECTED = 4
+STRATEGY_WINDOW_SESSIONS = 20
 
 
 def _check(cid: str, status: str, detail: str, **metrics: Any) -> dict[str, Any]:
@@ -35,6 +36,53 @@ def _latest_run(session: Session, day: dt.date) -> EodRun | None:
                           .order_by(EodRun.attempt_no.desc(), EodRun.run_id.desc()).limit(1))
 
 
+def _open_days(session: Session, today: dt.date) -> list[dt.date]:
+    return [d for d in session.scalars(
+        select(TradingDay.date).where(TradingDay.origin == "qp",
+                                      TradingDay.is_open.is_(True),
+                                      TradingDay.date <= today)
+        .order_by(TradingDay.date)) if d <= today]
+
+
+def _strategy_summary(session: Session, today: dt.date) -> dict[str, Any]:
+    """Observation only: how often the strategy actually produces allowed entries.
+
+    A month without an allowed decision makes the outcome checks vacuous, so the
+    acceptance report carries the window counts and the last allowed/trigger dates.
+    """
+    open_days = _open_days(session, today)
+    position = {d: i for i, d in enumerate(open_days)}
+    window = open_days[-STRATEGY_WINDOW_SESSIONS:]
+    counts: dict[str, int] = {}
+    if window:
+        for state, n in session.execute(
+                select(TargetDecision.decision_state, func.count())
+                .where(TargetDecision.decision_date.in_(window))
+                .group_by(TargetDecision.decision_state)).all():
+            counts[str(state)] = int(n)
+
+    def elapsed(day: dt.date | None) -> int | None:
+        if day is None or day not in position:
+            return None
+        return len(open_days) - 1 - position[day]
+
+    last_allowed = session.scalar(
+        select(func.max(TargetDecision.decision_date))
+        .where(TargetDecision.decision_state == "allowed",
+               TargetDecision.decision_date <= today))
+    last_trigger = session.scalar(
+        select(func.max(TargetDecision.decision_date))
+        .where(TargetDecision.raw_trigger_count > 0,
+               TargetDecision.decision_date <= today))
+    return {"window_sessions": len(window),
+            "window_start": window[0].isoformat() if window else None,
+            "counts": counts,
+            "last_allowed_date": last_allowed.isoformat() if last_allowed else None,
+            "sessions_since_allowed": elapsed(last_allowed),
+            "last_trigger_date": last_trigger.isoformat() if last_trigger else None,
+            "sessions_since_trigger": elapsed(last_trigger)}
+
+
 def _outcome_backlog(session: Session, today: dt.date) -> dict[str, Any]:
     """Allowed decisions whose horizon has matured vs the outcomes materialised.
 
@@ -42,11 +90,7 @@ def _outcome_backlog(session: Session, today: dt.date) -> dict[str, Any]:
     session.  Limited to the last ``OUTCOME_LOOKBACK_SESSIONS`` open sessions: older
     holes are history, not an operational signal.
     """
-    open_days = [d for d in session.scalars(
-        select(TradingDay.date).where(TradingDay.origin == "qp",
-                                      TradingDay.is_open.is_(True),
-                                      TradingDay.date <= today)
-        .order_by(TradingDay.date)) if d <= today]
+    open_days = _open_days(session, today)
     position = {d: i for i, d in enumerate(open_days)}
     window_start = open_days[max(0, len(open_days) - OUTCOME_LOOKBACK_SESSIONS)] if open_days else None
 
@@ -255,7 +299,8 @@ def evaluate(session: Session, day: dt.date, *, today: dt.date | None = None) ->
     warned = [c["id"] for c in checks if c["status"] == "WARN"]
     verdict = "FAIL" if failed else ("WARN" if warned else "PASS")
     return {"date": day.isoformat(), "verdict": verdict, "failed": failed, "warned": warned,
-            "checks": checks, "generated_at": dt.datetime.now(dt.timezone.utc).isoformat()}
+            "checks": checks, "strategy": _strategy_summary(session, today),
+            "generated_at": dt.datetime.now(dt.timezone.utc).isoformat()}
 
 
 def latest_decision_date(session: Session, on_or_before: dt.date) -> dt.date | None:

@@ -120,6 +120,29 @@ def test_healthcheck_failure_goes_to_shadow_outbox(engine, monkeypatch):
         assert s.execute(select(Outbox).where(Outbox.status == "pending")).scalars().first() is None
 
 
+def test_healthcheck_backup_freshness(engine, monkeypatch, tmp_path):
+    import os
+    import time
+
+    from qp.jobs import builtin, run_job
+    monkeypatch.setattr(builtin, "API_PROBE_ATTEMPTS", 1)
+    monkeypatch.setattr(builtin, "API_PROBE_DELAY_SEC", 0)
+    monkeypatch.setenv("QP_BACKUP_DIR", str(tmp_path))
+
+    run = run_job(engine, "ops.healthcheck", trigger="test")
+    assert run.result["checks"]["backup_age_hours"]["ok"] is False  # no dump yet
+
+    dump = tmp_path / "qp-20260101T000000.dump"
+    dump.write_bytes(b"x")
+    run = run_job(engine, "ops.healthcheck", trigger="test")
+    assert run.result["checks"]["backup_age_hours"]["ok"] is True
+
+    old = time.time() - 48 * 3600
+    os.utime(dump, (old, old))
+    run = run_job(engine, "ops.healthcheck", trigger="test")
+    assert run.result["checks"]["backup_age_hours"]["ok"] is False
+
+
 def test_dedup_and_lock(engine):
     from qp.jobs.registry import JOBS, _lock_key, job, run_job
 

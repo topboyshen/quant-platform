@@ -63,6 +63,29 @@ def test_restore_drill_is_guarded_and_self_verifying():
     assert "drop database $DB" in script
 
 
+def test_restore_drill_runs_quarterly_as_root():
+    service = (DEPLOY / "systemd" / "qp-restore-drill.service").read_text(encoding="utf-8")
+    assert "User=root" in service
+    assert "/usr/local/sbin/qp-restore-drill" in service
+    assert "/var/lib/qp/restore-drills" in service
+    timer = (DEPLOY / "systemd" / "qp-restore-drill.timer").read_text(encoding="utf-8")
+    assert "*-01,04,07,10-01 04:30:00" in timer
+    assert "Persistent=true" in timer and "qp-restore-drill.service" in timer
+
+
+def test_offsite_push_is_restricted_and_daily():
+    path = DEPLOY / "bin" / "qp-offsite-push"
+    assert path.exists() and os.access(path, os.X_OK)
+    script = path.read_text(encoding="utf-8")
+    assert "/var/lib/qp/backups" in script and "--delete" in script
+    assert "BatchMode=yes" in script and "StrictHostKeyChecking=accept-new" in script
+    assert "Quant-Server" in script
+    service = (DEPLOY / "systemd" / "qp-offsite-push.service").read_text(encoding="utf-8")
+    assert "User=qp" in service and "/usr/local/sbin/qp-offsite-push" in service
+    timer = (DEPLOY / "systemd" / "qp-offsite-push.timer").read_text(encoding="utf-8")
+    assert "09:30:00" in timer and "Persistent=true" in timer
+
+
 def test_release_prune_keeps_current_and_newest():
     script = (DEPLOY / "bin" / "qp-release-prune").read_text(encoding="utf-8")
     assert "QP_RELEASE_KEEP" in script and "--dry-run" in script

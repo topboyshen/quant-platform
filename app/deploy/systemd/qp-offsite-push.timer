@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform offsite dump push to Quant-Server at 09:30 CST
+
+[Timer]
+OnCalendar=*-*-* 09:30:00 Asia/Shanghai
+AccuracySec=5min
+Persistent=true
+Unit=qp-offsite-push.service
+
+[Install]
+WantedBy=timers.target

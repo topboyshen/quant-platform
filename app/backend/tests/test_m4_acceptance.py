@@ -119,6 +119,10 @@ def test_full_day_passes(engine, monkeypatch):
         out = run_acceptance(engine)
         assert out["verdict"] == "PASS", out
         assert out["failed"] == [] and out["warned"] == []
+        strategy = out["strategy"]
+        assert strategy["last_allowed_date"] == DAY.isoformat()
+        assert strategy["sessions_since_allowed"] == 0
+        assert strategy["counts"] == {"allowed": 1, "blocked": 1, "no_trigger": 38}
         assert [c["id"] for c in out["checks"]] == [
             "A1_run", "A2_universe", "A3_counts", "A4_data", "A5_risk",
             "A6_signals", "A7_outcomes", "A8_notify", "A9_duplicates", "A10_inputs"]
@@ -200,6 +204,8 @@ def test_matured_outcomes_backlog_fails(engine):
         check = next(c for c in out["checks"] if c["id"] == "A7_outcomes")
         assert check["metrics"]["expected"] == 3  # horizons 1, 3, 5
         assert check["metrics"]["actual"] == 0
+        assert out["strategy"]["last_allowed_date"] == OLD_DAYS[0].isoformat()
+        assert out["strategy"]["sessions_since_allowed"] == 5
     finally:
         cleanup(engine)
 
