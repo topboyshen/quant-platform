@@ -214,6 +214,25 @@ def test_m2_api(authed, engine, inbox):
     assert {"status", "planned_date", "failure_stage", "update_at"} <= set(cov["qlib"])
 
 
+def test_log_counts_skip_ssh_noise():
+    import json as _json
+
+    from qp.collect.legacy import count_log_lines
+
+    def line(unit, msg):
+        return _json.dumps({"_SYSTEMD_UNIT": unit, "MESSAGE": msg})
+
+    rows = [
+        line("ssh.service", "error: kex_exchange_identification: read: Connection reset by peer"),
+        line("ssh.service", "Connection closed by authenticating user root 1.2.3.4 port 5 [preauth]"),
+        line("ssh.service", "error: Bind to port 22 on 0.0.0.0 failed: Address already in use."),
+        line("nginx.service", "Connection reset by peer"),
+    ]
+    counts = count_log_lines(rows)
+    assert counts["ssh.service"] == 1          # only the real failure
+    assert counts["nginx.service"] == 1        # filter is scoped to ssh units
+
+
 def test_ops_jobs_and_health(authed, engine, inbox):
     from qp.jobs import run_job
     from qp.models.ops import JobRun

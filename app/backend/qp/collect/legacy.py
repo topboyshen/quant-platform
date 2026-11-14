@@ -166,19 +166,33 @@ def egress() -> list[dict]:
     return res
 
 
+# Pre-auth connection noise from internet scanners: sshd logs it at err level but it says
+# nothing about the service's health.  Only applied to ssh units, so real sshd errors and
+# other units' messages still count.
+BENIGN_SSH_LOG = re.compile(r"kex_exchange_identification|Connection reset by peer|Connection closed by .*\[preauth\]")
+
+
+def count_log_lines(lines) -> Counter:
+    c: Counter = Counter()
+    for line in lines:
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        unit = d.get("_SYSTEMD_USER_UNIT") or d.get("_SYSTEMD_UNIT") or d.get("SYSLOG_IDENTIFIER") or "?"
+        if unit.startswith(("ssh.service", "sshd.service")) and BENIGN_SSH_LOG.search(d.get("MESSAGE") or ""):
+            continue
+        c[unit] += 1
+    return c
+
+
 def log_errors(minutes: int = 15) -> dict:
     out = {}
     for scope, args, env in (("system", [], None), ("user", ["--user"], USER_ENV)):
         rc, txt = run(["journalctl", *args, "-p", "3", "--since", f"-{minutes}min", "-o", "json",
-                       "--output-fields=_SYSTEMD_UNIT,_SYSTEMD_USER_UNIT,SYSLOG_IDENTIFIER", "--no-pager"],
+                       "--output-fields=_SYSTEMD_UNIT,_SYSTEMD_USER_UNIT,SYSLOG_IDENTIFIER,MESSAGE", "--no-pager"],
                       env=env, timeout=30)
-        c: Counter = Counter()
-        for line in txt.splitlines():
-            try:
-                d = json.loads(line)
-            except ValueError:
-                continue
-            c[d.get("_SYSTEMD_USER_UNIT") or d.get("_SYSTEMD_UNIT") or d.get("SYSLOG_IDENTIFIER") or "?"] += 1
+        c = count_log_lines(txt.splitlines())
         out[scope] = {"ok": rc == 0, "window_min": minutes, "counts": dict(c.most_common(30)), "total": sum(c.values())}
     return out
 
