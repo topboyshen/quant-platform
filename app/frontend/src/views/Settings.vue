@@ -7,10 +7,10 @@
           <n-card title="账号">
             <n-descriptions :column="1" size="small" bordered>
               <n-descriptions-item label="用户名">{{ data?.account.username }}</n-descriptions-item>
-              <n-descriptions-item label="类型">{{ data?.account.kind }}</n-descriptions-item>
-              <n-descriptions-item label="角色">{{ data?.account.role || '—' }}</n-descriptions-item>
+              <n-descriptions-item label="类型">{{ KIND[data?.account.kind || ''] || data?.account.kind }}</n-descriptions-item>
+              <n-descriptions-item label="角色">{{ ROLE[data?.account.role || ''] || data?.account.role || '—' }}</n-descriptions-item>
               <n-descriptions-item label="口令方案">{{ data?.account.hash_scheme || '—' }}</n-descriptions-item>
-              <n-descriptions-item label="上次登录">{{ data?.account.last_login_at || '—' }}</n-descriptions-item>
+              <n-descriptions-item label="上次登录">{{ fmt(data?.account.last_login_at) }}</n-descriptions-item>
             </n-descriptions>
           </n-card>
         </n-gi>
@@ -51,12 +51,15 @@ import { onMounted, ref } from 'vue'
 import { NAlert, NCard, NDescriptions, NDescriptionsItem, NGi, NGrid, NH2, NSpace, NTag } from 'naive-ui'
 import AsyncState from '../components/AsyncState.vue'
 import { api } from '../api/client'
+import { fmt } from '../util'
 
 interface Settings {
   account: { username: string; kind: string; role: string | null; hash_scheme: string | null; last_login_at: string | null }
   platform: { version: string; notify_mode: string; signals_notify_mode: string; notify_kill_switch: boolean; shadow_only: boolean }
 }
 
+const KIND: Record<string, string> = { user: '用户会话', service: '服务令牌' }
+const ROLE: Record<string, string> = { admin: '管理员', viewer: '只读' }
 const data = ref<Settings | null>(null)
 const loading = ref(true)
 const error = ref('')
