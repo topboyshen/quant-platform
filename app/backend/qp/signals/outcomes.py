@@ -33,7 +33,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from qp.market.kline import DailyBar, KlineFetcher, KlineResult
+from qp.models.market import TradingDay
 from qp.models.signals import DecisionOutcome, TargetDecision
+from qp.signals import chain
 from qp.signals.eod import now_cst
 
 HORIZONS: tuple[int, ...] = (1, 3, 5, 10, 20)
@@ -246,7 +248,8 @@ def _persist(session: Session, rows: Sequence[dict[str, Any]]) -> dict[int, str]
 
 
 def _pending_decisions(session: Session, *, limit: int,
-                       decision_date: dt.date | None = None) -> list[TargetDecision]:
+                       decision_date: dt.date | None = None, allowed_only: bool = False,
+                       as_of: dt.date | None = None) -> list[TargetDecision]:
     counts = (select(DecisionOutcome.decision_id.label("decision_id"),
                      func.count().label("n"))
               .group_by(DecisionOutcome.decision_id).subquery())
@@ -255,9 +258,40 @@ def _pending_decisions(session: Session, *, limit: int,
             .where(func.coalesce(counts.c.n, 0) < len(HORIZONS)))
     if decision_date is not None:
         stmt = stmt.where(TargetDecision.decision_date == decision_date)
+    if allowed_only:
+        # record-chain semantics: only allowed signals materialise results
+        stmt = stmt.where(TargetDecision.decision_state == "allowed")
+    if allowed_only and as_of is not None:
+        # due-date queue: never let old incomplete decisions consume the limit
+        stmt = stmt.order_by(TargetDecision.decision_date, TargetDecision.code).limit(5000)
+        return _filter_due(session, list(session.execute(stmt).scalars()), as_of)[:max(1, int(limit))]
     stmt = (stmt.order_by(TargetDecision.decision_date, TargetDecision.code)
             .limit(max(1, int(limit))))
     return list(session.execute(stmt).scalars())
+
+
+def _filter_due(session: Session, decisions: Sequence[TargetDecision],
+                as_of: dt.date) -> list[TargetDecision]:
+    if not decisions:
+        return []
+    ids = [decision.id for decision in decisions]
+    completed: dict[int, set[int]] = {}
+    for decision_id, horizon in session.execute(
+            select(DecisionOutcome.decision_id, DecisionOutcome.horizon_sessions)
+            .where(DecisionOutcome.decision_id.in_(ids))):
+        completed.setdefault(int(decision_id), set()).add(int(horizon))
+    start = min(decision.decision_date for decision in decisions)
+    days = list(session.scalars(
+        select(TradingDay.date).where(TradingDay.origin == "qp", TradingDay.is_open.is_(True),
+                                      TradingDay.date > start, TradingDay.date <= as_of)
+        .order_by(TradingDay.date)).all())
+    due: list[TargetDecision] = []
+    for decision in decisions:
+        sessions = sum(1 for day in days if day > decision.decision_date)
+        if any(horizon <= sessions and horizon not in completed.get(decision.id, set())
+               for horizon in HORIZONS):
+            due.append(decision)
+    return due
 
 
 def _completed_horizons(session: Session, decision_ids: Sequence[int]) -> dict[int, set[int]]:
@@ -285,7 +319,11 @@ def evaluate_pending(session: Session, *, as_of: dt.date | None = None, limit: i
     settings = settings or OutcomeSettings()
     as_of = as_of or now_cst().date()
     fetcher = fetcher or KlineFetcher(days=DEFAULT_HISTORY_DAYS)
-    decisions = _pending_decisions(session, limit=limit, decision_date=decision_date)
+    chain_on = chain.enabled()
+    if chain_on:
+        chain.reconcile_expired(session, as_of=as_of)
+    decisions = _pending_decisions(session, limit=limit, decision_date=decision_date,
+                                   allowed_only=chain_on, as_of=as_of)
     summary: dict[str, Any] = {"checked": 0, "inserted": 0, "not_mature": 0,
                                "unfilled": 0, "failed": 0, "benchmark_ok": False,
                                "as_of": as_of.isoformat()}
@@ -323,6 +361,16 @@ def evaluate_pending(session: Session, *, as_of: dt.date | None = None, limit: i
             inserted = _persist(session, outcomes)
             summary["inserted"] += len(inserted)
             summary["unfilled"] += sum(1 for status in inserted.values() if status == "unfilled")
+            if chain_on and inserted:
+                uid = chain.decision_uid_for(session, decision.decision_date, decision.code)
+                if uid:
+                    by_horizon = {row["horizon_sessions"]: row for row in outcomes}
+                    for horizon in inserted:
+                        chain.append_outcome_revision(
+                            session, decision_uid=uid, horizon=int(horizon),
+                            row=by_horizon[int(horizon)],
+                            expected=chain.expected_maturity(session, uid, int(horizon)),
+                            as_of=as_of)
         except Exception:
             summary["failed"] += 1
     return summary

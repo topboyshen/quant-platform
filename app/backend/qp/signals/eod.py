@@ -561,7 +561,8 @@ def run_eod(session: Session, *, decision_date: dt.date, fetcher: Any | None = N
             targets: Sequence[Target] = TARGETS,
             previous_session: dt.date | None = None,
             daily_breakout_enabled: bool = DAILY_BREAKOUT_ENABLED,
-            now: float | None = None, dry_run: bool = False) -> dict[str, Any]:
+            now: float | None = None, dry_run: bool = False,
+            batch_source: str = "timer") -> dict[str, Any]:
     """Execute one EOD attempt. The caller owns the transaction."""
     now = time.time() if now is None else now
     fetcher = fetcher or KlineFetcher()
@@ -624,6 +625,9 @@ def run_eod(session: Session, *, decision_date: dt.date, fetcher: Any | None = N
         finish_run(run, audit, details=details)
         session.flush()
         run_id = run.run_id
+        from qp.signals import chain
+        chain_result = chain.register_run(session, run=run, decisions=decisions,
+                                          run_status=audit["status"], source=batch_source)
 
     return {
         "ok": True,
@@ -644,6 +648,7 @@ def run_eod(session: Session, *, decision_date: dt.date, fetcher: Any | None = N
         "notification_candidates": len(plan.notification_candidates),
         "risk_level": level,
         "macro_source": macro_slice.get("source") or "none",
+        "record_chain": chain_result if run is not None else {"enabled": False},
     }
 
 

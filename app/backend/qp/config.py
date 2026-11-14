@@ -29,6 +29,7 @@ class Settings:
     approved_signals_max_skew_sec: int
     execution_digest_hmac_file: str
     execution_digest_output_dir: str
+    record_chain: bool  # M10 ETF record-chain dual-write switch
 
 
 def get_settings() -> Settings:
@@ -61,4 +62,5 @@ def get_settings() -> Settings:
                                              "/etc/qp/dedirock_digest_hmac"),
         execution_digest_output_dir=os.getenv("QP_EXECUTION_DIGEST_DIR",
                                               "/var/lib/qp/signals/digests"),
+        record_chain=os.getenv("QP_RECORD_CHAIN", "0").strip().lower() in {"1", "true", "yes", "on"},
     )

@@ -62,7 +62,8 @@ def eod_for_date(ctx: JobContext, decision_date: dt.date) -> dict:
     """Manual/backfill helper: one explicit attempt (still shadow-only)."""
     with Session(ctx.engine) as session:
         previous = previous_open_day(session, decision_date)
-        out = run_eod(session, decision_date=decision_date, previous_session=previous)
+        out = run_eod(session, decision_date=decision_date, previous_session=previous,
+                      batch_source="manual")
         session.commit()
     out["ok"] = out["status"] != "failed"
     return out

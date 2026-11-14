@@ -1,11 +1,17 @@
-"""M10 record chain schema: tables, views, append-only guards."""
+"""M10 record chain: schema, identity, dual-write and the outcome queue."""
 from __future__ import annotations
 
 import datetime as dt
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import Session
+
+from qp.models.chain import (ChainAttempt, ChainDecision, ChainEligibility, ChainOutcome, ChainState)
+from qp.models.market import TradingDay
+from qp.models.signals import DecisionOutcome, EodRun, TargetDecision
+from qp.signals import chain
 
 TABLES = {
     'chain_policy', 'chain_universe', 'chain_universe_member', 'chain_batch', 'chain_decision',
@@ -17,6 +23,8 @@ VIEWS = {
     'chain_decision_canonical_attempt', 'chain_decision_current_state',
     'chain_decision_current_outcome', 'chain_decision_current_eligibility',
 }
+DAY = dt.date(2026, 11, 10)
+CST = dt.timezone(dt.timedelta(hours=8))
 
 
 def _names(engine, kind: str) -> set[str]:
@@ -44,3 +52,180 @@ def test_chain_rows_are_append_only(engine):
         with pytest.raises(DBAPIError):
             conn.execute(text("update signals.chain_evidence_link set db_state='missing'"))
         trans.rollback()
+
+
+def _calendar(engine, start: dt.date, days: int = 40) -> None:
+    with Session(engine) as session:
+        for i in range(days):
+            day = start + dt.timedelta(days=i)
+            session.merge(TradingDay(origin="qp", date=day, is_open=True, source="test"))
+        session.commit()
+
+
+def _run(engine, *, attempt_no: int = 1, status: str = "success",
+         started: dt.datetime | None = None, clean: bool = True) -> int:
+    with Session(engine) as session:
+        if clean:
+            session.execute(EodRun.__table__.delete().where(EodRun.decision_date == DAY))
+        run = EodRun(decision_date=DAY, attempt_no=attempt_no, status=status,
+                     decision_outcome="emitted", target_count=3, evaluated_count=3,
+                     failed_count=0, signal_count=1, allowed_signal_count=1,
+                     blocked_signal_count=1, reason_codes=[])
+        run.started_at = started or dt.datetime.combine(DAY, dt.time(15, 30), tzinfo=CST)
+        session.add(run)
+        session.commit()
+        return run.run_id
+
+
+def _row(code: str, state: str, *, data: str = "ok", trigger: int = 0,
+         risk: str = "allowed", split: str = "live_oos") -> dict:
+    return {"code": code, "name": code, "sector": "test", "data_status": data,
+            "decision_state": state, "risk_action": risk, "risk_level": "ok",
+            "reason_code": "r", "reference_close": 1.0, "raw_trigger_count": trigger,
+            "raw_signals": [], "validation_split": split}
+
+
+def _decisions() -> list[dict]:
+    return [_row("510300", "allowed", trigger=1),
+            _row("510500", "no_trigger"),
+            _row("159915", "blocked", trigger=1, risk="blocked")]
+
+
+def _cleanup(engine) -> None:
+    with Session(engine) as session:
+        for model in (ChainOutcome, ChainState, ChainEligibility, ChainAttempt, ChainDecision):
+            session.execute(text(f"ALTER TABLE signals.{model.__tablename__} DISABLE TRIGGER USER"))
+            session.execute(model.__table__.delete())
+            session.execute(text(f"ALTER TABLE signals.{model.__tablename__} ENABLE TRIGGER USER"))
+        session.commit()
+
+
+@pytest.fixture()
+def chain_on(monkeypatch):
+    monkeypatch.setenv("QP_RECORD_CHAIN", "1")
+    return True
+
+
+def test_register_run_materialises_only_allowed(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    try:
+        with Session(engine) as session:
+            run = session.get(EodRun, run_id)
+            out = chain.register_run(session, run=run, decisions=_decisions(),
+                                     run_status="success", source="timer")
+            session.commit()
+        assert out["enabled"] and out["decisions"] == 3 and out["attempts"] == 3
+        assert out["states"] == 9 and out["eligible"] == 1 and out["outcomes"] == 5
+        with Session(engine) as session:
+            assert session.scalar(select(func.count()).select_from(ChainDecision)) == 3
+            verdicts = dict(session.execute(select(ChainEligibility.decision_uid,
+                                                   ChainEligibility.reason_code)).all())
+            assert sorted(verdicts.values()) == ["eligible", "no_trigger", "risk_blocked"]
+            allowed_uid = session.scalar(select(ChainEligibility.decision_uid).where(
+                ChainEligibility.reason_code == "eligible"))
+            outcomes = list(session.scalars(select(ChainOutcome).where(
+                ChainOutcome.decision_uid == allowed_uid).order_by(ChainOutcome.horizon_sessions)))
+            assert [o.horizon_sessions for o in outcomes] == [1, 3, 5, 10, 20]
+            assert all(o.result_state == "pending_maturity" and o.execution_state == "unverified"
+                       for o in outcomes)
+            assert all(o.expected_maturity_date > DAY for o in outcomes)
+            assert session.scalar(select(func.count()).select_from(ChainOutcome)) == 5
+    finally:
+        _cleanup(engine)
+
+
+def test_retry_appends_attempts_not_decisions(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    first = _run(engine, attempt_no=1, status="partial")
+    second = _run(engine, attempt_no=2, clean=False)
+    try:
+        with Session(engine) as session:
+            assert chain.register_run(session, run=session.get(EodRun, first),
+                                      decisions=_decisions(), run_status="partial")["attempts"] == 3
+            session.commit()
+        with Session(engine) as session:
+            out = chain.register_run(session, run=session.get(EodRun, second),
+                                     decisions=_decisions(), run_status="success")
+            session.commit()
+        assert out["attempts"] == 3
+        with Session(engine) as session:
+            assert session.scalar(select(func.count()).select_from(ChainDecision)) == 3
+            assert session.scalar(select(func.count()).select_from(ChainAttempt)) == 6
+            assert session.scalar(select(func.count()).select_from(ChainState)) == 18
+            # first attempt was partial -> run_incomplete; retry success -> eligible
+            uid = chain.decision_uid_for(session, DAY, "510300")
+            seqs = session.execute(select(ChainEligibility.evaluation_seq,
+                                          ChainEligibility.reason_code)
+                                   .where(ChainEligibility.decision_uid == uid)
+                                   .order_by(ChainEligibility.evaluation_seq)).all()
+            assert [seq for seq, _ in seqs] == [1, 2]
+            assert [reason for _, reason in seqs] == ["run_incomplete", "eligible"]
+    finally:
+        _cleanup(engine)
+
+
+def test_expired_reconciliation_appends_revision(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    try:
+        with Session(engine) as session:
+            chain.register_run(session, run=session.get(EodRun, run_id),
+                               decisions=_decisions(), run_status="success")
+            session.commit()
+        with Session(engine) as session:
+            appended = chain.reconcile_expired(session, as_of=DAY + dt.timedelta(days=60))
+            session.commit()
+        assert appended == 5
+        with Session(engine) as session:
+            rows = list(session.scalars(select(ChainOutcome).order_by(
+                ChainOutcome.horizon_sessions, ChainOutcome.revision)))
+            latest = [r for r in rows if r.revision == 2]
+            assert len(latest) == 5
+            assert all(r.execution_state == "expired" and r.result_state == "expired_uncollected"
+                       for r in latest)
+            assert session.scalar(select(func.count()).select_from(ChainOutcome)) == 10
+    finally:
+        _cleanup(engine)
+
+
+def test_due_queue_skips_decisions_without_due_horizons(engine):
+    _cleanup(engine)
+    _calendar(engine, DAY, days=10)
+    with Session(engine) as session:
+        session.execute(EodRun.__table__.delete().where(EodRun.decision_date == DAY))
+        run = EodRun(decision_date=DAY, attempt_no=1, status="success", decision_outcome="emitted",
+                     target_count=2, evaluated_count=2, failed_count=0, signal_count=2,
+                     allowed_signal_count=2, blocked_signal_count=0, reason_codes=[])
+        session.add(run)
+        session.flush()
+        old = TargetDecision(run_id=run.run_id, decision_date=DAY, code="510300",
+                             data_status="ok", decision_state="allowed", risk_action="allowed",
+                             reason_code="r", raw_trigger_count=1, raw_signals=[],
+                             validation_split="live_oos")
+        new = TargetDecision(run_id=run.run_id, decision_date=DAY + dt.timedelta(days=3),
+                             code="510500", data_status="ok", decision_state="allowed",
+                             risk_action="allowed", reason_code="r", raw_trigger_count=1,
+                             raw_signals=[], validation_split="live_oos")
+        session.add_all([old, new])
+        session.flush()
+        session.add_all([DecisionOutcome(decision_id=old.id, horizon_sessions=h,
+                                         fill_status="filled") for h in (1, 3)])
+        session.commit()
+        old_id, new_id = old.id, new.id
+    try:
+        from qp.signals.outcomes import _filter_due
+        with Session(engine) as session:
+            decisions = list(session.scalars(select(TargetDecision)))
+            due = _filter_due(session, decisions, DAY + dt.timedelta(days=4))
+        assert [d.id for d in due] == [new_id]
+        assert old_id not in {d.id for d in due}
+    finally:
+        with Session(engine) as session:
+            session.execute(DecisionOutcome.__table__.delete())
+            session.execute(TargetDecision.__table__.delete())
+            session.execute(EodRun.__table__.delete())
+            session.commit()
