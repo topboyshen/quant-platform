@@ -13,7 +13,7 @@ import { fmt } from '../../util'
 const data = ref<any>(null)
 const short = (s: string | null) => (s ? s.slice(0, 12) + '…' : '-')
 const cols = [
-  { title: '项目', key: 'item', ellipsis: { tooltip: true } }, { title: '旧路径', key: 'legacy_path', ellipsis: { tooltip: true } },
+  { title: '项目', key: 'item', width: 190, ellipsis: { tooltip: true } }, { title: '旧路径', key: 'legacy_path', width: 170, ellipsis: { tooltip: true } },
   { title: '旧行数', key: 'legacy_rows' }, { title: '库行数', key: 'db_rows' },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   { title: '旧校验', key: 'legacy_checksum', render: (r: any) => short(r.legacy_checksum) },
