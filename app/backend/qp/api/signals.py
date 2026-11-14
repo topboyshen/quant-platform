@@ -12,7 +12,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from qp.api.main import Principal, get_db, require_auth, require_scope
-from qp.models.signals import DecisionOutcome, EodRun, TargetDecision, TrendSignal
+from qp.models.signals import (DecisionOutcome, EodRun, ShadowOutcome, ShadowSignal,
+                               TargetDecision, TrendSignal)
 from qp.signals.universe import TARGETS
 
 router = APIRouter(prefix="/api/signals", dependencies=[Depends(require_scope("signals:read"))])
@@ -89,6 +90,31 @@ def outcomes(limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)
         "net_return": _num(o.net_return), "benchmark_return": _num(o.benchmark_return),
         "excess_return": _num(o.excess_return), "fill_status": o.fill_status}
         for o, d in rows]}
+
+
+@router.get("/shadow")
+def shadow_samples(limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0),
+                   p: Principal = Depends(require_auth),
+                   db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Counterfactual blocked-but-triggered entries (validation only)."""
+    total = db.scalar(select(func.count()).select_from(ShadowSignal)) or 0
+    shadows = list(db.execute(
+        select(ShadowSignal).order_by(ShadowSignal.decision_date.desc(),
+                                      ShadowSignal.code).limit(limit).offset(offset)).scalars())
+    outcomes: dict[int, dict[str, Any]] = {}
+    if shadows:
+        for row in db.execute(select(ShadowOutcome).where(
+                ShadowOutcome.shadow_id.in_([s.id for s in shadows]))).scalars():
+            outcomes.setdefault(row.shadow_id, {})[str(row.horizon_sessions)] = {
+                "net_return": _num(row.net_return),
+                "excess_return": _num(row.excess_return),
+                "fill_status": row.fill_status}
+    return {"total": total, "rows": [{
+        "id": s.id, "decision_date": s.decision_date, "code": s.code, "name": s.name,
+        "sector": s.sector, "risk_level": s.risk_level, "reason_code": s.reason_code,
+        "raw_trigger_count": s.raw_trigger_count,
+        "reference_close": _num(s.reference_close),
+        "outcomes": outcomes.get(s.id, {})} for s in shadows]}
 
 
 @router.get("/etf-pool")

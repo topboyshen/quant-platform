@@ -212,6 +212,32 @@ def cmd_chain_compare(a) -> int:
     return 0 if out.get("ok") else 1
 
 
+def cmd_signals_shadow_record(a) -> int:
+    """Backfill the shadow sample channel from blocked-but-triggered decisions."""
+    import datetime as dt
+    from qp.db import session_scope
+    from qp.signals import shadow
+    since = dt.date.fromisoformat(a.since) if a.since else None
+    day = dt.date.fromisoformat(a.date) if a.date else None
+    with session_scope() as s:
+        out = shadow.record(s, since=since, decision_date=day)
+    print(json.dumps(out, ensure_ascii=False))
+    return 0
+
+
+def cmd_signals_shadow_outcomes(a) -> int:
+    """Collect matured forward returns for shadow samples."""
+    import datetime as dt
+    from qp.db import session_scope
+    from qp.signals import shadow
+    as_of = dt.date.fromisoformat(a.as_of) if a.as_of else None
+    with session_scope() as s:
+        out = shadow.collect(s, as_of=as_of)
+        s.commit()
+    print(json.dumps(out, ensure_ascii=False, default=str))
+    return 0
+
+
 def cmd_signals_acceptance(a) -> int:
     """M4 live acceptance invariants for one decision date (default: latest run)."""
     import datetime as dt
@@ -282,6 +308,13 @@ def main(argv: list[str] | None = None) -> int:
     sa.add_argument("--today", default=None, help="reference date for maturity math")
     sa.add_argument("--out", default=None)
     sa.set_defaults(fn=cmd_signals_acceptance)
+    sr = sg.add_parser("shadow-record")
+    sr.add_argument("--since", default=None)
+    sr.add_argument("--date", default=None)
+    sr.set_defaults(fn=cmd_signals_shadow_record)
+    so = sg.add_parser("shadow-outcomes")
+    so.add_argument("--as-of", default=None)
+    so.set_defaults(fn=cmd_signals_shadow_outcomes)
     dc = sub.add_parser("decommission").add_subparsers(dest="sub", required=True)
     dci = dc.add_parser("inventory")
     dci.add_argument("--out", default=None)

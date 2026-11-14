@@ -46,6 +46,7 @@ export const router = createRouter({
             { path: 'pool', name: 'signals-pool', component: () => import('./views/signals/EtfPool.vue') },
             { path: 'trends', name: 'signals-trends', component: () => import('./views/signals/Trends.vue') },
             { path: 'outcomes', name: 'signals-outcomes', component: () => import('./views/signals/Outcomes.vue') },
+            { path: 'shadow', name: 'signals-shadow', component: () => import('./views/signals/Shadow.vue') },
             { path: 'compare', name: 'signals-compare', component: () => import('./views/signals/Compare.vue') },
           ],
         },

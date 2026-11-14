@@ -136,6 +136,60 @@ class DecisionOutcome(Base):
     details: Mapped[dict[str, Any]] = _json_col()
 
 
+class ShadowSignal(Base):
+    """Counterfactual sample: a trend-triggered entry the risk gate blocked.
+
+    Validation only: never notified, never part of target_decision/decision_outcome
+    statistics, no effect on the production chain.
+    """
+    __tablename__ = "shadow_signal"
+    __table_args__ = (
+        UniqueConstraint("decision_date", "code", name="uq_shadow_signal_decision_date_code"),
+        UniqueConstraint("source_decision_id", name="uq_shadow_signal_source_decision_id"),
+        Index("ix_shadow_signal_decision_date", "decision_date"),
+        S,
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    decision_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    code: Mapped[str] = mapped_column(String(16), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    sector: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    source_decision_id: Mapped[int] = mapped_column(
+        ForeignKey("signals.target_decision.id", ondelete="CASCADE"), nullable=False)
+    source_run_id: Mapped[int | None] = mapped_column(BigInteger)
+    risk_level: Mapped[str | None] = mapped_column(String(24))
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    raw_trigger_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    raw_signals: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"),
+                                                   default=list)
+    reference_close: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    recorded_at: Mapped[dt.datetime] = _now_col()
+
+
+class ShadowOutcome(Base):
+    __tablename__ = "shadow_outcome"
+    __table_args__ = (
+        UniqueConstraint("shadow_id", "horizon_sessions", name="uq_shadow_outcome_shadow_id_horizon_sessions"),
+        S,
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    shadow_id: Mapped[int] = mapped_column(
+        ForeignKey("signals.shadow_signal.id", ondelete="CASCADE"), nullable=False, index=True)
+    horizon_sessions: Mapped[int] = mapped_column(Integer, nullable=False)
+    entry_date: Mapped[dt.date | None] = mapped_column(Date)
+    exit_date: Mapped[dt.date | None] = mapped_column(Date)
+    entry_price: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    exit_price: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    gross_return: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    net_return: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    benchmark_return: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    excess_return: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    fill_status: Mapped[str] = mapped_column(String(16), nullable=False, default="unfilled")
+    fill_reason: Mapped[str | None] = mapped_column(String(64))
+    details: Mapped[dict[str, Any]] = _json_col()
+    created_at: Mapped[dt.datetime] = _now_col()
+
+
 class MacroSlice(Base):
     __tablename__ = "macro_slice"
     __table_args__ = S

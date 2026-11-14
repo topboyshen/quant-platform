@@ -136,6 +136,31 @@ def outcomes_job(ctx: JobContext) -> dict:
     return out
 
 
+@job("signals.shadow_record",
+     "Copy risk-blocked triggered entries into the shadow sample channel (validation only)",
+     schedule_hint="Mon-Fri 15:36 CST (after EOD; no notification)")
+def shadow_record_job(ctx: JobContext) -> dict:
+    from qp.signals import shadow
+    today = now_cst().date()
+    with Session(ctx.engine) as session:
+        out = shadow.record(session, decision_date=today)
+        session.commit()
+    out["ok"] = True
+    return out
+
+
+@job("signals.shadow_outcomes",
+     "Forward returns for shadow allowed samples (1/3/5/10/20 sessions)",
+     schedule_hint="Mon-Fri 16:15 CST (after outcomes 16:10)")
+def shadow_outcomes_job(ctx: JobContext) -> dict:
+    from qp.signals import shadow
+    with Session(ctx.engine) as session:
+        out = shadow.collect(session, as_of=now_cst().date())
+        session.commit()
+    out["ok"] = bool(out.get("benchmark_ok"))
+    return out
+
+
 @job("signals.acceptance",
      "M4 live acceptance invariants for the latest decision day (replaces legacy compare)",
      schedule_hint="Mon-Fri 16:50 CST (after outcomes 16:10 and index_close 16:30)")

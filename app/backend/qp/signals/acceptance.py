@@ -18,6 +18,7 @@ from qp.models.market import IndexClose, TradingDay
 from qp.models.notify import DeliveryAttempt, Outbox
 from qp.models.signals import (DecisionOutcome, EodRun, RiskSnapshot, TargetDecision,
                                TrendSignal)
+from qp.signals import shadow as shadow_channel
 from qp.signals.universe import TARGETS
 
 HORIZONS = (1, 3, 5, 10, 20)
@@ -80,7 +81,8 @@ def _strategy_summary(session: Session, today: dt.date) -> dict[str, Any]:
             "last_allowed_date": last_allowed.isoformat() if last_allowed else None,
             "sessions_since_allowed": elapsed(last_allowed),
             "last_trigger_date": last_trigger.isoformat() if last_trigger else None,
-            "sessions_since_trigger": elapsed(last_trigger)}
+            "sessions_since_trigger": elapsed(last_trigger),
+            "shadow": shadow_channel.summary(session)}
 
 
 def _outcome_backlog(session: Session, today: dt.date) -> dict[str, Any]:

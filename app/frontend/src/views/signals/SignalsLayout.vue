@@ -6,6 +6,7 @@
       <n-tab name="pool">ETF 研究池</n-tab>
       <n-tab name="trends">趋势信号</n-tab>
       <n-tab name="outcomes">结果</n-tab>
+      <n-tab name="shadow">影子样本</n-tab>
       <n-tab name="compare">影子对比</n-tab>
     </n-tabs>
     <router-view />
