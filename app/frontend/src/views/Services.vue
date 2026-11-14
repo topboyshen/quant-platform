@@ -60,8 +60,9 @@ const attention = computed<any[]>(() => data.value?.attention || [])
 const barOpt = computed(() => {
   const cats = [...new Set(rows.value.map((r) => r.category))].sort()
   return {
-    tooltip: { trigger: 'axis' }, legend: { top: 0 }, grid: { left: 40, right: 20, bottom: 30, top: 40 },
-    xAxis: { type: 'category', data: cats }, yAxis: { type: 'value' },
+    tooltip: { trigger: 'axis' }, legend: { top: 0 }, grid: { left: 40, right: 20, bottom: 56, top: 40 },
+    xAxis: { type: 'category', data: cats,
+      axisLabel: { interval: 0, rotate: 30, fontSize: 10 } }, yAxis: { type: 'value' },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     series: STATES.map((s) => ({ name: s, type: 'bar', stack: 'x', itemStyle: { color: COLORS[s] },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,6 +98,9 @@ onMounted(async () => {
 </script>
 <style scoped>
 .muted { color: #888; font-size: 12px; }
-.row { display: flex; align-items: center; gap: 8px; }
-.name { font-family: ui-monospace, monospace; font-size: 13px; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.name { font-family: ui-monospace, monospace; font-size: 13px; white-space: nowrap; overflow-x: auto; max-width: 100%; }
+@media (max-width: 860px) {
+  .name { flex: 1 1 100%; }
+}
 </style>
