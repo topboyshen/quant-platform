@@ -98,8 +98,10 @@ def test_service_token(engine, client):
     assert client.get("/api/ops/job-runs", headers={"authorization": "Bearer qpst_wrong"}).status_code == 401
 
 
-def test_healthcheck_failure_goes_to_shadow_outbox(engine):
-    from qp.jobs import run_job
+def test_healthcheck_failure_goes_to_shadow_outbox(engine, monkeypatch):
+    from qp.jobs import builtin, run_job
+    monkeypatch.setattr(builtin, "API_PROBE_ATTEMPTS", 1)
+    monkeypatch.setattr(builtin, "API_PROBE_DELAY_SEC", 0)
     from qp.models.notify import DeliveryAttempt, Outbox
     run = run_job(engine, "ops.healthcheck", trigger="test")
     assert run.status == "failed"  # api url unreachable in tests
@@ -155,3 +157,32 @@ def test_single_account_guard(seeded, monkeypatch):
     from qp.cli import main
     monkeypatch.setattr(sys, "stdin", io.StringIO("someoneelse\t$2b$04$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyzABCDE\n"))
     assert main(["user", "import-legacy", "--stdin"]) == 3
+
+def test_probe_api_retries_a_deploy_restart(monkeypatch):
+    import urllib.error
+
+    from qp.jobs import builtin
+
+    calls = {"n": 0}
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_urlopen(url, timeout=5):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise urllib.error.URLError("connection refused")
+        return Response()
+
+    monkeypatch.setattr(builtin, "API_PROBE_ATTEMPTS", 3)
+    monkeypatch.setattr(builtin, "API_PROBE_DELAY_SEC", 0)
+    monkeypatch.setattr(builtin.urllib.request, "urlopen", fake_urlopen)
+    ok, detail = builtin._probe_api("http://127.0.0.1:9/api/health")
+    assert ok is True and detail == {"status": 200, "attempts": 3}
+    assert calls["n"] == 3

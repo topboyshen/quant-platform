@@ -5,6 +5,7 @@ import datetime as dt
 import os
 import shutil
 import subprocess
+import time
 import urllib.request
 from pathlib import Path
 
@@ -49,6 +50,26 @@ def enqueue(s: Session, *, channel: str, recipient: str, dedup_key: str, body: s
     return True
 
 
+# A deploy restarts qp-api in place; a single 5s probe can land exactly in that
+# window. Retry briefly so a planned restart is not recorded as a health failure.
+API_PROBE_ATTEMPTS = int(os.getenv("QP_HEALTHCHECK_API_ATTEMPTS", "3"))
+API_PROBE_DELAY_SEC = float(os.getenv("QP_HEALTHCHECK_API_DELAY_SEC", "1.5"))
+
+
+def _probe_api(url: str) -> tuple[bool, dict]:
+    attempts = max(1, API_PROBE_ATTEMPTS)
+    last: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=5) as response:
+                return response.status == 200, {"status": response.status, "attempts": attempt}
+        except Exception as exc:
+            last = exc
+            if attempt < attempts:
+                time.sleep(API_PROBE_DELAY_SEC)
+    return False, {"error": type(last).__name__, "attempts": attempts}
+
+
 @job("ops.healthcheck", "DB, disk, memory and API health; failures go to notify outbox (shadow)",
      schedule_hint="every 5 min (qp-healthcheck.timer)")
 def healthcheck(ctx: JobContext) -> dict:
@@ -65,11 +86,8 @@ def healthcheck(ctx: JobContext) -> dict:
     checks.append(("disk_root_free_gb", free_gb >= 5, round(free_gb, 2), {}))
     mem = _mem_available_mb()
     checks.append(("mem_available_mb", mem is None or mem >= 600, round(mem, 1) if mem else None, {}))
-    try:
-        with urllib.request.urlopen(st.api_health_url, timeout=5) as r:
-            checks.append(("api", r.status == 200, None, {"status": r.status}))
-    except Exception as e:
-        checks.append(("api", False, None, {"error": type(e).__name__}))
+    api_ok, api_detail = _probe_api(st.api_health_url)
+    checks.append(("api", api_ok, None, api_detail))
     ok = all(c[1] for c in checks)
     with Session(ctx.engine) as s:
         for name, cok, val, det in checks:
