@@ -68,13 +68,14 @@ const containers = computed<any[]>(() => {
   return [...rows].sort((a: any, b: any) => (a.state === 'running' ? 0 : 1) - (b.state === 'running' ? 0 : 1))
 })
 const cCols = [
-  { title: '名称', key: 'name' }, { title: '镜像', key: 'image', ellipsis: { tooltip: true } },
+  { title: '名称', key: 'name', width: 230, ellipsis: { tooltip: true } },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  { title: '状态', key: 'state', width: 100, render: (r: any) => h(NTag, { size: 'small', type: tagType(r.state) }, { default: () => r.state }) },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  { title: '健康', key: 'health', width: 90, render: (r: any) => h(NTag, { size: 'small', type: tagType(r.health) }, { default: () => r.health || '-' }) },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   { title: '标记', key: 'retired', width: 80, render: (r: any) => r.retired ? h(NTag, { size: 'small', type: 'warning' }, { default: () => '已退役' }) : '—' },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  { title: '状态', key: 'state', render: (r: any) => h(NTag, { size: 'small', type: tagType(r.state) }, { default: () => r.state }) },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  { title: '健康', key: 'health', render: (r: any) => h(NTag, { size: 'small', type: tagType(r.health) }, { default: () => r.health || '-' }) },
+  { title: '镜像', key: 'image', width: 190, ellipsis: { tooltip: true } },
   { title: '说明', key: 'status' },
 ]
 async function load() { inv.value = await api('/ops/inventory') }
