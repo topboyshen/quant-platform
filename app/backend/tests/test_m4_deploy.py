@@ -12,6 +12,7 @@ TIMERS = {
     "qp-signals-watchdog.timer": ("qp-job@signals.watchdog.service", "15:40"),
     "qp-signals-repair.timer": ("qp-job@signals.total_amount_repair.service", "15:47"),
     "qp-signals-outcomes.timer": ("qp-job@signals.outcomes.service", "16:10"),
+    "qp-signals-chain-snapshot.timer": ("qp-job@signals.chain_snapshot.service", "15:55"),
 }
 EXPORT_TIMERS = {
     "qp-signals-export.timer": ("qp-signals-export@today.service", "16:20"),

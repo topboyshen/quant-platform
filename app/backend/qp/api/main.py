@@ -214,6 +214,9 @@ app.include_router(_signals_router)
 from qp.api.reports import router as _reports_router  # noqa: E402
 
 app.include_router(_reports_router)
+from qp.api.chain import router as _chain_router  # noqa: E402
+
+app.include_router(_chain_router)
 from qp.api.settings import router as _settings_router  # noqa: E402
 
 app.include_router(_settings_router)

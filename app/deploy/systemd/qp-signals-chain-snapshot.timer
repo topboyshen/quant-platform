@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform M10 ETF record-chain snapshot at 15:55 CST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 15:55:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@signals.chain_snapshot.service
+
+[Install]
+WantedBy=timers.target

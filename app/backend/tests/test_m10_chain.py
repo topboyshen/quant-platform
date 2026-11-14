@@ -63,7 +63,8 @@ def _calendar(engine, start: dt.date, days: int = 40) -> None:
 
 
 def _run(engine, *, attempt_no: int = 1, status: str = "success",
-         started: dt.datetime | None = None, clean: bool = True) -> int:
+         started: dt.datetime | None = None, clean: bool = True,
+         finished: bool = True) -> int:
     with Session(engine) as session:
         if clean:
             session.execute(EodRun.__table__.delete().where(EodRun.decision_date == DAY))
@@ -72,6 +73,8 @@ def _run(engine, *, attempt_no: int = 1, status: str = "success",
                      failed_count=0, signal_count=1, allowed_signal_count=1,
                      blocked_signal_count=1, reason_codes=[])
         run.started_at = started or dt.datetime.combine(DAY, dt.time(15, 30), tzinfo=CST)
+        if finished:
+            run.finished_at = run.started_at + dt.timedelta(minutes=3)
         session.add(run)
         session.commit()
         return run.run_id
@@ -93,7 +96,9 @@ def _decisions() -> list[dict]:
 
 def _cleanup(engine) -> None:
     with Session(engine) as session:
-        for model in (ChainOutcome, ChainState, ChainEligibility, ChainAttempt, ChainDecision):
+        from qp.models.chain import ChainSnapshot, ChainSnapshotItem
+        for model in (ChainSnapshotItem, ChainSnapshot, ChainOutcome, ChainState,
+                      ChainEligibility, ChainAttempt, ChainDecision):
             session.execute(text(f"ALTER TABLE signals.{model.__tablename__} DISABLE TRIGGER USER"))
             session.execute(model.__table__.delete())
             session.execute(text(f"ALTER TABLE signals.{model.__tablename__} ENABLE TRIGGER USER"))
@@ -229,3 +234,92 @@ def test_due_queue_skips_decisions_without_due_horizons(engine):
             session.execute(TargetDecision.__table__.delete())
             session.execute(EodRun.__table__.delete())
             session.commit()
+
+def _token(engine) -> str:
+    from qp.auth.sessions import create_service_token
+    with Session(engine) as session:
+        token = create_service_token(session, f"m10-chain-{dt.datetime.now().timestamp()}",
+                                     ["signals:read"])
+        session.commit()
+    return token
+
+
+def test_snapshot_build_buckets_and_replay(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    try:
+        with Session(engine) as session:
+            chain.register_run(session, run=session.get(EodRun, run_id),
+                               decisions=_decisions(), run_status="success")
+            session.commit()
+        with Session(engine) as session:
+            first = chain.build_snapshot(session, business_date=DAY)
+            session.commit()
+        assert first["ok"] and first["reused"] is False and first["status"] == "complete"
+        body = first["body"]
+        assert body["funnel"] == {"checked": 3, "triggered": 2, "risk_blocked": 1,
+                                  "risk_allowed": 1, "admitted": 1}
+        # sample only covers allowed signals; blocked/no-trigger are control groups
+        assert body["sample"]["waiting_maturity"] == 1
+        assert sum(body["sample"].values()) == 1
+        assert sum(body["loss"].values()) == 0
+        with Session(engine) as session:
+            items = session.execute(text(
+                "select section, bucket, count(*) from signals.chain_snapshot_item "
+                "where snapshot_id=:id group by section, bucket"),
+                {"id": first["snapshot_id"]}).all()
+            counts = {(section, bucket): n for section, bucket, n in items}
+            for bucket, value in body["funnel"].items():
+                assert counts.get(("funnel", bucket), 0) == value, bucket
+            for bucket, value in body["sample"].items():
+                assert counts.get(("sample", bucket), 0) == value, bucket
+        with Session(engine) as session:
+            second = chain.build_snapshot(session, business_date=DAY)
+            session.commit()
+            assert second["reused"] is True and second["snapshot_id"] == first["snapshot_id"]
+            assert session.scalar(select(func.count()).select_from(
+                __import__("qp.models.chain", fromlist=["ChainSnapshot"]).ChainSnapshot)) == 1
+    finally:
+        _cleanup(engine)
+
+
+def test_chain_api_snapshot_decisions_detail(engine, client, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    try:
+        with Session(engine) as session:
+            chain.register_run(session, run=session.get(EodRun, run_id),
+                               decisions=_decisions(), run_status="success")
+            session.commit()
+        with Session(engine) as session:
+            snap = chain.build_snapshot(session, business_date=DAY)
+            session.commit()
+        headers = {"authorization": f"Bearer {_token(engine)}"}
+        assert client.get("/api/signals/chain/snapshot").status_code == 401
+
+        got = client.get("/api/signals/chain/snapshot", headers=headers)
+        assert got.status_code == 200
+        assert got.json()["snapshot_id"] == snap["snapshot_id"]
+        assert got.json()["body"]["funnel"]["admitted"] == 1
+
+        listing = client.get("/api/signals/chain/decisions", headers=headers,
+                             params={"date": DAY.isoformat()}).json()
+        assert listing["total"] == 3
+        blocked = client.get("/api/signals/chain/decisions", headers=headers,
+                             params={"state": "blocked"}).json()
+        assert blocked["total"] == 1 and blocked["rows"][0]["code"] == "159915"
+        eligible = client.get("/api/signals/chain/decisions", headers=headers,
+                              params={"eligibility": "eligible"}).json()
+        assert eligible["total"] == 1 and eligible["rows"][0]["code"] == "510300"
+
+        uid = eligible["rows"][0]["decision_uid"]
+        detail = client.get(f"/api/signals/chain/decision/{uid}", headers=headers).json()
+        assert len(detail["attempts"]) == 1
+        assert {s["aspect"] for s in detail["states"]} == {"data", "signal", "risk"}
+        assert [o["horizon_sessions"] for o in detail["outcomes"]] == [1, 3, 5, 10, 20]
+        assert detail["eligibility"][0]["verdict"] == "eligible"
+        assert client.get("/api/signals/chain/decision/qd_missing", headers=headers).status_code == 404
+    finally:
+        _cleanup(engine)

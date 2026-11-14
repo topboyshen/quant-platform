@@ -92,6 +92,23 @@ def total_amount_repair_job(ctx: JobContext) -> dict:
     return out
 
 
+@job("signals.chain_snapshot",
+     "ETF record-chain snapshot for the business day (after EOD window)",
+     schedule_hint="Mon-Fri 15:55 CST (record chain; no-op unless QP_RECORD_CHAIN=1)")
+def chain_snapshot_job(ctx: JobContext) -> dict:
+    from qp.signals import chain
+    if not chain.enabled():
+        return {"ok": True, "skipped": "record_chain_disabled"}
+    today = now_cst().date()
+    with Session(ctx.engine) as session:
+        out = chain.build_snapshot(session, business_date=today)
+        session.commit()
+    if out.get("reason") == "no_batch":
+        return {"ok": True, "skipped": "no_batch", "business_date": today.isoformat()}
+    out["ok"] = bool(out.get("ok"))
+    return out
+
+
 @job("signals.outcomes", "Collect matured 1/3/5/10/20-session outcomes for swing decisions",
      schedule_hint="Mon-Fri 16:10 CST")
 def outcomes_job(ctx: JobContext) -> dict:
