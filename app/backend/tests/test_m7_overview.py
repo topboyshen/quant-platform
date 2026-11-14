@@ -64,8 +64,10 @@ def test_overview_returns_aggregates(engine, client):
         assert data["reports"]["by_kind"]["daily_research_summary"] == 1
         assert data["reports"]["latest_date"] == DAY.isoformat()
         assert data["jobs"]["failed_24h"] == 1
+        assert data["jobs"]["failed"][0]["job_name"] == "signals.outcomes"
         assert data["notify"]["outbox"]["shadow"] == 1
         assert data["notify"]["delivery_attempt"] == 0
+        assert data["notify"]["mode"] in ("shadow", "live") and data["notify"]["signals_mode"]
     finally:
         cleanup(engine)
 

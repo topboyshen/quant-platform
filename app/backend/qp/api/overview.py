@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from qp.api.main import Principal, get_db, require_auth, require_scope
+from qp.config import get_settings
 from qp.models.base import utcnow
 from qp.models.market import HealthResult
 from qp.models.notify import DeliveryAttempt, Outbox
@@ -49,6 +50,9 @@ def overview(p: Principal = Depends(require_auth), db: Session = Depends(get_db)
                        .where(JobRun.status == "failed", JobRun.started_at >= since)) or 0
     recent = db.execute(select(JobRun.id, JobRun.job_name, JobRun.status, JobRun.started_at)
                         .order_by(JobRun.id.desc()).limit(5)).all()
+    failed_rows = db.execute(select(JobRun.id, JobRun.job_name, JobRun.started_at, JobRun.error)
+                             .where(JobRun.status == "failed", JobRun.started_at >= since)
+                             .order_by(JobRun.id.desc()).limit(10)).all()
 
     outbox = dict(db.execute(select(Outbox.mode, func.count()).group_by(Outbox.mode)).all())
     attempts = db.scalar(select(func.count()).select_from(DeliveryAttempt)) or 0
@@ -61,7 +65,11 @@ def overview(p: Principal = Depends(require_auth), db: Session = Depends(get_db)
         "signals": signals,
         "reports": {"by_kind": by_kind, "latest_date": latest_report},
         "jobs": {"failed_24h": failed,
+                 "failed": [{"id": r[0], "job_name": r[1], "started_at": r[2],
+                             "error": (r[3] or "")[:200] or None} for r in failed_rows],
                  "recent": [{"id": r[0], "job_name": r[1], "status": r[2],
                              "started_at": r[3]} for r in recent]},
-        "notify": {"outbox": outbox, "delivery_attempt": attempts},
+        "notify": {"outbox": outbox, "delivery_attempt": attempts,
+                   "mode": get_settings().notify_mode,
+                   "signals_mode": get_settings().signals_notify_mode},
     }
