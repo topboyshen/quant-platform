@@ -10,7 +10,7 @@
       </n-switch>
       <n-select v-model:value="stateFilter" :options="stateOpts" style="width: 150px" />
       <n-input v-model:value="q" placeholder="搜索名称" clearable style="width: 220px" />
-      <span class="muted">共 {{ rows.length }} 条<template v-if="snapshotAt"> · 快照 {{ snapshotAge }}</template></span>
+      <span class="muted">共 {{ rows.length }} 条<template v-if="snapshotAt"> · 快照 {{ snapshotAge }}</template><template v-if="snapshotNote">（{{ snapshotNote }}）</template></span>
     </n-space>
     <n-data-table size="small" :bordered="false" :data="rows" :columns="cols" :pagination="{ pageSize: 30 }" />
   </n-space>
@@ -28,6 +28,21 @@ const snapshotAge = computed(() => {
   if (!snapshotAt.value) return ''
   const min = Math.max(0, Math.round((Date.now() - new Date(snapshotAt.value).getTime()) / 60000))
   return min < 1 ? '刚刚' : `${min} 分钟前`
+})
+// qp-collect pauses during the closing window; a stale snapshot then is expected.
+const snapshotNote = computed(() => {
+  if (!snapshotAt.value) return ''
+  const min = Math.round((Date.now() - new Date(snapshotAt.value).getTime()) / 60000)
+  if (min < 15) return ''
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date())
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0)
+  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? 0)
+  const now = hour * 60 + minute
+  return now >= 15 * 60 && now <= 16 * 60 + 25
+    ? '收盘窗口 15:00–16:25 暂停采集，16:30 恢复'
+    : '采集可能延迟，请检查 qp-collect.timer'
 })
 const stateOpts = [{ label: '全部状态', value: '' }, { label: 'active', value: 'active' }, { label: 'inactive', value: 'inactive' }, { label: 'failed', value: 'failed' }, { label: 'activating', value: 'activating' }]
 const scopeOpts = [{ label: '全部范围', value: '' }, { label: '系统', value: 'system' }, { label: '用户(ubuntu)', value: 'user' }]
