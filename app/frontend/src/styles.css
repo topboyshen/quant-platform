@@ -5,7 +5,7 @@
   .n-data-table .n-data-table-table { min-width: 760px; }
   /* keep cells on one line; the table body scrolls instead of wrapping mid-word */
   .n-data-table .n-data-table-th,
-  .n-data-table .n-data-table-td { white-space: nowrap; }
+  .n-data-table .n-data-table-td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .qp-content { padding: 12px !important; }
 }
 
