@@ -30,12 +30,12 @@ const rows = computed(() => (state.value ? all.value.filter((a) => a.state === s
 const emptyText = computed(() => (state.value === 'firing' ? '没有进行中的告警' : state.value === 'resolved' ? '没有已恢复的告警' : '还没有告警记录'))
 const cols = [
   { title: '级别', key: 'severity', width: 90, render: (r: A) => h(NTag, { size: 'small', type: tagType(r.severity) }, { default: () => r.severity }) },
-  { title: '键', key: 'key' },
-  { title: '摘要', key: 'summary' },
   { title: '状态', key: 'state', width: 90 },
-  { title: '首次 (CST)', key: 'created_at', render: (r: A) => fmt(r.created_at) },
-  { title: '最近 (CST)', key: 'last_seen_at', render: (r: A) => fmt(r.last_seen_at) },
-  { title: '恢复 (CST)', key: 'resolved_at', render: (r: A) => fmt(r.resolved_at) },
+  { title: '摘要', key: 'summary', width: 260, ellipsis: { tooltip: true } },
+  { title: '键', key: 'key', width: 260, ellipsis: { tooltip: true } },
+  { title: '首次 (CST)', key: 'created_at', width: 160, render: (r: A) => fmt(r.created_at) },
+  { title: '最近 (CST)', key: 'last_seen_at', width: 160, render: (r: A) => fmt(r.last_seen_at) },
+  { title: '恢复 (CST)', key: 'resolved_at', width: 160, render: (r: A) => fmt(r.resolved_at) },
 ]
 async function load() {
   loading.value = true; error.value = ''
