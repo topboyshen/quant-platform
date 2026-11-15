@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform record-chain shadow window table at 16:12 CST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 16:12:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@signals.chain_window.service
+
+[Install]
+WantedBy=timers.target

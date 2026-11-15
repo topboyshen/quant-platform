@@ -1,5 +1,20 @@
 <template>
   <n-space vertical size="large">
+    <n-card size="small">
+      <template #header>
+        <n-space align="center" :wrap="true">
+          <span>记录链 5 日窗口</span>
+          <n-tag v-if="win" size="small" :type="win.verdict === 'PASS' ? 'success' : win.verdict === 'FAIL' ? 'error' : 'default'">
+            {{ WIN_LABEL[win.verdict] || win.verdict }}
+          </n-tag>
+          <n-text v-if="win && win.days_total" depth="3">
+            {{ win.days_pass }}/{{ win.days_total }} 天 · {{ win.window_start }} → {{ win.window_end }}
+          </n-text>
+          <n-text v-else depth="3">窗口从首个 native 批次（周一 EOD）开始</n-text>
+        </n-space>
+      </template>
+      <n-data-table size="small" :columns="windowCols" :data="win?.rows || []" :pagination="false" />
+    </n-card>
     <n-space align="center">
       <n-date-picker v-model:value="ts" type="date" clearable placeholder="最新快照" />
       <n-button size="small" @click="load">查询</n-button>
@@ -122,6 +137,32 @@ interface Detail { decision: { decision_uid: string; code: string; name: string 
   eligibility: { verdict: string; reason_code: string; policy_version: string; evaluation_seq: number;
     evaluated_at: string }[] }
 
+interface WindowRow { date: string; status: string; run_status: string | null;
+  snapshot_status: string | null; compare_ok: boolean | null; decisions: number;
+  allowed: number; blocked: number; shadow_samples: number; shadow_outcomes: number;
+  reason: string }
+interface WindowData { verdict: string; days_total: number; days_pass: number;
+  window_start: string | null; window_end: string | null; rows: WindowRow[] }
+
+const WIN_LABEL: Record<string, string> = { PASS: '通过', FAIL: '未通过', NOT_STARTED: '未开始' }
+const win = ref<WindowData | null>(null)
+const windowCols = [
+  { title: '日期', key: 'date', width: 110 },
+  { title: '结果', key: 'status', width: 90,
+    render: (r: WindowRow) => h(NTag, { size: 'small', type: r.status === 'PASS' ? 'success' : 'error' },
+      { default: () => (r.status === 'PASS' ? '通过' : '未通过') }) },
+  { title: 'EOD', key: 'run_status', width: 90 },
+  { title: '快照', key: 'snapshot_status', width: 90 },
+  { title: '一致', key: 'compare_ok', width: 70,
+    render: (r: WindowRow) => (r.compare_ok === null ? '—' : r.compare_ok ? '是' : '否') },
+  { title: '决策', key: 'decisions', width: 70 },
+  { title: '放行', key: 'allowed', width: 70 },
+  { title: '拦截', key: 'blocked', width: 70 },
+  { title: '样本/结果', key: 'shadow_samples', width: 110,
+    render: (r: WindowRow) => `${r.shadow_samples}/${r.shadow_outcomes}` },
+  { title: '说明', key: 'reason', minWidth: 120 },
+]
+
 const ts = ref<number | null>(null)
 const snap = ref<Snap | null>(null)
 const rows = ref<Row[]>([])
@@ -207,5 +248,9 @@ function rowProps(row: Row) {
     catch (e) { rowsError.value = e instanceof ApiError ? `${e.status} ${e.message}` : String(e) }
   } }
 }
-onMounted(load)
+async function loadWindow() {
+  try { win.value = await api<WindowData>('/signals/chain/window') } catch { /* 非关键：快照区域仍可用 */ }
+}
+
+onMounted(() => { void loadWindow(); void load() })
 </script>

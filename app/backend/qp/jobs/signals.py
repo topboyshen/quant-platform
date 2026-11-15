@@ -112,6 +112,17 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
     return out
 
 
+@job("signals.chain_window",
+     "Record-chain shadow window table (first 5 native sessions) for the daily check",
+     schedule_hint="Mon-Fri 16:12 CST (after snapshot 15:55 and compare 16:05)")
+def chain_window_job(ctx: JobContext) -> dict:
+    from qp.signals import chain_window
+    with Session(ctx.engine) as session:
+        out = chain_window.report(session, end=now_cst().date())
+    out["ok"] = out.get("verdict") != "FAIL"
+    return out
+
+
 @job("signals.chain_import_history",
      "One-off: import existing target_decision/decision_outcome rows as legacy.v0 chain history",
      schedule_hint="manual only (record chain history import)")

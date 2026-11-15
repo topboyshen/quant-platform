@@ -38,6 +38,15 @@ def chain_snapshot(date: dt.date | None = None, p: Principal = Depends(require_a
             "status": (row.body or {}).get("status"), "body": row.body}
 
 
+@router.get("/chain/window")
+def chain_window(end: dt.date | None = None, sessions: int = Query(5, ge=1, le=30),
+                 start: dt.date | None = None, p: Principal = Depends(require_auth),
+                 db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Per-day PASS/FAIL table for the first native record-chain sessions."""
+    from qp.signals import chain_window as window
+    return window.report(db, end=end, sessions=sessions, start=start)
+
+
 @router.get("/chain/decisions")
 def chain_decisions(date: dt.date | None = None, state: str | None = None,
                     eligibility: str | None = None,

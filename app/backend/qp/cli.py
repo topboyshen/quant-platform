@@ -200,6 +200,24 @@ def cmd_chain_import_history(a) -> int:
     return 0
 
 
+def cmd_chain_window(a) -> int:
+    """Record-chain shadow window table (first N native sessions)."""
+    import datetime as dt
+
+    from qp.db import session_scope
+    from qp.signals import chain_window
+    end = dt.date.fromisoformat(a.end) if a.end else None
+    start = dt.date.fromisoformat(a.start) if a.start else None
+    with session_scope() as s:
+        out = chain_window.report(s, end=end, sessions=a.sessions, start=start)
+    text = (chain_window.markdown(out) if a.markdown
+            else json.dumps(out, ensure_ascii=False, indent=2, default=str))
+    if a.out:
+        Path(a.out).write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+    print(text)
+    return 0 if out.get("verdict") != "FAIL" else 1
+
+
 def cmd_chain_compare(a) -> int:
     """Shadow comparison of the chain snapshot against the legacy signals tables."""
     import datetime as dt
@@ -302,6 +320,13 @@ def main(argv: list[str] | None = None) -> int:
     cc = ch.add_parser("compare")
     cc.add_argument("--date", required=True)
     cc.set_defaults(fn=cmd_chain_compare)
+    cw = ch.add_parser("window")
+    cw.add_argument("--end", default=None)
+    cw.add_argument("--start", default=None)
+    cw.add_argument("--sessions", type=int, default=5)
+    cw.add_argument("--markdown", action="store_true")
+    cw.add_argument("--out", default=None)
+    cw.set_defaults(fn=cmd_chain_window)
     sg = sub.add_parser("signals").add_subparsers(dest="sub", required=True)
     sa = sg.add_parser("acceptance")
     sa.add_argument("--date", default=None, help="decision date (default: latest run on/before --today)")
