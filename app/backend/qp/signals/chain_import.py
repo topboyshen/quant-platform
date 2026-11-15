@@ -176,9 +176,9 @@ def import_history(session: Session, *, apply: bool, since: dt.date | None = Non
                     date_counts["new_outcomes"] += 1
                     summary["new_outcomes"] += 1
                 if apply:
-                    _register(session, "signals.decision_outcome", str(outcome.id), uid, now)
+                    _register(session, "signals.decision_outcome", str(outcome.id), uid, now, trade_date)
             if apply:
-                _register(session, "signals.target_decision", str(decision.id), uid, now)
+                _register(session, "signals.target_decision", str(decision.id), uid, now, trade_date)
         summary["per_date"].append(date_counts)
 
     if apply:
@@ -220,25 +220,29 @@ def _write_eligibility(session: Session, decision: TargetDecision, uid: str, bat
             index_elements=["decision_uid", "policy_version", "evaluation_seq"]))
 
 
-def _register(session: Session, table: str, pk: str, uid: str, now: dt.datetime) -> None:
+def _register(session: Session, table: str, pk: str, uid: str, now: dt.datetime,
+              business_date: dt.date | None = None) -> None:
     session.execute(pg_insert(ChainImportRegister).values(
         import_id=chain._uid("im_", {"source_table": table, "source_pk": pk}),
         source_table=table, source_pk=pk, decision_uid=uid, mapping_status="mapped",
-        imported_at=now).on_conflict_do_nothing(index_elements=["source_table", "source_pk"]))
+        original_business_date=business_date, imported_at=now
+    ).on_conflict_do_nothing(index_elements=["source_table", "source_pk"]))
 
 
 def _register_missing(session: Session, now: dt.datetime) -> None:
     """Any chain decision imported before this run still needs a register row."""
     known = set(session.execute(select(ChainImportRegister.source_table,
                                        ChainImportRegister.source_pk)).all())
-    rows = session.execute(select(ChainDecision.decision_uid, ChainDecision.input_evidence_ref)
+    rows = session.execute(select(ChainDecision.decision_uid, ChainDecision.input_evidence_ref,
+                                  ChainDecision.trade_date)
                            .where(ChainDecision.origin == "migrated_v1")).all()
-    for uid, ref in rows:
+    for uid, ref, trade_date in rows:
         if not ref or not ref.startswith("target_decision:"):
             continue
         pk = ref.split(":", 1)[1]
         if ("signals.target_decision", pk) not in known:
-            _register(session, "signals.target_decision", pk, uid, now)
+            _register(session, "signals.target_decision", pk, uid, now, trade_date)
+
 
 
 def _reconcile(session: Session, by_date: dict[dt.date, list[TargetDecision]]) -> list[dict[str, Any]]:

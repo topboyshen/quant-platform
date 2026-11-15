@@ -8,8 +8,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from qp.models.chain import (ChainAttempt, ChainDecision, ChainEligibility, ChainImportRegister,
-                             ChainOutcome, ChainState)
+from qp.models.chain import (ChainAttempt, ChainBatch, ChainDecision, ChainEligibility,
+                             ChainImportRegister, ChainOutcome, ChainPolicy, ChainState)
 from qp.models.market import TradingDay
 from qp.models.signals import DecisionOutcome, EodRun, TargetDecision
 from qp.signals import chain
@@ -416,6 +416,10 @@ def test_history_import_dry_run_then_apply_is_idempotent(engine, chain_on):
             again = chain_import.import_history(session, apply=True)
             session.commit()
         assert again["new_decisions"] == 0 and again["new_outcomes"] == 0
+        with Session(engine) as session:
+            rows = session.execute(select(ChainImportRegister.original_business_date,
+                                          ChainImportRegister.decision_uid)).all()
+            assert rows and all(row[0] is not None for row in rows)
     finally:
         _cleanup(engine)
         with Session(engine) as session:
@@ -460,3 +464,115 @@ def test_chain_compare_matches_legacy_counts(engine, chain_on):
             session.execute(TargetDecision.__table__.delete())
             session.execute(EodRun.__table__.delete().where(EodRun.decision_date == DAY))
             session.commit()
+
+
+def test_register_run_is_idempotent_across_sessions(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    decisions = _decisions()
+    for _ in range(2):
+        with Session(engine) as session:
+            chain.register_run(session, run=session.get(EodRun, run_id),
+                               decisions=decisions, run_status="success")
+            session.commit()
+    with Session(engine) as session:
+        counts = (session.scalar(select(func.count()).select_from(ChainDecision)),
+                  session.scalar(select(func.count()).select_from(ChainAttempt)),
+                  session.scalar(select(func.count()).select_from(ChainState)),
+                  session.scalar(select(func.count()).select_from(ChainEligibility)),
+                  session.scalar(select(func.count()).select_from(ChainBatch)))
+    assert counts == (3, 3, 9, 3, 1)
+
+
+def test_snapshot_flags_unknown_attribution(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    decisions = _decisions() + [_row("588000", "allowed", trigger=1)]
+    with Session(engine) as session:
+        chain.register_run(session, run=session.get(EodRun, run_id),
+                           decisions=decisions, run_status="success")
+        session.commit()
+        batch = session.scalar(select(ChainBatch).where(ChainBatch.trade_date == DAY,
+                                                        ChainBatch.source == "timer"))
+        uid = chain.decision_uid(DAY, "588000", batch.batch_key, chain.RULE_VERSION,
+                                 batch.universe_version)
+        session.execute(text("ALTER TABLE signals.chain_eligibility DISABLE TRIGGER USER"))
+        session.execute(ChainEligibility.__table__.delete().where(
+            ChainEligibility.decision_uid == uid))
+        session.execute(text("ALTER TABLE signals.chain_eligibility ENABLE TRIGGER USER"))
+        session.commit()
+    with Session(engine) as session:
+        out = chain.build_snapshot(session, business_date=DAY)
+        session.commit()
+    body = out["body"]
+    assert body["funnel"]["triggered"] == 3
+    assert body["funnel"]["risk_allowed"] == 2 and body["funnel"]["admitted"] == 1
+    assert body["sample"]["attribution_pending"] == 1
+    assert body["loss"]["signal_decisions_without_eligibility"] == 1
+
+
+def test_snapshot_ignores_other_policy_versions(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    now = dt.datetime.now(dt.timezone.utc)
+    with Session(engine) as session:
+        chain.register_run(session, run=session.get(EodRun, run_id),
+                           decisions=_decisions(), run_status="success")
+        session.commit()
+        batch = session.scalar(select(ChainBatch).where(ChainBatch.trade_date == DAY,
+                                                        ChainBatch.source == "timer"))
+        uid = chain.decision_uid(DAY, "510300", batch.batch_key, chain.RULE_VERSION,
+                                 batch.universe_version)
+        session.add(ChainPolicy(policy_version="eligibility.v0", kind="eligibility",
+                                definition={}, definition_sha256="0" * 64,
+                                effective_from=now, created_at=now))
+        session.flush()
+        session.add(ChainEligibility(
+            eligibility_id="el_v0_probe", decision_uid=uid, policy_version="eligibility.v0",
+            verdict="excluded", reason_code="probe", reason_detail={}, evidence_refs=[],
+            rule_version=chain.RULE_VERSION, universe_version=batch.universe_version,
+            evaluated_at=now, evaluation_seq=99))
+        session.commit()
+    with Session(engine) as session:
+        out = chain.build_snapshot(session, business_date=DAY)
+        session.commit()
+    body = out["body"]
+    assert body["funnel"]["admitted"] == 1          # v1 still says eligible
+    assert body["sample"]["waiting_maturity"] == 1  # the eligible decision waits for maturity
+    assert body["sample"]["attribution_pending"] == 0
+    # the sample only covers triggered+allowed decisions; no_trigger/blocked are not bucketed
+    assert body["sample"]["other_excluded"] == 0
+
+
+def test_universe_version_follows_trade_date(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY, 5)
+    run_id = _run(engine)
+    next_day = DAY + dt.timedelta(days=1)
+    with Session(engine) as session:
+        other = EodRun(decision_date=next_day, attempt_no=1, status="success",
+                       decision_outcome="emitted", target_count=3, evaluated_count=3,
+                       failed_count=0, signal_count=2, allowed_signal_count=1,
+                       blocked_signal_count=1, reason_codes=[])
+        other.started_at = dt.datetime.combine(next_day, dt.time(15, 30), tzinfo=CST)
+        other.finished_at = other.started_at + dt.timedelta(minutes=3)
+        session.add(other)
+        session.commit()
+        other_id = other.run_id
+    with Session(engine) as session:
+        chain.register_run(session, run=session.get(EodRun, run_id),
+                           decisions=_decisions(), run_status="success")
+        chain.register_run(session, run=session.get(EodRun, other_id),
+                           decisions=_decisions(), run_status="success")
+        session.commit()
+    with Session(engine) as session:
+        versions = dict(session.execute(
+            select(ChainDecision.trade_date, ChainDecision.universe_version)
+            .where(ChainDecision.code == "510300")).all())
+        uids = set(session.scalars(select(ChainDecision.decision_uid)
+                                   .where(ChainDecision.code == "510300")))
+    assert versions[DAY] != versions[next_day]
+    assert len(uids) == 2

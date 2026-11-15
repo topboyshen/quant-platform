@@ -12,7 +12,7 @@ import hashlib
 import json
 from typing import Any, Iterable, Sequence
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,7 @@ ELIGIBILITY_POLICY = "eligibility.v1"
 STATS_POLICY = "stats.snapshot.v1"
 ENGINE_VERSION = "qp-chain.v1"
 HORIZONS = (1, 3, 5, 10, 20)
+SAMPLE_THRESHOLD = 30
 OOS_SPLITS = frozenset({"live_oos", "walk_forward_oos"})
 WINDOW_EARLIEST = dt.time(15, 25)
 
@@ -395,6 +396,64 @@ def _latest(rows: Iterable[Any], key, order) -> dict[Any, Any]:
     return best
 
 
+def _cumulative_progress(session: Session, cutoff: dt.datetime) -> dict[str, Any]:
+    """Verification progress across all decisions under the frozen eligibility policy.
+
+    One row per eligible decision (latest eligibility, latest primary-horizon
+    outcome), independent of the snapshot's business date.  Legacy imports are
+    counted but reported separately so old and new rules stay distinguishable.
+    """
+    rows = session.execute(text("""
+        SELECT d.decision_uid, d.trade_date, d.origin,
+               o.execution_state, o.result_state, o.expected_maturity_date
+        FROM signals.chain_decision d
+        JOIN signals.chain_decision_current_eligibility e
+          ON e.decision_uid = d.decision_uid AND e.policy_version = :policy
+        LEFT JOIN LATERAL (
+            SELECT execution_state, result_state, expected_maturity_date
+            FROM signals.chain_outcome
+            WHERE decision_uid = d.decision_uid AND horizon_sessions = :horizon
+            ORDER BY revision DESC LIMIT 1
+        ) o ON TRUE
+        WHERE e.verdict = 'eligible'
+    """), {"policy": ELIGIBILITY_POLICY, "horizon": max(HORIZONS)}).mappings().all()
+    matured = waiting = expired = invalid = legacy = 0
+    next_maturity: dt.date | None = None
+    last_eligible: dt.date | None = None
+    for row in rows:
+        if last_eligible is None or row["trade_date"] > last_eligible:
+            last_eligible = row["trade_date"]
+        if row["origin"] == "migrated_v1":
+            legacy += 1
+        result = row["result_state"]
+        expected = row["expected_maturity_date"]
+        if result == "matured":
+            matured += 1
+        elif result == "expired_uncollected" or (expected is not None and expected < cutoff.date()):
+            expired += 1
+        elif result in (None, "pending_maturity") or row["execution_state"] == "unverified":
+            waiting += 1
+            if expected is not None and (next_maturity is None or expected < next_maturity):
+                next_maturity = expected
+        else:
+            invalid += 1
+    if matured >= SAMPLE_THRESHOLD:
+        stall = "threshold_met"
+    elif expired:
+        stall = "expired_uncollected"
+    elif waiting:
+        stall = "waiting_maturity"
+    else:
+        stall = "no_admitted"
+    return {"scope": "cumulative", "matured": matured, "waiting": waiting,
+            "expired_uncollected": expired, "invalid": invalid,
+            "eligible_total": len(rows), "legacy_eligible": legacy,
+            "threshold": SAMPLE_THRESHOLD, "primary_horizon_sessions": max(HORIZONS),
+            "last_new_eligible_date": last_eligible.isoformat() if last_eligible else None,
+            "next_expected_maturity": next_maturity.isoformat() if next_maturity else None,
+            "stall_code": stall}
+
+
 def _snapshot_body(session: Session, business_date: dt.date, batch: ChainBatch,
                    cutoff: dt.datetime) -> tuple[dict[str, Any], list[tuple[str, str, str | None, str | None]]]:
     """Assemble the deterministic snapshot body plus its expandable items."""
@@ -407,7 +466,8 @@ def _snapshot_body(session: Session, business_date: dt.date, batch: ChainBatch,
     states = list(session.scalars(select(ChainState).where(ChainState.decision_uid.in_(uids)))) if uids else []
     current_state = _latest(states, lambda r: (r.decision_uid, r.aspect), lambda r: r.state_seq)
     eligibility = list(session.scalars(select(ChainEligibility).where(
-        ChainEligibility.decision_uid.in_(uids)))) if uids else []
+        ChainEligibility.decision_uid.in_(uids),
+        ChainEligibility.policy_version == ELIGIBILITY_POLICY))) if uids else []
     current_eligibility = _latest(eligibility, lambda r: r.decision_uid, lambda r: r.evaluation_seq)
     outcomes = list(session.scalars(select(ChainOutcome).where(
         ChainOutcome.decision_uid.in_(uids)))) if uids else []
@@ -447,6 +507,9 @@ def _snapshot_body(session: Session, business_date: dt.date, batch: ChainBatch,
         if entry is None:
             if triggered:
                 without_eligibility += 1
+                if allowed:
+                    sample["attribution_pending"] += 1
+                    items.append(("sample", "attribution_pending", uid, decision.code))
             continue
         if not (triggered and allowed):
             continue
@@ -488,7 +551,6 @@ def _snapshot_body(session: Session, business_date: dt.date, batch: ChainBatch,
             items.append(("loss", "signal_decisions_without_eligibility",
                           decision.decision_uid, decision.code))
 
-    eligible_dates = [e.evaluated_at for e in current_eligibility.values() if e.verdict == "eligible"]
     body = {
         "business_date": business_date.isoformat(),
         "protocol_version": PROTOCOL_VERSION,
@@ -499,10 +561,7 @@ def _snapshot_body(session: Session, business_date: dt.date, batch: ChainBatch,
         "status": "complete" if terminal else "incomplete",
         "funnel": funnel,
         "sample": sample,
-        "progress": {"matured": sample["qualified_matured"], "threshold": 30,
-                     "primary_horizon_sessions": max(HORIZONS),
-                     "last_new_eligible_date": max(eligible_dates).date().isoformat()
-                     if eligible_dates else None},
+        "progress": _cumulative_progress(session, cutoff),
         "loss": loss,
     }
     return body, items

@@ -41,9 +41,19 @@
                   {{ SAMPLE[key] || key }} {{ value }}
                 </n-tag>
               </n-space>
-              <n-text depth="3">
-                已成熟 {{ snap.body.progress.matured }} / {{ snap.body.progress.threshold }}（主周期 {{ snap.body.progress.primary_horizon_sessions }} 日）
-                · 最近合格日 {{ snap.body.progress.last_new_eligible_date || '—' }}
+              <n-text depth="3" style="display: block">
+                验证进度（累计）{{ snap.body.progress.matured }}/{{ snap.body.progress.threshold }}
+                · 等待成熟 {{ snap.body.progress.waiting }}
+                · 到期未采集 {{ snap.body.progress.expired_uncollected }}
+                · 历史合格 {{ snap.body.progress.legacy_eligible }}
+              </n-text>
+              <n-text depth="3" style="display: block">
+                最近新增合格日 {{ snap.body.progress.last_new_eligible_date || '—' }}
+                · 下一预计成熟 {{ snap.body.progress.next_expected_maturity || '—' }}
+                （主周期 {{ snap.body.progress.primary_horizon_sessions }} 日）
+              </n-text>
+              <n-text depth="3" type="warning" style="display: block">
+                当前停滞原因：{{ STALL[snap.body.progress.stall_code] || snap.body.progress.stall_code }}
               </n-text>
             </n-card>
           </n-gi>
@@ -95,6 +105,9 @@
           <n-h4>状态修订</n-h4>
           <n-data-table size="small" :bordered="false" :data="detail.states" :columns="stateCols" :pagination="false" />
           <n-h4>结果（按持有期）</n-h4>
+          <n-text v-if="!detail.outcomes.length" depth="3" type="warning" style="display: block; margin-bottom: 8px">
+            缺证：该决策没有后续结果记录
+          </n-text>
           <n-data-table size="small" :bordered="false" :data="detail.outcomes" :columns="outcomeCols" :pagination="false" />
           <n-h4>资格</n-h4>
           <n-data-table size="small" :bordered="false" :data="detail.eligibility" :columns="eligCols" :pagination="false" />
@@ -118,10 +131,16 @@ const SAMPLE: Record<string, string> = { waiting_maturity: '待成熟', qualifie
   expired_uncollected: '到期未采集', invalid: '结果无效' }
 const LOSS: Record<string, string> = { universe_members_without_decision: '成员无决策',
   signal_decisions_without_eligibility: '触发缺资格', matured_without_result: '成熟无结果' }
+const STALL: Record<string, string> = { threshold_met: '验证样本已达标',
+  expired_uncollected: '有到期未采集，需检查结果采集',
+  waiting_maturity: '样本等待成熟', no_admitted: '没有新的合格决策进入成熟队列' }
 
 interface Snap { snapshot_id: string; digest: string; business_date: string; status: string; generated_at: string;
   body: { funnel: Record<string, number>; sample: Record<string, number>;
-    progress: { matured: number; threshold: number; primary_horizon_sessions: number; last_new_eligible_date: string | null };
+    progress: { scope: string; matured: number; waiting: number; expired_uncollected: number;
+      invalid: number; eligible_total: number; legacy_eligible: number; threshold: number;
+      primary_horizon_sessions: number; last_new_eligible_date: string | null;
+      next_expected_maturity: string | null; stall_code: string };
     loss: Record<string, number> } }
 interface Row { decision_uid: string; code: string; name: string | null; data_state: string | null;
   signal_state: string | null; risk_state: string | null; verdict: string | null;
@@ -189,7 +208,12 @@ const columns = [
   { title: '风控', key: 'risk_state', width: 90 },
   { title: '资格', key: 'verdict', width: 100 },
   { title: '原因', key: 'eligibility_reason', width: 150 },
-  { title: '结果', key: 'result_state', width: 130 },
+  { title: '结果', key: 'result_state', width: 130,
+    render: (r: Row) => (r.result_state
+      ? r.result_state
+      : (r.risk_state === 'allowed'
+        ? h(NTag, { size: 'small', type: 'warning' }, { default: () => '缺证' })
+        : '—')) },
 ]
 const stateCols = [
   { title: '类别', key: 'aspect', width: 80 }, { title: '状态', key: 'state', width: 150 },
