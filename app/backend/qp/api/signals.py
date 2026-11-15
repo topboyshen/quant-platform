@@ -12,6 +12,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from qp.api.main import Principal, get_db, require_auth, require_scope
+from qp.config import get_settings
+from qp.models.chain import (ChainDecision, ChainEligibility, ChainSnapshot, ChainState,
+                             ChainUniverseMember)
 from qp.models.signals import (DecisionOutcome, EodRun, ShadowOutcome, ShadowSignal,
                                TargetDecision, TrendSignal)
 from qp.signals.universe import TARGETS
@@ -117,17 +120,108 @@ def shadow_samples(limit: int = Query(200, ge=1, le=500), offset: int = Query(0,
         "outcomes": outcomes.get(s.id, {})} for s in shadows]}
 
 
-@router.get("/etf-pool")
-def etf_pool(date: str | None = None, p: Principal = Depends(require_auth),
-             db: Session = Depends(get_db)) -> dict[str, Any]:
-    """The configured 40-ETF research pool joined to one EOD attempt."""
-    if date:
-        try:
-            day = dt.date.fromisoformat(date)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="bad date") from exc
-    else:
-        day = db.scalar(select(func.max(EodRun.decision_date)))
+def _latest_chain_states(db: Session, uids: list[str]) -> dict[tuple[str, str], ChainState]:
+    if not uids:
+        return {}
+    latest: dict[tuple[str, str], ChainState] = {}
+    for row in db.scalars(select(ChainState).where(ChainState.decision_uid.in_(uids))).all():
+        key = (row.decision_uid, row.aspect)
+        current = latest.get(key)
+        if current is None or row.state_seq > current.state_seq:
+            latest[key] = row
+    return latest
+
+
+def _latest_chain_eligibility(db: Session, uids: list[str],
+                              policy: str) -> dict[str, ChainEligibility]:
+    if not uids:
+        return {}
+    latest: dict[str, ChainEligibility] = {}
+    for row in db.scalars(select(ChainEligibility).where(
+            ChainEligibility.decision_uid.in_(uids),
+            ChainEligibility.policy_version == policy)).all():
+        current = latest.get(row.decision_uid)
+        if current is None or row.evaluation_seq > current.evaluation_seq:
+            latest[row.decision_uid] = row
+    return latest
+
+
+def _pool_from_chain(db: Session, day: dt.date | None) -> dict[str, Any]:
+    """P7 read path: build the ETF pool from the record-chain snapshot."""
+    empty = {"decision_date": day.isoformat() if day else None, "run": None, "counts": {},
+             "items": [], "source": "chain", "snapshot": None}
+    if day is None:
+        return empty
+    snapshot = db.scalar(select(ChainSnapshot).where(ChainSnapshot.business_date == day)
+                         .order_by(ChainSnapshot.generated_at.desc()).limit(1))
+    if snapshot is None:
+        return empty
+    body = snapshot.body or {}
+    batch_keys = body.get("batch_keys") or []
+    decisions = list(db.scalars(select(ChainDecision).where(
+        ChainDecision.batch_key.in_(batch_keys)))) if batch_keys else []
+    by_code = {d.code: d for d in decisions}
+    uids = [d.decision_uid for d in decisions]
+    states = _latest_chain_states(db, uids)
+    eligibility = _latest_chain_eligibility(db, uids, snapshot.eligibility_policy_version)
+    members = {m.code: m for m in db.scalars(select(ChainUniverseMember).where(
+        ChainUniverseMember.universe_version == snapshot.universe_version))}
+    codes = list(dict.fromkeys([m.code for m in members.values()] + [d.code for d in decisions]))
+    counts: dict[str, int] = {}
+    items = []
+    for code in codes:
+        member = members.get(code)
+        decision = by_code.get(code)
+        risk_action = risk_level = reason = data_status = None
+        trigger_count = 0
+        if decision is None:
+            state = "missing"
+        else:
+            data_state = states.get((decision.decision_uid, "data"))
+            signal_state = states.get((decision.decision_uid, "signal"))
+            risk_state = states.get((decision.decision_uid, "risk"))
+            if data_state is not None and data_state.state != "complete":
+                state = "data_failed"
+            elif signal_state is None or signal_state.state != "triggered":
+                state = "no_trigger"
+            elif risk_state is not None and risk_state.state == "blocked":
+                state = "blocked"
+            else:
+                state = "allowed"
+            data_status = ("ok" if data_state is not None and data_state.state == "complete"
+                           else ("failed" if data_state is not None else None))
+            risk_action = risk_state.state if risk_state is not None else None
+            risk_level = (risk_state.basis or {}).get("risk_level") if risk_state is not None else None
+            entry = eligibility.get(decision.decision_uid)
+            reason = (entry.reason_code if entry is not None
+                      else (risk_state.reason_code if risk_state is not None else None))
+            trigger_count = (int((signal_state.basis or {}).get("raw_trigger_count") or 0)
+                             if signal_state is not None else 0)
+        counts[state] = counts.get(state, 0) + 1
+        items.append({
+            "code": code,
+            "name": (decision.name if decision is not None and decision.name
+                     else (member.name if member is not None else code)),
+            "sector": (member.sector if member is not None and member.sector else ""),
+            "state": state,
+            "risk_action": risk_action,
+            "risk_level": risk_level,
+            "data_status": data_status,
+            "reason_code": reason,
+            "reference_close": None,  # the chain stores the digest, not the close
+            "raw_trigger_count": trigger_count,
+            "signal_count": trigger_count,
+            "signals": [],
+        })
+    items.sort(key=lambda item: item["code"])
+    return {"decision_date": day.isoformat(), "run": None, "counts": counts, "items": items,
+            "source": "chain",
+            "snapshot": {"snapshot_id": snapshot.snapshot_id, "digest": snapshot.digest,
+                         "status": body.get("status"), "cutoff_at": snapshot.cutoff_at,
+                         "generated_at": snapshot.generated_at}}
+
+
+def _pool_from_legacy(db: Session, day: dt.date | None) -> dict[str, Any]:
     run = None
     if day is not None:
         run = db.scalar(select(EodRun).where(EodRun.decision_date == day)
@@ -151,6 +245,7 @@ def etf_pool(date: str | None = None, p: Principal = Depends(require_auth),
         decision = decisions.get(target.code)
         state = decision.decision_state if decision is not None else "missing"
         counts[state] = counts.get(state, 0) + 1
+        code_signals = signals.get(target.code, [])
         items.append({
             "code": target.code, "name": target.name, "sector": target.sector,
             "state": state,
@@ -160,11 +255,31 @@ def etf_pool(date: str | None = None, p: Principal = Depends(require_auth),
             "reason_code": decision.reason_code if decision is not None else None,
             "reference_close": _num(decision.reference_close) if decision is not None else None,
             "raw_trigger_count": decision.raw_trigger_count if decision is not None else None,
-            "signals": signals.get(target.code, []),
+            "signal_count": len(code_signals),
+            "signals": code_signals,
         })
     return {"decision_date": day.isoformat() if day else None,
             "run": None if run is None else _run(run),
-            "counts": counts, "items": items}
+            "counts": counts, "items": items, "source": "legacy", "snapshot": None}
+
+
+@router.get("/etf-pool")
+def etf_pool(date: str | None = None, p: Principal = Depends(require_auth),
+             db: Session = Depends(get_db)) -> dict[str, Any]:
+    """The 40-ETF pool; reads the record chain when QP_CHAIN_READS=1 (P7 switch)."""
+    day: dt.date | None = None
+    if date:
+        try:
+            day = dt.date.fromisoformat(date)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="bad date") from exc
+    if get_settings().chain_reads:
+        if day is None:
+            day = db.scalar(select(func.max(ChainSnapshot.business_date)))
+        return _pool_from_chain(db, day)
+    if day is None:
+        day = db.scalar(select(func.max(EodRun.decision_date)))
+    return _pool_from_legacy(db, day)
 
 
 @router.get("/compare")

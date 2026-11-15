@@ -11,7 +11,13 @@
         {{ state }} {{ n }}
       </n-tag>
     </n-space>
-    <AsyncState :loading="loading" :error="error" :empty="!loading && !error && !items.length" emptyText="暂无 ETF 数据">
+    <n-alert v-if="data?.source === 'chain'" type="info" :show-icon="true">
+      读取自记录链快照
+      <template v-if="data.snapshot"> {{ data.snapshot.snapshot_id }}（{{ data.snapshot.status }}）</template>
+      <template v-else>：该交易日没有快照</template>
+      · 收盘字段记录链不存储，显示为 —
+    </n-alert>
+    <AsyncState :loading="loading" :error="error" :empty="!loading && !error && !items.length" :emptyText="emptyText">
       <n-data-table :columns="columns" :data="items" size="small" :row-props="rowProps" />
     </AsyncState>
     <n-drawer v-model:show="show" :width="640">
@@ -44,19 +50,23 @@
   </n-tabs>
 </template>
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { NButton, NCard, NDataTable, NDatePicker, NDescriptions, NDescriptionsItem, NDrawer, NDrawerContent, NEmpty, NH4, NSpace, NTabPane, NTabs, NTag, NText } from 'naive-ui'
+import { computed, onMounted, ref } from 'vue'
+import { NAlert, NButton, NCard, NDataTable, NDatePicker, NDescriptions, NDescriptionsItem, NDrawer, NDrawerContent, NEmpty, NH4, NSpace, NTabPane, NTabs, NTag, NText } from 'naive-ui'
 import AsyncState from '../../components/AsyncState.vue'
 import ChainPanel from './ChainPanel.vue'
 import { api } from '../../api/client'
 
 interface Signal { signal_type: string; period: string; data_date: string | null; title: string; confidence: number | null }
-interface Item { code: string; name: string; sector: string; state: string; risk_action: string | null; risk_level: string | null; reason_code: string | null; reference_close: number | null; raw_trigger_count: number | null; signals: Signal[] }
-interface Pool { decision_date: string | null; counts: Record<string, number>; items: Item[] }
+interface Item { code: string; name: string; sector: string; state: string; risk_action: string | null; risk_level: string | null; reason_code: string | null; reference_close: number | null; raw_trigger_count: number | null; signal_count: number; signals: Signal[] }
+interface Snapshot { snapshot_id: string; digest: string; status: string | null }
+interface Pool { decision_date: string | null; counts: Record<string, number>; items: Item[]; source: string; snapshot: Snapshot | null }
 
 const tab = ref('pool')
 const ts = ref<number | null>(null)
 const data = ref<Pool | null>(null)
+const emptyText = computed(() => (data.value?.source === 'chain'
+  ? '该交易日没有记录链快照（QP_CHAIN_READS 已开启）'
+  : '暂无 ETF 数据'))
 const items = ref<Item[]>([])
 const loading = ref(false)
 const error = ref('')
@@ -71,7 +81,7 @@ const columns = [
   { title: '风控', key: 'risk_action', width: 90 },
   { title: '原因', key: 'reason_code', width: 140 },
   { title: '收盘', key: 'reference_close', width: 90 },
-  { title: '信号', key: 'signals', width: 70, render: (r: Item) => r.signals.length },
+  { title: '信号', key: 'signal_count', width: 70, render: (r: Item) => r.signal_count },
 ]
 function iso(value: number) {
   const d = new Date(value)

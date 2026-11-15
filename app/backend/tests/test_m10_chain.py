@@ -614,3 +614,77 @@ def test_input_evidence_digest_matches_sql(engine, chain_on):
         """)).first()
     assert digest and len(digest) == 64
     assert digest == sql_digest
+
+
+def _signals_token(engine) -> str:
+    from qp.auth.sessions import create_service_token
+    with Session(engine) as session:
+        token = create_service_token(session, f"m10-pool-{dt.datetime.now().timestamp()}",
+                                     ["signals:read"])
+        session.commit()
+    return token
+
+
+def test_etf_pool_switch_reads_chain_snapshot(engine, client, chain_on, monkeypatch):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    with Session(engine) as session:
+        chain.register_run(session, run=session.get(EodRun, run_id),
+                           decisions=_decisions(), run_status="success")
+        session.commit()
+        assert chain.build_snapshot(session, business_date=DAY)["ok"]
+        session.commit()
+    token = _signals_token(engine)
+    monkeypatch.setenv("QP_CHAIN_READS", "1")
+    response = client.get(f"/api/signals/etf-pool?date={DAY}",
+                          headers={"authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "chain"
+    assert body["snapshot"]["status"] == "complete"
+    assert body["counts"] == {"allowed": 1, "blocked": 1, "no_trigger": 1}
+    items = {item["code"]: item for item in body["items"]}
+    assert items["510300"]["state"] == "allowed" and items["510300"]["signal_count"] == 1
+    assert items["159915"]["state"] == "blocked" and items["159915"]["risk_action"] == "blocked"
+    assert items["510500"]["state"] == "no_trigger"
+    assert items["510300"]["reference_close"] is None
+    assert items["510300"]["sector"] == "test"
+
+
+def test_etf_pool_switch_without_snapshot_is_empty(engine, client, chain_on, monkeypatch):
+    _cleanup(engine)
+    token = _signals_token(engine)
+    monkeypatch.setenv("QP_CHAIN_READS", "1")
+    day = DAY + dt.timedelta(days=7)
+    response = client.get(f"/api/signals/etf-pool?date={day}",
+                          headers={"authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "chain" and body["snapshot"] is None and body["items"] == []
+
+
+def test_etf_pool_defaults_to_legacy_when_switch_is_off(engine, client, chain_on, monkeypatch):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    with Session(engine) as session:
+        for code, state, trigger, risk in (("510300", "allowed", 1, "allowed"),
+                                           ("510500", "no_trigger", 0, "allowed"),
+                                           ("159915", "blocked", 1, "blocked")):
+            session.add(TargetDecision(
+                run_id=run_id, decision_date=DAY, code=code, name=code, sector="宽基",
+                data_status="ok", decision_state=state, risk_action=risk,
+                risk_level="ok", reason_code="r", reference_close=1.0,
+                raw_trigger_count=trigger, raw_signals=[], validation_split="live_oos"))
+        session.commit()
+    token = _signals_token(engine)
+    monkeypatch.delenv("QP_CHAIN_READS", raising=False)
+    response = client.get(f"/api/signals/etf-pool?date={DAY}",
+                          headers={"authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "legacy"
+    assert len(body["items"]) == 40
+    states = {item["code"]: item["state"] for item in body["items"]}
+    assert states["510300"] == "allowed" and states["159915"] == "blocked"

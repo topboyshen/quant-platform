@@ -30,6 +30,7 @@ class Settings:
     execution_digest_hmac_file: str
     execution_digest_output_dir: str
     record_chain: bool  # M10 ETF record-chain dual-write switch
+    chain_reads: bool  # P7 read switch: page/API read the record chain instead of target_decision
 
 
 def get_settings() -> Settings:
@@ -63,4 +64,5 @@ def get_settings() -> Settings:
         execution_digest_output_dir=os.getenv("QP_EXECUTION_DIGEST_DIR",
                                               "/var/lib/qp/signals/digests"),
         record_chain=os.getenv("QP_RECORD_CHAIN", "0").strip().lower() in {"1", "true", "yes", "on"},
+        chain_reads=os.getenv("QP_CHAIN_READS", "0").strip().lower() in {"1", "true", "yes", "on"},
     )

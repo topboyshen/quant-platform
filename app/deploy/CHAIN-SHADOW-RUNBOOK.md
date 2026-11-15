@@ -52,6 +52,8 @@ PASS 条件：当天有终态 EOD run、有快照、`compare` 无差异、`loss`
 
 ## 4. P7 受控切换清单
 
+**读取开关（已实现，默认关）**：`/etc/qp/qp.env` 设 `QP_CHAIN_READS=1` 并重启 `qp-api`，ETF 研究池改为读当日记录链快照（响应 `source=chain`，页面顶部提示快照 id/状态）；该日无快照时返回空列表，**不回退旧表**。收盘字段记录链不存储，显示为 `—`；信号列改用触发数。回退：置 `0` 重启，无需数据回滚。开关只在下列条件全部满足后打开。
+
 1. 窗口 5/5 PASS（`qp chain window` 退出码 0，`days_pass == days_total`）。
 2. 冻结精确镜像：release、`RELEASE_SHA`、`QP_RECORD_CHAIN`、资格/统计策略版本、标的池版本。
 3. ETF 研究池页签改为读快照（`/api/signals/chain/*`），旧 `target_decision` 读取降级为兼容视图；保留 `signal_compare` 历史口径对照。
