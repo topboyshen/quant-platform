@@ -14,41 +14,22 @@ import { onMounted, ref } from 'vue'
 import { NDataTable, NSpace, NText } from 'naive-ui'
 import AsyncState from '../../components/AsyncState.vue'
 import { api } from '../../api/client'
+import { horizonCell, riskLabel, type ShadowSample as Sample } from './shadowModel'
 
 const HORIZONS = [1, 3, 5, 10, 20]
-const RISK_LABEL: Record<string, string> = {
-  ok: '正常', warning: '预警', critical: '严重', growth_blocked: '成长受限', unavailable: '不可用',
-}
-interface Cell { net_return: number | null; excess_return: number | null; fill_status: string }
-interface Sample {
-  id: number; decision_date: string; code: string; name: string
-  risk_level: string | null; reason_code: string; raw_trigger_count: number
-  outcomes: Record<string, Cell>
-}
 const rows = ref<Sample[]>([])
 const total = ref(0)
 const loading = ref(false)
 const error = ref('')
 
-function pct(v: number | null | undefined) {
-  return v == null ? '—' : (v * 100).toFixed(2) + '%'
-}
-function risk(row: Sample) {
-  return row.risk_level ? (RISK_LABEL[row.risk_level] || row.risk_level) : '—'
-}
-function cell(row: Sample, horizon: number) {
-  const value = row.outcomes[String(horizon)]
-  if (!value) return '待到期'
-  return value.fill_status === 'filled' ? pct(value.net_return) : '未成交'
-}
 const columns = [
   { title: '代码', key: 'code', width: 90 },
   { title: '名称', key: 'name', minWidth: 160 },
   { title: '决策日', key: 'decision_date', width: 110 },
-  { title: '风控', key: 'risk_level', width: 110, render: (r: Sample) => risk(r) },
+  { title: '风控', key: 'risk_level', width: 110, render: (r: Sample) => riskLabel(r.risk_level) },
   ...HORIZONS.map((h) => ({
     title: `${h}日`, key: `h${h}`, width: 90,
-    render: (r: Sample) => cell(r, h),
+    render: (r: Sample) => horizonCell(r, h),
   })),
 ]
 onMounted(async () => {

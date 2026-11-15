@@ -20,30 +20,14 @@ import { computed, h, onMounted, ref, watch } from 'vue'
 import { NAlert, NDataTable, NInput, NSelect, NSpace, NSwitch, NTag } from 'naive-ui'
 import { api } from '../api/client'
 import { fmt, tagType } from '../util'
+import { snapshotAge as ageOf, snapshotNote as noteOf } from './tasksModel'
 interface U { scope: string; name: string; kind: string; description: string; active_state: string; result: string | null; category: string; activates: string | null; triggered_by: string | null; last_trigger: string | null; next_elapse: string | null; last_exit: string | null; run_user: string | null }
 const all = ref<U[]>([]), scope = ref(''), kind = ref('timer'), category = ref<string | null>(null), includeOs = ref(false), q = ref('')
 const stateFilter = ref('')
 const snapshotAt = ref<string | null>(null)
-const snapshotAge = computed(() => {
-  if (!snapshotAt.value) return ''
-  const min = Math.max(0, Math.round((Date.now() - new Date(snapshotAt.value).getTime()) / 60000))
-  return min < 1 ? '刚刚' : `${min} 分钟前`
-})
 // qp-collect pauses during the closing window; a stale snapshot then is expected.
-const snapshotNote = computed(() => {
-  if (!snapshotAt.value) return ''
-  const min = Math.round((Date.now() - new Date(snapshotAt.value).getTime()) / 60000)
-  if (min < 15) return ''
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false,
-  }).formatToParts(new Date())
-  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? 0)
-  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? 0)
-  const now = hour * 60 + minute
-  return now >= 15 * 60 && now <= 16 * 60 + 25
-    ? '收盘窗口 15:00–16:25 暂停采集，16:30 恢复'
-    : '采集可能延迟，请检查 qp-collect.timer'
-})
+const snapshotAge = computed(() => ageOf(snapshotAt.value))
+const snapshotNote = computed(() => noteOf(snapshotAt.value))
 const stateOpts = [{ label: '全部状态', value: '' }, { label: 'active', value: 'active' }, { label: 'inactive', value: 'inactive' }, { label: 'failed', value: 'failed' }, { label: 'activating', value: 'activating' }]
 const scopeOpts = [{ label: '全部范围', value: '' }, { label: '系统', value: 'system' }, { label: '用户(ubuntu)', value: 'user' }]
 const kindOpts = [{ label: '全部类型', value: '' }, { label: '定时器', value: 'timer' }, { label: '服务', value: 'service' }]
