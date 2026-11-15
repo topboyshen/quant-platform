@@ -68,3 +68,15 @@ PASS 条件：当天有终态 EOD run、有快照、`compare` 无差异、`loss`
 - `chain_evidence_link` 表为外部副档预留；当前所有证据都是数据库行引用（ref + sha256），没有外部副档，因此未接线是设计选择，不是遗漏。
 - 日报链路已按需求删除，方案中的“日报读同一快照”不再适用；窗口表与页面承担展示。
 - P6 影子窗口（11-16 ~ 11-20）与 P7 切读仍未完成，切换条件见 §3/§4。
+
+## 6. v2 规则影子（M13，2026-11-15）
+
+离线回测显示当前周线 MACD 无稳定 edge，2 倍量日线突破（R4b）是唯一在非 2024 年份为正的规则。
+v2 先以影子方式并行，**不改变实盘决策与通知**。
+
+- 规则：`qp-swing.v2` = 收盘上穿 MA60，成交量 ≥ 2× 20 日均量；同标的 5 个交易日内只记一次。
+- 表：`signals.rule_shadow_signal` / `rule_shadow_outcome`（migration `0015`），与 `target_decision`、记录链、通知完全隔离。
+- 任务：`signals.rule_shadow`（Mon-Fri 15:37）、`signals.rule_shadow_outcomes`（16:17）。
+- 手工：`qp signals rule-shadow --date YYYY-MM-DD`；回填 `--since 2026-10-19`；结果 `--outcomes`。
+- 页面：信号 → 规则影子；API `/api/signals/rule-shadow`。
+- 晋级：成熟样本 ≥30、5/10 日超额中位数为正、胜率 >50%，且 2024-09-24 类事件单独标注后仍为正；不达标淘汰，不直接上 live。

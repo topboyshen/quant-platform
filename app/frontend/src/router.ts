@@ -48,6 +48,7 @@ export const router = createRouter({
             { path: 'trends', name: 'signals-trends', component: () => import('./views/signals/Trends.vue') },
             { path: 'outcomes', name: 'signals-outcomes', component: () => import('./views/signals/Outcomes.vue') },
             { path: 'shadow', name: 'signals-shadow', component: () => import('./views/signals/Shadow.vue') },
+            { path: 'rule-shadow', name: 'signals-rule-shadow', component: () => import('./views/signals/RuleShadow.vue') },
             { path: 'compare', name: 'signals-compare', component: () => import('./views/signals/Compare.vue') },
           ],
         },

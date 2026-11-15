@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform experimental rule shadow outcomes at 16:17 CST
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 16:17:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=false
+Unit=qp-job@signals.rule_shadow_outcomes.service
+
+[Install]
+WantedBy=timers.target

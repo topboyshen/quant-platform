@@ -15,8 +15,8 @@ from qp.api.main import Principal, get_db, require_auth, require_scope
 from qp.config import get_settings
 from qp.models.chain import (ChainDecision, ChainEligibility, ChainSnapshot, ChainState,
                              ChainUniverseMember)
-from qp.models.signals import (DecisionOutcome, EodRun, ShadowOutcome, ShadowSignal,
-                               TargetDecision, TrendSignal)
+from qp.models.signals import (DecisionOutcome, EodRun, RuleShadowOutcome, RuleShadowSignal,
+                               ShadowOutcome, ShadowSignal, TargetDecision, TrendSignal)
 from qp.signals.universe import TARGETS
 
 router = APIRouter(prefix="/api/signals", dependencies=[Depends(require_scope("signals:read"))])
@@ -93,6 +93,38 @@ def outcomes(limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)
         "net_return": _num(o.net_return), "benchmark_return": _num(o.benchmark_return),
         "excess_return": _num(o.excess_return), "fill_status": o.fill_status}
         for o, d in rows]}
+
+
+@router.get("/rule-shadow")
+def rule_shadow_samples(rule_version: str = "qp-swing.v2",
+                        limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0),
+                        p: Principal = Depends(require_auth),
+                        db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Experimental rule signals and their forward returns (shadow only)."""
+    from qp.signals import rule_shadow as rule_shadow_mod
+    total = db.scalar(select(func.count()).select_from(RuleShadowSignal)
+                      .where(RuleShadowSignal.rule_version == rule_version)) or 0
+    samples = list(db.scalars(select(RuleShadowSignal)
+                              .where(RuleShadowSignal.rule_version == rule_version)
+                              .order_by(RuleShadowSignal.decision_date.desc(),
+                                        RuleShadowSignal.code)
+                              .limit(limit).offset(offset)))
+    outcomes: dict[int, dict[str, Any]] = {}
+    if samples:
+        for row in db.scalars(select(RuleShadowOutcome).where(
+                RuleShadowOutcome.signal_id.in_([s.id for s in samples]))):
+            outcomes.setdefault(row.signal_id, {})[str(row.horizon_sessions)] = {
+                "net_return": _num(row.net_return),
+                "excess_return": _num(row.excess_return),
+                "fill_status": row.fill_status}
+    return {"rule_version": rule_version, "total": total,
+            "summary": rule_shadow_mod.summary(db, rule_version),
+            "rows": [{
+                "id": s.id, "decision_date": s.decision_date, "code": s.code, "name": s.name,
+                "sector": s.sector, "rule_version": s.rule_version,
+                "signal_type": s.signal_type, "reference_close": _num(s.reference_close),
+                "volume_ratio": _num(s.volume_ratio), "risk_level": s.risk_level,
+                "outcomes": outcomes.get(s.id, {})} for s in samples]}
 
 
 @router.get("/shadow")

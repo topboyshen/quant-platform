@@ -230,6 +230,30 @@ def cmd_chain_compare(a) -> int:
     return 0 if out.get("ok") else 1
 
 
+def cmd_signals_rule_shadow(a) -> int:
+    """Experimental rule shadow: record v2 signals or collect their outcomes."""
+    import datetime as dt
+
+    from qp.db import session_scope
+    from qp.signals import rule_shadow
+    from qp.signals.eod import now_cst
+    with session_scope() as s:
+        if a.outcomes:
+            as_of = dt.date.fromisoformat(a.until) if a.until else None
+            out = rule_shadow.collect(s, as_of=as_of)
+            s.commit()
+        elif a.since:
+            out = rule_shadow.backfill(s, since=dt.date.fromisoformat(a.since),
+                                       until=dt.date.fromisoformat(a.until) if a.until else None)
+            s.commit()
+        else:
+            day = dt.date.fromisoformat(a.date) if a.date else now_cst().date()
+            out = rule_shadow.generate(s, day=day)
+            s.commit()
+    print(json.dumps(out, ensure_ascii=False, default=str))
+    return 0
+
+
 def cmd_signals_shadow_record(a) -> int:
     """Backfill the shadow sample channel from blocked-but-triggered decisions."""
     import datetime as dt
@@ -340,6 +364,12 @@ def main(argv: list[str] | None = None) -> int:
     so = sg.add_parser("shadow-outcomes")
     so.add_argument("--as-of", default=None)
     so.set_defaults(fn=cmd_signals_shadow_outcomes)
+    rs = sg.add_parser("rule-shadow")
+    rs.add_argument("--date", default=None)
+    rs.add_argument("--since", default=None)
+    rs.add_argument("--until", default=None)
+    rs.add_argument("--outcomes", action="store_true")
+    rs.set_defaults(fn=cmd_signals_rule_shadow)
     dc = sub.add_parser("decommission").add_subparsers(dest="sub", required=True)
     dci = dc.add_parser("inventory")
     dci.add_argument("--out", default=None)

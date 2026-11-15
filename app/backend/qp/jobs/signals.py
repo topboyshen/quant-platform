@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import datetime as dt
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from qp.jobs.registry import JobContext, job
+from qp.models.market import TradingDay
 from qp.signals.eod import (now_cst, previous_open_day, record_skipped_run, run_eod,
                             trading_day_status)
 from qp.signals.approved import build_previous_day_digest
@@ -157,6 +159,36 @@ def shadow_record_job(ctx: JobContext) -> dict:
         out = shadow.record(session)
         session.commit()
     out["ok"] = True
+    return out
+
+
+@job("signals.rule_shadow",
+     "Experimental rule qp-swing.v2 signals (2x volume breakout); shadow tables only",
+     schedule_hint="Mon-Fri 15:37 CST (after EOD; never live, never notified)")
+def rule_shadow_job(ctx: JobContext) -> dict:
+    from qp.signals import rule_shadow
+    today = now_cst().date()
+    with Session(ctx.engine) as session:
+        is_open = session.scalar(select(func.count()).select_from(TradingDay).where(
+            TradingDay.origin == "qp", TradingDay.is_open.is_(True),
+            TradingDay.date == today)) or 0
+        if not is_open:
+            return {"ok": True, "skipped": "non_trading_day", "day": today.isoformat()}
+        out = rule_shadow.generate(session, day=today)
+        session.commit()
+    out["ok"] = True
+    return out
+
+
+@job("signals.rule_shadow_outcomes",
+     "Forward returns for the experimental rule signals (1/3/5/10/20 sessions)",
+     schedule_hint="Mon-Fri 16:17 CST (after shadow outcomes)")
+def rule_shadow_outcomes_job(ctx: JobContext) -> dict:
+    from qp.signals import rule_shadow
+    with Session(ctx.engine) as session:
+        out = rule_shadow.collect(session, as_of=now_cst().date())
+        session.commit()
+    out["ok"] = bool(out.get("benchmark_ok"))
     return out
 
 

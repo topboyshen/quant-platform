@@ -29,7 +29,7 @@ export function pct(value: number | null | undefined): string {
   return value == null ? '—' : (value * 100).toFixed(2) + '%'
 }
 
-export function horizonCell(sample: ShadowSample, horizon: number): string {
+export function horizonCell(sample: { outcomes: Record<string, ShadowCell> }, horizon: number): string {
   const value = sample.outcomes[String(horizon)]
   if (!value) return '待到期'
   return value.fill_status === 'filled' ? pct(value.net_return) : '未成交'

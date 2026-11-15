@@ -190,6 +190,59 @@ class ShadowOutcome(Base):
     created_at: Mapped[dt.datetime] = _now_col()
 
 
+class RuleShadowSignal(Base):
+    """A shadow signal produced by an experimental rule version (e.g. qp-swing.v2).
+
+    Validation only: never written to target_decision, never notified, never part
+    of the live chain.  ``detail`` keeps the rule diagnostics and the live risk
+    level on that day so gated and ungated variants can be compared later.
+    """
+    __tablename__ = "rule_shadow_signal"
+    __table_args__ = (
+        UniqueConstraint("rule_version", "decision_date", "code", "signal_type",
+                         name="uq_rule_shadow_signal_identity"),
+        Index("ix_rule_shadow_signal_date", "decision_date"),
+        S,
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    rule_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    signal_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    decision_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    code: Mapped[str] = mapped_column(String(16), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    sector: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    reference_close: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    volume_ratio: Mapped[float | None] = mapped_column(Numeric(10, 4))
+    risk_level: Mapped[str | None] = mapped_column(String(24))
+    detail: Mapped[dict[str, Any]] = _json_col()
+    recorded_at: Mapped[dt.datetime] = _now_col()
+
+
+class RuleShadowOutcome(Base):
+    __tablename__ = "rule_shadow_outcome"
+    __table_args__ = (
+        UniqueConstraint("signal_id", "horizon_sessions",
+                         name="uq_rule_shadow_outcome_signal_id_horizon"),
+        S,
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    signal_id: Mapped[int] = mapped_column(
+        ForeignKey("signals.rule_shadow_signal.id", ondelete="CASCADE"), nullable=False, index=True)
+    horizon_sessions: Mapped[int] = mapped_column(Integer, nullable=False)
+    entry_date: Mapped[dt.date | None] = mapped_column(Date)
+    exit_date: Mapped[dt.date | None] = mapped_column(Date)
+    entry_price: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    exit_price: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    gross_return: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    net_return: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    benchmark_return: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    excess_return: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    fill_status: Mapped[str] = mapped_column(String(16), nullable=False, default="unfilled")
+    fill_reason: Mapped[str | None] = mapped_column(String(64))
+    details: Mapped[dict[str, Any]] = _json_col()
+    created_at: Mapped[dt.datetime] = _now_col()
+
+
 class MacroSlice(Base):
     __tablename__ = "macro_slice"
     __table_args__ = S
