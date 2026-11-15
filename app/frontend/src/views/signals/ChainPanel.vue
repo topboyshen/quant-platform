@@ -13,7 +13,8 @@
           <n-text v-else depth="3">窗口从首个 native 批次（周一 EOD）开始</n-text>
         </n-space>
       </template>
-      <n-data-table size="small" :columns="windowCols" :data="win?.rows || []" :pagination="false" />
+      <n-data-table v-if="win?.rows?.length" size="small" :columns="windowCols" :data="win?.rows || []" :pagination="false" />
+      <n-text v-else depth="3">首份快照生成后，这里逐日显示 PASS/FAIL。</n-text>
     </n-card>
     <n-space align="center">
       <n-date-picker v-model:value="ts" type="date" clearable placeholder="最新快照" />
@@ -189,7 +190,7 @@ const total = ref(0)
 const loading = ref(false), error = ref(''), rowsLoading = ref(false), rowsError = ref('')
 const stateFilter = ref<string | null>(null), eligibilityFilter = ref<string | null>(null)
 const show = ref(false), detail = ref<Detail | null>(null)
-const emptyText = '还没有记录链快照（QP_RECORD_CHAIN 未开启，或 15:55 任务尚未运行）'
+const emptyText = '还没有记录链快照（15:55 任务运行后生成；历史导入日没有 native 批次）'
 const lossTotal = computed(() => snap.value ? Object.values(snap.value.body.loss).reduce((a, b) => a + b, 0) : 0)
 
 const stateOptions = [
