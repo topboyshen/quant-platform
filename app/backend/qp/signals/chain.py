@@ -73,6 +73,16 @@ def _uid(prefix: str, payload: Any) -> str:
     return prefix + sha256_hex(canonical_json(payload))[:32]
 
 
+def input_evidence_digest(*, run_id: int, decision_date: dt.date, code: str, data_status: str,
+                          raw_trigger_count: int, raw_signal_count: int,
+                          reference_close: Any) -> str:
+    """Stable digest of the decision inputs (same fields the migration can recompute)."""
+    ref = "" if reference_close is None else f"{float(reference_close):.4f}"
+    payload = "|".join([str(int(run_id)), decision_date.isoformat(), str(code), str(data_status),
+                        str(int(raw_trigger_count or 0)), str(int(raw_signal_count)), ref])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def decision_uid(trade_date: dt.date, code: str, batch_key: str, rule_version: str,
                  universe_version: str) -> str:
     return _uid("qd_", {"trade_date": trade_date.isoformat(), "code": code,
@@ -262,7 +272,14 @@ def register_run(session: Session, *, run: EodRun, decisions: Sequence[dict[str,
             decision_uid=uid, trade_date=run.decision_date, code=str(row["code"]),
             name=row.get("name"), batch_key=batch_key, rule_version=RULE_VERSION,
             universe_version=universe, origin="native", attribution_status="confirmed",
-            input_evidence_ref=f"run:{run.run_id}", created_at=now
+            input_evidence_ref=f"run:{run.run_id}",
+            input_evidence_sha256=input_evidence_digest(
+                run_id=run.run_id, decision_date=run.decision_date, code=str(row["code"]),
+                data_status=str(row.get("data_status") or ""),
+                raw_trigger_count=int(row.get("raw_trigger_count") or 0),
+                raw_signal_count=len(row.get("raw_signals") or []),
+                reference_close=row.get("reference_close")),
+            created_at=now
         ).on_conflict_do_nothing(index_elements=["decision_uid"]))
         counts["decisions"] += 1
         attempt_id = _uid("att_", {"run_id": run.run_id, "decision_uid": uid})

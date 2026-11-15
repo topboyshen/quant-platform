@@ -15,9 +15,9 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from qp.models.chain import (ChainBatch, ChainDecision, ChainEligibility, ChainImportRegister,
-                             ChainOutcome, ChainPolicy, ChainState, ChainUniverse,
-                             ChainUniverseMember)
+from qp.models.chain import (ChainAttempt, ChainBatch, ChainDecision, ChainEligibility,
+                             ChainImportRegister, ChainOutcome, ChainPolicy, ChainState,
+                             ChainUniverse, ChainUniverseMember)
 from qp.models.signals import DecisionOutcome, EodRun, TargetDecision
 from qp.signals import chain
 
@@ -101,7 +101,7 @@ def _outcome_row(outcome: DecisionOutcome, decision_uid: str, expected: dt.date 
 def import_history(session: Session, *, apply: bool, since: dt.date | None = None,
                    now: dt.datetime | None = None) -> dict[str, Any]:
     now = now or dt.datetime.now(dt.timezone.utc)
-    stmt = (select(TargetDecision, EodRun.status)
+    stmt = (select(TargetDecision, EodRun)
             .join(EodRun, EodRun.run_id == TargetDecision.run_id)
             .order_by(TargetDecision.decision_date, TargetDecision.code))
     if since is not None:
@@ -109,9 +109,11 @@ def import_history(session: Session, *, apply: bool, since: dt.date | None = Non
     rows = session.execute(stmt).all()
     by_date: dict[dt.date, list[TargetDecision]] = {}
     status: dict[int, str] = {}
-    for decision, run_status in rows:
+    run_by_decision: dict[int, EodRun] = {}
+    for decision, run in rows:
         by_date.setdefault(decision.decision_date, []).append(decision)
-        status[decision.id] = run_status
+        status[decision.id] = run.status
+        run_by_decision[decision.id] = run
 
     existing_uids = set(session.scalars(select(ChainDecision.decision_uid)).all())
     existing_outcomes = set(session.execute(
@@ -125,7 +127,7 @@ def import_history(session: Session, *, apply: bool, since: dt.date | None = Non
 
     summary: dict[str, Any] = {"apply": apply, "dates": len(by_date),
                                "source_decisions": len(rows), "source_outcomes": 0,
-                               "new_decisions": 0, "new_outcomes": 0,
+                               "new_decisions": 0, "new_outcomes": 0, "new_attempts": 0,
                                "eligibility": {}, "per_date": []}
     if apply and by_date:
         _legacy_policy(session, now)
@@ -150,6 +152,12 @@ def import_history(session: Session, *, apply: bool, since: dt.date | None = Non
                         universe_version=LEGACY_UNIVERSE, origin="migrated_v1",
                         attribution_status="confirmed",
                         input_evidence_ref=f"target_decision:{decision.id}",
+                        input_evidence_sha256=chain.input_evidence_digest(
+                            run_id=decision.run_id, decision_date=decision.decision_date,
+                            code=decision.code, data_status=decision.data_status,
+                            raw_trigger_count=int(decision.raw_trigger_count or 0),
+                            raw_signal_count=len(decision.raw_signals or []),
+                            reference_close=decision.reference_close),
                         created_at=now, imported_at=now).on_conflict_do_nothing(
                             index_elements=["decision_uid"]))
                     existing_uids.add(uid)
@@ -158,6 +166,18 @@ def import_history(session: Session, *, apply: bool, since: dt.date | None = Non
             verdict, reason = _legacy_eligibility(decision, status.get(decision.id))
             summary["eligibility"][reason] = summary["eligibility"].get(reason, 0) + 1
             if apply:
+                attempt_id = chain._uid("att_", {"run_id": decision.run_id,
+                                                 "decision_uid": uid})
+                run = run_by_decision[decision.id]
+                inserted = session.execute(pg_insert(ChainAttempt).values(
+                    attempt_id=attempt_id, decision_uid=uid, run_id=decision.run_id,
+                    started_at=run.started_at, completed_at=run.finished_at,
+                    engine_version=LEGACY_RULE, source_decision_id=decision.id,
+                    created_at=now).on_conflict_do_nothing(
+                        index_elements=["run_id", "decision_uid"]).returning(
+                        ChainAttempt.attempt_id)).first()
+                if inserted:
+                    summary["new_attempts"] += 1
                 _write_states(session, decision, uid, now)
                 _write_eligibility(session, decision, uid, batch_key, verdict, reason, now)
             outcomes = outcomes_by_decision.get(decision.id, [])

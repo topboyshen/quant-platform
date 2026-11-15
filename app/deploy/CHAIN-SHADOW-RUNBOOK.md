@@ -59,9 +59,10 @@ PASS 条件：当天有终态 EOD run、有快照、`compare` 无差异、`loss`
 5. 回退：切回旧读取入口（页面配置），新增记录保留供调查；不做数据回滚。
 6. 切换后首个交易日核对：页面/API/窗口表同一快照计数一致。
 
-## 5. 已知未完成（截至 2026-11-15）
+## 5. 边界与说明（截至 2026-11-15）
 
-- 历史 1,160 条决策没有 `chain_attempt`（旧系统无 run 关联），抽屉“尝试”为空；归属为 confirmed。
-- `input_evidence_sha256` 未写入（native 也只写 ref）。
-- `chain_evidence_link` 表已建但未接线（无外部副档需要核验）。
+- 历史 1,160 条决策的尝试已按 `target_decision.run_id → eod_run` 回填（`engine_version=legacy.v0`，`source_decision_id` 指向源行）；旧系统没有更细的执行时间，`started_at/completed_at` 取对应 run。
+- `input_evidence_sha256` 为决策输入的稳定摘要（run|日期|代码|数据状态|触发数|信号数|收盘），native 与历史导入写入，migration `0014` 回填；可用同一表达式在 SQL 重算核对。
+- `chain_evidence_link` 表为外部副档预留；当前所有证据都是数据库行引用（ref + sha256），没有外部副档，因此未接线是设计选择，不是遗漏。
 - 日报链路已按需求删除，方案中的“日报读同一快照”不再适用；窗口表与页面承担展示。
+- P6 影子窗口（11-16 ~ 11-20）与 P7 切读仍未完成，切换条件见 §3/§4。

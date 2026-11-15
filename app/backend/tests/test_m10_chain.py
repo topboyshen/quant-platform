@@ -398,11 +398,15 @@ def test_history_import_dry_run_then_apply_is_idempotent(engine, chain_on):
             first = chain_import.import_history(session, apply=True)
             session.commit()
         assert first["new_decisions"] == 4 and first["new_outcomes"] == 2
+        assert first["new_attempts"] == 4
         assert all(item["ok"] for item in first["reconcile"])
         with Session(engine) as session:
             assert session.scalar(select(func.count()).select_from(ChainDecision)) == 4
+            assert session.scalar(select(func.count()).select_from(ChainAttempt)) == 4
             assert session.scalar(select(func.count()).select_from(ChainOutcome)) == 2
             assert session.scalar(select(func.count()).select_from(ChainImportRegister)) == 6
+            shas = list(session.scalars(select(ChainDecision.input_evidence_sha256)))
+            assert len(shas) == 4 and all(sha and len(sha) == 64 for sha in shas)
             origins = set(session.scalars(select(ChainDecision.origin)))
             assert origins == {"migrated_v1"}
             kinds = set(session.scalars(select(ChainOutcome.source_kind)))
@@ -416,6 +420,7 @@ def test_history_import_dry_run_then_apply_is_idempotent(engine, chain_on):
             again = chain_import.import_history(session, apply=True)
             session.commit()
         assert again["new_decisions"] == 0 and again["new_outcomes"] == 0
+        assert again["new_attempts"] == 0
         with Session(engine) as session:
             rows = session.execute(select(ChainImportRegister.original_business_date,
                                           ChainImportRegister.decision_uid)).all()
@@ -576,3 +581,36 @@ def test_universe_version_follows_trade_date(engine, chain_on):
                                    .where(ChainDecision.code == "510300")))
     assert versions[DAY] != versions[next_day]
     assert len(uids) == 2
+
+
+def test_input_evidence_digest_matches_sql(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    with Session(engine) as session:
+        session.add(TargetDecision(
+            run_id=run_id, decision_date=DAY, code="510300", name="沪深300ETF", sector="宽基",
+            data_status="ok", decision_state="allowed", risk_action="allowed",
+            risk_level="ok", reason_code="r", reference_close=1.0,
+            raw_trigger_count=1, raw_signals=[], validation_split="live_oos"))
+        session.commit()
+    with Session(engine) as session:
+        chain.register_run(session, run=session.get(EodRun, run_id),
+                           decisions=[_row("510300", "allowed", trigger=1)],
+                           run_status="success")
+        session.commit()
+    with Session(engine) as session:
+        digest, sql_digest = session.execute(text("""
+            SELECT d.input_evidence_sha256,
+                   encode(sha256(convert_to(concat_ws('|',
+                       td.run_id::text, td.decision_date::text, td.code, td.data_status,
+                       td.raw_trigger_count::text, jsonb_array_length(td.raw_signals)::text,
+                       coalesce(td.reference_close::text, '')), 'UTF8')), 'hex')
+            FROM signals.chain_decision d
+            JOIN signals.target_decision td
+              ON td.run_id = substring(d.input_evidence_ref FROM 5)::bigint
+             AND td.code = d.code
+            WHERE d.code = '510300'
+        """)).first()
+    assert digest and len(digest) == 64
+    assert digest == sql_digest
