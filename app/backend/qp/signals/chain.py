@@ -17,11 +17,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from qp.config import get_settings
-from qp.models.chain import (ChainAttempt, ChainBatch, ChainDecision, ChainEligibility, ChainOutcome,
-                             ChainPolicy, ChainSnapshot, ChainSnapshotItem, ChainState, ChainUniverse,
-                             ChainUniverseMember)
+from qp.models.chain import (ChainAttempt, ChainBatch, ChainDecision, ChainEligibility, ChainEvidenceLink,
+                             ChainOutcome, ChainPolicy, ChainSnapshot, ChainSnapshotItem, ChainState,
+                             ChainUniverse, ChainUniverseMember)
 from qp.models.market import TradingDay
-from qp.models.signals import EodRun
+from qp.models.signals import EodRun, TargetDecision
 
 CST = dt.timezone(dt.timedelta(hours=8))
 PROTOCOL_VERSION = "qp.record-chain.v1"
@@ -254,6 +254,43 @@ def _materialise_outcomes(session: Session, *, decision_uid: str, attempt_id: st
     return created
 
 
+def _record_decision_evidence(session: Session, *, run: EodRun, code: str, decision_uid: str,
+                              expected_sha256: str, now: dt.datetime) -> bool:
+    """Append one DB-row evidence link and verify it against the source decision.
+
+    The current evidence is a database row (``target_decision``), not an external
+    sidecar; ``sidecar_kind=db_row`` makes that explicit.  The digest is
+    recomputed from the stored row, so a missing row or a changed field is
+    visible as ``missing/pending`` or ``failed`` instead of a silent claim.
+    """
+    source = session.scalar(select(TargetDecision).where(
+        TargetDecision.run_id == run.run_id, TargetDecision.code == code))
+    if source is None:
+        observed, db_state, sidecar_state = None, "missing", "pending"
+    else:
+        observed = input_evidence_digest(
+            run_id=run.run_id, decision_date=run.decision_date, code=code,
+            data_status=str(source.data_status or ""),
+            raw_trigger_count=int(source.raw_trigger_count or 0),
+            raw_signal_count=len(source.raw_signals or []),
+            reference_close=source.reference_close)
+        db_state = "present"
+        sidecar_state = "verified" if observed == expected_sha256 else "failed"
+    sidecar_path = f"signals.target_decision:run={run.run_id}:code={code}"
+    link_id = _uid("lnk_", {"owner_kind": "decision", "owner_id": decision_uid,
+                            "sidecar_kind": "db_row", "sidecar_path": sidecar_path})
+    inserted = session.execute(pg_insert(ChainEvidenceLink).values(
+        link_id=link_id, owner_kind="decision", owner_id=decision_uid,
+        sidecar_kind="db_row", sidecar_path=sidecar_path,
+        expected_sha256=expected_sha256, observed_sha256=observed,
+        db_state=db_state, sidecar_state=sidecar_state,
+        detail={"decision_uid": decision_uid, "run_id": run.run_id, "code": code},
+        checked_at=now, created_at=now,
+    ).on_conflict_do_nothing(index_elements=["link_id"]).returning(
+        ChainEvidenceLink.link_id)).first()
+    return bool(inserted)
+
+
 def register_run(session: Session, *, run: EodRun, decisions: Sequence[dict[str, Any]],
                  run_status: str, source: str = "timer",
                  now: dt.datetime | None = None) -> dict[str, Any]:
@@ -261,27 +298,38 @@ def register_run(session: Session, *, run: EodRun, decisions: Sequence[dict[str,
     if not enabled():
         return {"enabled": False}
     now = now or dt.datetime.now(dt.timezone.utc)
+    # Serialise concurrent writers for the same EOD run.  The chain helper is
+    # called directly by tests/jobs as well as the timer, so the job-level lock
+    # alone is not enough to keep decisions and evidence links unique.
+    session.execute(text("SELECT pg_advisory_xact_lock(20817, :key)"),
+                    {"key": int(run.run_id)})
     _ensure_policies(session, now)
     universe = _ensure_universe(session, run.decision_date, decisions, now)
     batch_key = _ensure_batch(session, run, universe, source, now)
     sessions = _upcoming_open_days(session, run.decision_date)
-    counts = {"decisions": 0, "attempts": 0, "states": 0, "eligible": 0, "outcomes": 0}
+    counts = {"decisions": 0, "attempts": 0, "states": 0, "eligible": 0, "outcomes": 0,
+              "evidence_links": 0}
     for row in decisions:
-        uid = decision_uid(run.decision_date, str(row["code"]), batch_key, RULE_VERSION, universe)
+        code = str(row["code"])
+        uid = decision_uid(run.decision_date, code, batch_key, RULE_VERSION, universe)
+        expected = input_evidence_digest(
+            run_id=run.run_id, decision_date=run.decision_date, code=code,
+            data_status=str(row.get("data_status") or ""),
+            raw_trigger_count=int(row.get("raw_trigger_count") or 0),
+            raw_signal_count=len(row.get("raw_signals") or []),
+            reference_close=row.get("reference_close"))
         session.execute(pg_insert(ChainDecision).values(
-            decision_uid=uid, trade_date=run.decision_date, code=str(row["code"]),
+            decision_uid=uid, trade_date=run.decision_date, code=code,
             name=row.get("name"), batch_key=batch_key, rule_version=RULE_VERSION,
             universe_version=universe, origin="native", attribution_status="confirmed",
             input_evidence_ref=f"run:{run.run_id}",
-            input_evidence_sha256=input_evidence_digest(
-                run_id=run.run_id, decision_date=run.decision_date, code=str(row["code"]),
-                data_status=str(row.get("data_status") or ""),
-                raw_trigger_count=int(row.get("raw_trigger_count") or 0),
-                raw_signal_count=len(row.get("raw_signals") or []),
-                reference_close=row.get("reference_close")),
+            input_evidence_sha256=expected,
             created_at=now
         ).on_conflict_do_nothing(index_elements=["decision_uid"]))
         counts["decisions"] += 1
+        if _record_decision_evidence(session, run=run, code=code, decision_uid=uid,
+                                     expected_sha256=expected, now=now):
+            counts["evidence_links"] += 1
         attempt_id = _uid("att_", {"run_id": run.run_id, "decision_uid": uid})
         inserted = session.execute(pg_insert(ChainAttempt).values(
             attempt_id=attempt_id, decision_uid=uid, run_id=run.run_id,

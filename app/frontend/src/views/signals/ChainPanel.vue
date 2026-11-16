@@ -112,6 +112,12 @@
           <n-data-table size="small" :bordered="false" :data="detail.outcomes" :columns="outcomeCols" :pagination="false" />
           <n-h4>资格</n-h4>
           <n-data-table size="small" :bordered="false" :data="detail.eligibility" :columns="eligCols" :pagination="false" />
+          <n-h4>证据链接（{{ detail.evidence.length }}）</n-h4>
+          <n-text v-if="!detail.evidence.length" depth="3" style="display: block; margin-bottom: 8px">
+            暂无证据链接（未开启记录链，或该决策尚未写入）
+          </n-text>
+          <n-data-table v-else size="small" :bordered="false" :data="detail.evidence"
+                        :columns="evidenceCols" :pagination="false" />
         </template>
       </n-drawer-content>
     </n-drawer>
@@ -155,7 +161,11 @@ interface Detail { decision: { decision_uid: string; code: string; name: string 
     expected_maturity_date: string | null; entry_date: string | null; exit_date: string | null;
     net_return: number | null; revision_reason: string | null }[];
   eligibility: { verdict: string; reason_code: string; policy_version: string; evaluation_seq: number;
-    evaluated_at: string }[] }
+    evaluated_at: string }[];
+  evidence: { link_id: string; sidecar_kind: string; sidecar_path: string;
+    expected_sha256: string | null; observed_sha256: string | null;
+    db_state: string; sidecar_state: string; checked_at: string;
+    detail: Record<string, unknown> }[] }
 
 interface WindowRow { date: string; status: string; run_status: string | null;
   snapshot_status: string | null; compare_ok: boolean | null; decisions: number;
@@ -232,6 +242,14 @@ const eligCols = [
   { title: '判定', key: 'verdict', width: 100 }, { title: '原因', key: 'reason_code' },
   { title: '版本', key: 'policy_version', width: 130 }, { title: '序号', key: 'evaluation_seq', width: 70 },
   { title: '评估时间', key: 'evaluated_at', render: (r: { evaluated_at: string }) => fmt(r.evaluated_at) },
+]
+const evidenceCols = [
+  { title: '类型', key: 'sidecar_kind', width: 90 },
+  { title: '路径', key: 'sidecar_path', ellipsis: { tooltip: true } },
+  { title: 'DB', key: 'db_state', width: 70 },
+  { title: '副档', key: 'sidecar_state', width: 80 },
+  { title: '核对时间', key: 'checked_at', width: 160,
+    render: (r: { checked_at: string }) => fmt(r.checked_at) },
 ]
 
 function iso(value: number) {

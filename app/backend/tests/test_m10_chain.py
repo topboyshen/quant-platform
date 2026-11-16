@@ -9,7 +9,8 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from qp.models.chain import (ChainAttempt, ChainBatch, ChainDecision, ChainEligibility,
-                             ChainImportRegister, ChainOutcome, ChainPolicy, ChainState)
+                             ChainEvidenceLink, ChainImportRegister, ChainOutcome, ChainPolicy,
+                             ChainState)
 from qp.models.market import TradingDay
 from qp.models.signals import DecisionOutcome, EodRun, TargetDecision
 from qp.signals import chain
@@ -95,13 +96,30 @@ def _decisions() -> list[dict]:
             _row("159915", "blocked", trigger=1, risk="blocked")]
 
 
+def _insert_targets(engine, run_id: int, *,
+                    close_override: dict[str, float] | None = None) -> None:
+    with Session(engine) as session:
+        session.execute(TargetDecision.__table__.delete()
+                        .where(TargetDecision.decision_date == DAY))
+        for row in _decisions():
+            session.add(TargetDecision(
+                run_id=run_id, decision_date=DAY, code=row["code"], name=row["name"],
+                sector=row["sector"], data_status=row["data_status"],
+                decision_state=row["decision_state"], risk_action=row["risk_action"],
+                risk_level=row["risk_level"], reason_code=row["reason_code"],
+                reference_close=(close_override or {}).get(row["code"], row["reference_close"]),
+                raw_trigger_count=row["raw_trigger_count"], raw_signals=row["raw_signals"],
+                validation_split=row["validation_split"]))
+        session.commit()
+
+
 def _cleanup(engine) -> None:
     with Session(engine) as session:
         from qp.models.chain import (ChainBatch, ChainPolicy, ChainSnapshot, ChainSnapshotItem,
                                      ChainUniverse, ChainUniverseMember)
-        for model in (ChainSnapshotItem, ChainSnapshot, ChainImportRegister, ChainOutcome, ChainState,
-                      ChainEligibility, ChainAttempt, ChainDecision, ChainBatch,
-                      ChainUniverseMember, ChainUniverse, ChainPolicy):
+        for model in (ChainEvidenceLink, ChainSnapshotItem, ChainSnapshot, ChainImportRegister,
+                      ChainOutcome, ChainState, ChainEligibility, ChainAttempt, ChainDecision,
+                      ChainBatch, ChainUniverseMember, ChainUniverse, ChainPolicy):
             session.execute(text(f"ALTER TABLE signals.{model.__tablename__} DISABLE TRIGGER USER"))
             session.execute(model.__table__.delete())
             session.execute(text(f"ALTER TABLE signals.{model.__tablename__} ENABLE TRIGGER USER"))
@@ -140,6 +158,95 @@ def test_register_run_materialises_only_allowed(engine, chain_on):
                        for o in outcomes)
             assert all(o.expected_maturity_date > DAY for o in outcomes)
             assert session.scalar(select(func.count()).select_from(ChainOutcome)) == 5
+    finally:
+        _cleanup(engine)
+
+
+def test_register_run_writes_verified_evidence_links(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    _insert_targets(engine, run_id)
+    try:
+        with Session(engine) as session:
+            out = chain.register_run(session, run=session.get(EodRun, run_id),
+                                     decisions=_decisions(), run_status="success")
+            session.commit()
+        assert out["evidence_links"] == 3
+        with Session(engine) as session:
+            links = list(session.scalars(select(ChainEvidenceLink)))
+        assert len(links) == 3
+        assert {link.db_state for link in links} == {"present"}
+        assert {link.sidecar_state for link in links} == {"verified"}
+        assert all(link.sidecar_kind == "db_row" for link in links)
+        assert all(link.expected_sha256 == link.observed_sha256 for link in links)
+        assert all(len(link.expected_sha256 or "") == 64 for link in links)
+    finally:
+        _cleanup(engine)
+
+
+def test_evidence_link_flags_changed_source_row(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    _insert_targets(engine, run_id, close_override={"510300": 9.9})
+    try:
+        with Session(engine) as session:
+            chain.register_run(session, run=session.get(EodRun, run_id),
+                               decisions=_decisions(), run_status="success")
+            session.commit()
+        with Session(engine) as session:
+            links = {link.detail["code"]: link
+                     for link in session.scalars(select(ChainEvidenceLink))}
+        assert links["510300"].sidecar_state == "failed"
+        assert links["510300"].observed_sha256 != links["510300"].expected_sha256
+        assert links["510500"].sidecar_state == "verified"
+    finally:
+        _cleanup(engine)
+
+
+def test_evidence_link_marks_missing_source_row(engine, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)  # deliberately no target_decision rows
+    try:
+        with Session(engine) as session:
+            out = chain.register_run(session, run=session.get(EodRun, run_id),
+                                     decisions=_decisions(), run_status="success")
+            session.commit()
+        assert out["evidence_links"] == 3
+        with Session(engine) as session:
+            links = list(session.scalars(select(ChainEvidenceLink)))
+        assert {link.db_state for link in links} == {"missing"}
+        assert {link.sidecar_state for link in links} == {"pending"}
+        assert all(link.observed_sha256 is None for link in links)
+    finally:
+        _cleanup(engine)
+
+
+def test_register_run_concurrent_same_run_stays_idempotent(engine, chain_on):
+    from concurrent.futures import ThreadPoolExecutor
+
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    _insert_targets(engine, run_id)
+
+    def worker(_):
+        with Session(engine) as session:
+            out = chain.register_run(session, run=session.get(EodRun, run_id),
+                                     decisions=_decisions(), run_status="success")
+            session.commit()
+            return out
+
+    try:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(worker, range(4)))
+        assert all(result["enabled"] for result in results)
+        with Session(engine) as session:
+            assert session.scalar(select(func.count()).select_from(ChainDecision)) == 3
+            assert session.scalar(select(func.count()).select_from(ChainAttempt)) == 3
+            assert session.scalar(select(func.count()).select_from(ChainEvidenceLink)) == 3
     finally:
         _cleanup(engine)
 
@@ -323,6 +430,9 @@ def test_chain_api_snapshot_decisions_detail(engine, client, chain_on):
         assert {s["aspect"] for s in detail["states"]} == {"data", "signal", "risk"}
         assert [o["horizon_sessions"] for o in detail["outcomes"]] == [1, 3, 5, 10, 20]
         assert detail["eligibility"][0]["verdict"] == "eligible"
+        assert len(detail["evidence"]) == 1
+        assert detail["evidence"][0]["sidecar_kind"] == "db_row"
+        assert detail["evidence"][0]["sidecar_path"].startswith("signals.target_decision:")
         assert client.get("/api/signals/chain/decision/qd_missing", headers=headers).status_code == 404
     finally:
         _cleanup(engine)
@@ -335,7 +445,7 @@ def test_pool_page_has_record_chain_tab():
     assert 'tab="研究池"' in pool and 'tab="记录链"' in pool and "<ChainPanel" in pool
     for label in ("检查", "触发", "风控拦截", "风控放行", "进入样本"):
         assert label in panel, label
-    for label in ("待成熟", "合格且成熟", "历史排除", "成员无决策", "触发缺资格"):
+    for label in ("待成熟", "合格且成熟", "历史排除", "成员无决策", "触发缺资格", "证据链接"):
         assert label in panel, label
     assert "/signals/chain/snapshot" in panel and "/signals/chain/decisions" in panel
     assert "/signals/chain/decision/" in panel
