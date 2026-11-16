@@ -26,10 +26,28 @@ def _daily(payload: dict, subject: str | None) -> str:
     reason = str(payload.get("terminal_reason") or "")
     lines.append("终态：" + ("正常" if terminal_ok else "异常") + (f"（{reason}）" if reason else ""))
     reading = payload.get("reading") or {}
-    for key in ("market_data", "macro", "signals", "research_eligibility"):
-        value = reading.get(key)
-        if value:
-            lines.append(str(value))
+    market = payload.get("market") or {}
+    if market.get("text"):
+        lines.append("市场：" + str(market["text"]))
+    if reading.get("market_data"):
+        lines.append(str(reading["market_data"]))
+    macro_text = payload.get("macro_text") or reading.get("macro")
+    if macro_text:
+        lines.append(str(macro_text) if str(macro_text).startswith("宏观")
+                     else "宏观：" + str(macro_text))
+    risk_text = payload.get("risk_text") or reading.get("risk")
+    if risk_text:
+        lines.append(str(risk_text))
+    funnel = payload.get("funnel") or reading.get("funnel")
+    if funnel:
+        lines.append(str(funnel))
+    else:
+        for key in ("signals",):
+            value = reading.get(key)
+            if value:
+                lines.append(str(value))
+    if reading.get("research_eligibility"):
+        lines.append(str(reading["research_eligibility"]))
     signals = payload.get("today_trend_signals")
     if signals is not None:
         lines.append(f"当日趋势信号：{signals} 条")
@@ -53,6 +71,50 @@ def _failure(payload: dict, subject: str | None) -> str:
     return "\n".join(lines)
 
 
+def _pct(value: object, digits: int = 2) -> str:
+    try:
+        return f"{float(value) * 100:+.{digits}f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _etf_shadow(payload: dict, subject: str | None) -> str:
+    day = payload.get("trade_date") or ""
+    lines = [f"【qp】{subject or f'ETF 研究影子 {day}'}", "",
+             "只读研究影子：不是交易信号，不下单、不写正式记录链。"]
+    scores = payload.get("scores") or {}
+    for horizon in ("5", "20"):
+        block = scores.get(horizon)
+        if not block:
+            lines.append(f"{horizon}d：缺失")
+            continue
+        lines.append(f"{horizon}d {block.get('model_version')} · cutoff "
+                     f"{block.get('data_cutoff')} · {block.get('eligible')}/40"
+                     + (" · STALE" if block.get("stale") else ""))
+        top = block.get("top8") or []
+        if top:
+            lines.append("  " + " · ".join(
+                f"{item.get('code')} {item.get('name')} {_pct(item.get('score'))}"
+                for item in top))
+    rotation = payload.get("rotation") or {}
+    if rotation:
+        lines.append("C13：" + f"NAV {float(rotation.get('nav') or 0):,.0f}"
+                     + (f"（{_pct(rotation.get('nav_return'))}）"
+                        if rotation.get("nav_return") is not None else "")
+                     + f" · 510300 {_pct(rotation.get('benchmark_return'))}"
+                     + f" · EW {_pct(rotation.get('ew_return'))}")
+        positions = rotation.get("positions") or []
+        if positions:
+            lines.append("  持仓：" + " / ".join(
+                str(item.get("name") or item.get("code")) for item in positions))
+    data_quality = payload.get("data_quality") or {}
+    if data_quality.get("note"):
+        lines.append("数据：" + str(data_quality["note"]))
+    if payload.get("conclusion"):
+        lines.extend(["", "结论：" + str(payload["conclusion"])])
+    return "\n".join(lines)
+
+
 def render_outbox(row: Outbox) -> str:
     try:
         payload = json.loads(row.body)
@@ -64,4 +126,6 @@ def render_outbox(row: Outbox) -> str:
             return _clip(_daily(payload, row.subject))
         if report_type == "eod_watchdog_failure":
             return _clip(_failure(payload, row.subject))
+        if report_type == "etf_shadow_report":
+            return _clip(_etf_shadow(payload, row.subject))
     return _clip(f"{row.subject or 'qp 通知'}\n\n{row.body}")

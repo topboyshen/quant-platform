@@ -34,8 +34,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from qp.config import get_settings
-from qp.models.signals import (DecisionOutcome, EodRun, MacroSlice, RiskSnapshot, TargetDecision,
-                               TrendSignal)
+from qp.models.market import IndexClose
+from qp.models.signals import (DecisionOutcome, EodRun, MacroSlice, RiskSnapshot, RiskState,
+                               TargetDecision, TrendSignal)
 from qp.signals.eod import CST, now_cst, trading_day_status
 
 RETRY_ALERT_CUTOFF = dt.time(15, 48)
@@ -342,6 +343,73 @@ def _details(run: dict[str, Any] | None) -> dict[str, Any]:
     return details if isinstance(details, dict) else {}
 
 
+INDEX_LABELS = {"sh000001": "上证", "sh000300": "沪深300",
+                "sz399001": "深证成指", "sz399006": "创业板指"}
+
+
+def _market_report(session: Session, trade_date: dt.date) -> dict[str, Any]:
+    """Index closes and one-session changes for the human daily report."""
+    rows = {row.symbol: row for row in session.scalars(
+        select(IndexClose).where(IndexClose.trade_date == trade_date,
+                                 IndexClose.origin == "qp",
+                                 IndexClose.symbol.in_(tuple(INDEX_LABELS))))}
+    indices = []
+    for symbol, label in INDEX_LABELS.items():
+        row = rows.get(symbol)
+        if row is None:
+            continue
+        previous = session.scalar(
+            select(IndexClose.close).where(
+                IndexClose.symbol == symbol, IndexClose.origin == "qp",
+                IndexClose.trade_date < trade_date)
+            .order_by(IndexClose.trade_date.desc()).limit(1))
+        close = float(row.close)
+        change = (close / float(previous) - 1) if previous else None
+        indices.append({"symbol": symbol, "label": label, "close": close,
+                        "change": change})
+    text = " | ".join(
+        f"{item['label']} {item['close']:,.2f}"
+        + (f"（{item['change'] * 100:+.2f}%）" if item["change"] is not None else "")
+        for item in indices)
+    return {"date": trade_date.isoformat(), "indices": indices, "text": text}
+
+
+def _risk_report(session: Session) -> dict[str, Any] | None:
+    row = session.scalar(select(RiskState).order_by(RiskState.observed_at.desc()).limit(1))
+    if row is None:
+        return None
+    values = row.values if isinstance(row.values, dict) else {}
+    return {"level": row.level, "message": row.message,
+            "vix": values.get("vix"), "us_10y": values.get("us_10y"),
+            "crude_oil": values.get("crude_oil"),
+            "observed_at": _iso(row.observed_at)}
+
+
+def _macro_line(macro: dict[str, Any] | None) -> str:
+    if not macro:
+        return "宏观：当日切片缺失"
+    parts = []
+    if macro.get("total_amount") is not None:
+        parts.append(f"成交额 {macro['total_amount']:,.0f} 亿")
+    if macro.get("margin_balance") is not None:
+        growth = macro.get("margin_growth_pct")
+        parts.append(f"两融 {macro['margin_balance']:,.0f} 亿"
+                     + (f"（{growth:+.2f}%）" if growth is not None else ""))
+    if macro.get("limit_up") is not None or macro.get("limit_down") is not None:
+        parts.append(f"涨停 {macro.get('limit_up', '—')} / 跌停 {macro.get('limit_down', '—')}"
+                     + (f"（比 {macro['limit_ratio']:.2f}）"
+                        if macro.get("limit_ratio") is not None else ""))
+    return "宏观：" + ("；".join(parts) if parts else "完整")
+
+
+def _funnel_text(counts: dict[str, int], raw: int, dedup: int) -> str:
+    return (f"信号漏斗：评估 {counts.get('evaluated', 0)}/{counts.get('targets', 0)}"
+            f" · 触发 {raw} · 去重 {dedup} · 留存 {counts.get('signals', 0)}"
+            f" · allowed {counts.get('allowed_signals', 0)}"
+            f" · blocked {counts.get('blocked_signals', 0)}"
+            f" · 数据失败 {counts.get('failed', 0)}")
+
+
 def build_daily_report(session: Session, *, result: dict[str, Any],
                        now: dt.datetime) -> dict[str, Any]:
     """Structured 15:50 payload; text is rendered only for the shadow outbox body."""
@@ -380,21 +448,40 @@ def build_daily_report(session: Session, *, result: dict[str, Any],
     raw = int(details.get("raw_detected_signal_count") or 0)
     dedup = int(details.get("deduplicated_signal_count") or 0)
     retained = int(counts.get("signals") or 0)
-    market = (f"标的行情：{counts['evaluated']}/{counts['targets']} 合格"
-              + (f"，失败 {counts['failed']} 只" if counts["failed"] else ""))
+    market_data_text = (f"标的行情：{counts['evaluated']}/{counts['targets']} 合格"
+                        + (f"，失败 {counts['failed']} 只" if counts["failed"] else ""))
+    market_snapshot = _market_report(session, trade_date)
+    risk = _risk_report(session)
+    risk_text = "风险：未取得快照"
+    if risk:
+        risk_text = f"风险闸门：{risk['level']}"
+        if risk.get("message"):
+            risk_text += f"（{risk['message']}）"
+        if risk.get("vix") is not None:
+            risk_text += f"；VIX {float(risk['vix']):.2f}"
+        if risk.get("us_10y") is not None:
+            risk_text += f"；美债10Y {float(risk['us_10y']):.3f}%"
     macro_text = ("宏观数据：完整" if not missing
                   else "宏观数据：部分缺失 " + "；".join(missing))
-    research_text = ("研究资格：批次成功；符合准入条件的记录才计入有效样本"
-                     if status == "success"
-                     else f"研究资格：因批次完整性要求（{status or 'unknown'}："
-                          f"{'、'.join(reasons) if reasons else status or 'unknown'}），未计入有效样本")
+    macro_line = _macro_line(macro)
+    funnel = _funnel_text(counts, raw, dedup)
+    card = validity_card(session)
+    if status == "success":
+        research_text = (f"研究资格：批次成功；合格成熟 {card['sample_size']} 条"
+                         f"（{card['label']}，门槛 {card['minimum_samples']} 条）")
+    else:
+        research_text = (f"研究资格：因批次完整性要求（{status or 'unknown'}："
+                         f"{'、'.join(reasons) if reasons else status or 'unknown'}），未计入有效样本")
     today_signals = session.scalar(
         select(func.count()).select_from(TrendSignal)
         .where(TrendSignal.decision_date == trade_date)) or 0
     terminal_ok = bool(result.get("ok"))
-    card = validity_card(session)
     if not terminal_ok:
         conclusion = "当日未完成终态，不支持推荐。"
+    elif not counts.get("allowed_signals"):
+        conclusion = ("今日无 allowed 信号"
+                      + (f"（风险闸门 {risk['level']}）" if risk else "")
+                      + "；描述性结果，不支持推荐。")
     elif not card["sample_size"]:
         conclusion = "暂无可评价样本（合格成熟记录 0 条）；描述性结果，不支持推荐。"
     else:
@@ -411,11 +498,18 @@ def build_daily_report(session: Session, *, result: dict[str, Any],
         "counts": counts,
         "today_trend_signals": int(today_signals),
         "macro": macro,
+        "market": market_snapshot,
+        "risk": risk,
+        "risk_text": risk_text,
+        "macro_text": macro_line,
+        "funnel": funnel,
         "reading": {
-            "market_data": market,
+            "market_data": market_data_text,
             "macro": macro_text,
             "macro_missing": missing,
             "signals": _signal_reading(raw, dedup, retained),
+            "funnel": funnel,
+            "risk": risk_text,
             "research_eligibility": research_text,
             "run_status": status,
             "reason_codes": reasons,
