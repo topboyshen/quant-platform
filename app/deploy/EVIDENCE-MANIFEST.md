@@ -23,7 +23,7 @@ contract; the acceptance script is the current scanner.
 | `etf_ml` | `/opt/qp-score/etf_ml.py` | freeze `server_scripts` |
 | `freeze_meta_v2` | `/opt/qp-score/freeze_meta_v2.py` | freeze `server_scripts` |
 | `calendar` | `/opt/qp-score/trading-calendar.tsv` | freeze `server_scripts` |
-| `requirements_lock` | `/opt/qp/current/requirements.lock` | freeze `requirements_lock_sha256` |
+| `requirements_lock` | `/opt/qp/current/requirements.lock` | freeze `requirements_lock_sha256`; copied byte-for-byte from repo `app/backend/requirements-runtime.lock` by `qp-release-venv` |
 | `master` | `/var/lib/qp-score/etf_master.sqlite` | **none** — mutable daily input; training snapshot is recorded in the model meta |
 | `latest_20d` | `/var/lib/qp/etf-score/latest.json` | payload `model_sha256` + `model_version` = 20d model/meta |
 | `latest_5d` | `/var/lib/qp/etf-score/latest-5d.json` | payload `model_sha256` + `model_version` = 5d model/meta |
