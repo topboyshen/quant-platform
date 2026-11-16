@@ -7,6 +7,8 @@ writes target_decision/the record chain.  A stale snapshot is shown as stale.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import json
 import math
 import re
 from typing import Any
@@ -20,6 +22,7 @@ from qp.signals.universe import TARGETS
 
 CODES = {target.code for target in TARGETS}
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+UNIVERSE = "fixed_40_current_pool"
 DISCLAIMER = ("研究只读评分：固定当前 ETF 池、离线模型快照；不是交易信号，"
               "不下单、不通知、不写正式记录链。")
 
@@ -42,12 +45,34 @@ def _datetime(value: Any) -> dt.datetime | None:
         parsed = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
         raise ScorePayloadError("bad_generated_at") from None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.timezone.utc)
+    if parsed.tzinfo is None:
+        raise ScorePayloadError("generated_at_naive")
+    return parsed
+
+
+def _scores_sha256(rows: list[dict[str, Any]]) -> str:
+    """Content hash of the score table, independent of payload key order."""
+    def score_value(value: Any) -> float | None:
+        if value is None:
+            return None
+        number = round(float(value), 8)
+        return 0.0 if number == 0 else number
+
+    canonical = sorted(
+        ({"code": str(row["code"]), "name": str(row["name"]),
+          "score": score_value(row["score"]),
+          "rank": row["rank"], "eligible": bool(row["eligible"]),
+          "reason": str(row["reason"])} for row in rows),
+        key=lambda row: row["code"])
+    text = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def _number(value: Any) -> float | None:
     if value is None:
         return None
+    if isinstance(value, bool):
+        raise ScorePayloadError("bad_score")
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -66,9 +91,28 @@ def validate(payload: dict[str, Any]) -> dict[str, Any]:
     model_sha = str(payload.get("model_sha256") or "").strip().lower()
     if not HEX64.match(model_sha):
         raise ScorePayloadError("bad_model_sha256")
+    text_sha = str(payload.get("model_text_sha256") or "").strip().lower()
+    if text_sha and not HEX64.match(text_sha):
+        raise ScorePayloadError("bad_model_text_sha256")
+    universe = str(payload.get("universe") or "").strip()
+    if universe != UNIVERSE:
+        raise ScorePayloadError("bad_universe")
     cutoff = _date(payload.get("data_cutoff"), "data_cutoff")
     if cutoff > now_cst().date():
         raise ScorePayloadError("data_cutoff_in_future")
+    train_start = _date(payload.get("train_start"), "train_start")
+    train_end = _date(payload.get("train_end"), "train_end")
+    if train_start > train_end:
+        raise ScorePayloadError("bad_train_window")
+    if train_end > cutoff:
+        raise ScorePayloadError("train_end_after_cutoff")
+    horizon = payload.get("label_horizon")
+    if (isinstance(horizon, bool) or not isinstance(horizon, int)
+            or not 1 <= horizon <= 250):
+        raise ScorePayloadError("bad_label_horizon")
+    snapshot = str(payload.get("data_master_snapshot") or "").strip()
+    if not snapshot or len(snapshot) > 64:
+        raise ScorePayloadError("bad_data_master_snapshot")
     scores = payload.get("scores")
     if not isinstance(scores, list) or not scores:
         raise ScorePayloadError("scores_missing")
@@ -85,7 +129,9 @@ def validate(payload: dict[str, Any]) -> dict[str, Any]:
         if code in seen:
             raise ScorePayloadError(f"duplicate_code:{code}")
         seen.add(code)
-        is_eligible = bool(item.get("eligible"))
+        is_eligible = item.get("eligible")
+        if not isinstance(is_eligible, bool):
+            raise ScorePayloadError(f"bad_eligible_flag:{code}")
         score = _number(item.get("score"))
         rank = item.get("rank")
         reason = str(item.get("reason") or "")[:128]
@@ -106,6 +152,9 @@ def validate(payload: dict[str, Any]) -> dict[str, Any]:
         clean.append({"code": code, "name": str(item.get("name") or "")[:64],
                       "score": score, "rank": rank, "eligible": is_eligible,
                       "reason": reason})
+    missing = sorted(CODES - seen)
+    if missing:
+        raise ScorePayloadError(f"missing_codes:{len(missing)}")
     if eligible < 8:
         raise ScorePayloadError("fewer_than_8_eligible")
     if sorted(ranks) != list(range(1, eligible + 1)):
@@ -113,16 +162,18 @@ def validate(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "model_version": version,
         "model_sha256": model_sha,
+        "model_text_sha256": text_sha or None,
+        "universe": universe,
         "data_cutoff": cutoff,
         "generated_at": _datetime(payload.get("generated_at")),
-        "label_horizon": int(payload.get("label_horizon") or 20),
-        "train_start": _date(payload["train_start"], "train_start") if payload.get("train_start") else None,
-        "train_end": _date(payload["train_end"], "train_end") if payload.get("train_end") else None,
-        "data_master_snapshot": (str(payload["data_master_snapshot"])[:64]
-                                 if payload.get("data_master_snapshot") else None),
+        "label_horizon": horizon,
+        "train_start": train_start,
+        "train_end": train_end,
+        "data_master_snapshot": snapshot,
         "metrics": payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {},
         "notes": str(payload.get("notes") or "")[:2000],
         "scores": clean,
+        "scores_sha256": _scores_sha256(clean),
     }
 
 
@@ -132,9 +183,21 @@ def import_payload(session: Session, payload: dict[str, Any]) -> dict[str, Any]:
         EtfScoreRun.model_version == data["model_version"],
         EtfScoreRun.data_cutoff == data["data_cutoff"]))
     if existing is not None:
+        # The same identity must carry the same artifact and the same content;
+        # a retrain or rescore under an unchanged version is a conflict, not a
+        # harmless duplicate.
+        if existing.model_sha256 != data["model_sha256"]:
+            raise ScorePayloadError("duplicate_model_sha256_mismatch")
+        stored = [{"code": row.code, "name": row.name, "score": row.score,
+                   "rank": row.rank, "eligible": row.eligible, "reason": row.reason}
+                  for row in session.scalars(
+                      select(EtfScore).where(EtfScore.run_id == existing.id))]
+        if _scores_sha256(stored) != data["scores_sha256"]:
+            raise ScorePayloadError("duplicate_content_mismatch")
         return {"ok": True, "skipped": "duplicate", "run_id": existing.id,
                 "model_version": existing.model_version,
-                "data_cutoff": existing.data_cutoff.isoformat()}
+                "data_cutoff": existing.data_cutoff.isoformat(),
+                "content_sha256": data["scores_sha256"]}
     run = EtfScoreRun(
         model_version=data["model_version"], model_sha256=data["model_sha256"],
         data_cutoff=data["data_cutoff"], generated_at=data["generated_at"],
@@ -148,7 +211,21 @@ def import_payload(session: Session, payload: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "run_id": run.id, "model_version": run.model_version,
             "data_cutoff": run.data_cutoff.isoformat(),
             "eligible": sum(1 for row in data["scores"] if row["eligible"]),
-            "scores": len(data["scores"])}
+            "scores": len(data["scores"]),
+            "content_sha256": data["scores_sha256"]}
+
+
+def expected_session(today: dt.date) -> dt.date:
+    """Most recent weekday on or before today.
+
+    Holidays are not modelled here; the offline scorer owns the full trading
+    calendar.  A conservative weekday expectation is enough to flag a snapshot
+    that is older than the last plausible session.
+    """
+    day = today
+    while day.weekday() >= 5:
+        day -= dt.timedelta(days=1)
+    return day
 
 
 def latest(session: Session, *, run_id: int | None = None) -> dict[str, Any]:
@@ -170,6 +247,7 @@ def latest(session: Session, *, run_id: int | None = None) -> dict[str, Any]:
                         "data_cutoff": r.data_cutoff.isoformat(),
                         "generated_at": r.generated_at, "eligible_count": int(eligible_count),
                         "created_at": r.created_at})
+    expected = expected_session(now_cst().date())
     return {
         "read_only": True, "is_trade_signal": False, "disclaimer": DISCLAIMER,
         "run": {"id": run.id, "model_version": run.model_version,
@@ -178,6 +256,9 @@ def latest(session: Session, *, run_id: int | None = None) -> dict[str, Any]:
                 "train_start": run.train_start.isoformat() if run.train_start else None,
                 "train_end": run.train_end.isoformat() if run.train_end else None,
                 "data_master_snapshot": run.data_master_snapshot,
+                "stale": run.data_cutoff < expected,
+                "expected_cutoff": expected.isoformat(),
+                "staleness_days": (expected - run.data_cutoff).days,
                 "metrics": run.metrics, "notes": run.notes, "created_at": run.created_at},
         "scores": [{"code": row.code, "name": row.name,
                     "score": float(row.score) if row.score is not None else None,

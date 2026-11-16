@@ -13,7 +13,7 @@ from qp.models.signals import TargetDecision
 from qp.research import etf_score
 from qp.signals.universe import TARGETS
 
-CODES = [t.code for t in TARGETS[:10]]
+CODES = [t.code for t in TARGETS]
 
 
 def payload() -> dict:
@@ -27,6 +27,8 @@ def payload() -> dict:
     return {
         "model_version": "qp-etf-test-v1",
         "model_sha256": "a" * 64,
+        "model_text_sha256": "b" * 64,
+        "universe": "fixed_40_current_pool",
         "data_cutoff": (dt.date.today() - dt.timedelta(days=1)).isoformat(),
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "label_horizon": 20,
@@ -68,8 +70,9 @@ def test_import_idempotent_and_read_only(engine):
             s.commit()
             assert first["ok"] and first["eligible"] == 8
             assert second["skipped"] == "duplicate"
+            assert second["content_sha256"] == first["content_sha256"]
             assert s.scalar(select(func.count()).select_from(EtfScoreRun)) == 1
-            assert s.scalar(select(func.count()).select_from(EtfScore)) == 10
+            assert s.scalar(select(func.count()).select_from(EtfScore)) == len(CODES)
             assert (s.scalar(select(func.count()).select_from(TargetDecision)) or 0) == before
             out = etf_score.latest(s)
             assert out["run"]["model_version"] == "qp-etf-test-v1"
@@ -105,6 +108,105 @@ def test_validation_rejects_bad_payloads(engine):
         etf_score.validate(bad)
 
 
+def test_strict_evidence_fields(engine):
+    bad = payload()
+    bad["scores"][0]["eligible"] = "false"
+    with pytest.raises(etf_score.ScorePayloadError, match="bad_eligible_flag"):
+        etf_score.validate(bad)
+    bad = payload()
+    bad["scores"].pop()
+    with pytest.raises(etf_score.ScorePayloadError, match="missing_codes"):
+        etf_score.validate(bad)
+    bad = payload()
+    bad["universe"] = "fixed_10_current_pool"
+    with pytest.raises(etf_score.ScorePayloadError, match="bad_universe"):
+        etf_score.validate(bad)
+    bad = payload()
+    bad["generated_at"] = "2026-11-16T12:00:00"
+    with pytest.raises(etf_score.ScorePayloadError, match="generated_at_naive"):
+        etf_score.validate(bad)
+    bad = payload()
+    bad["train_end"] = (dt.date.today() + dt.timedelta(days=1)).isoformat()
+    with pytest.raises(etf_score.ScorePayloadError, match="train_end_after_cutoff"):
+        etf_score.validate(bad)
+    bad = payload()
+    bad["train_start"], bad["train_end"] = "2025-12-24", "2020-01-01"
+    with pytest.raises(etf_score.ScorePayloadError, match="bad_train_window"):
+        etf_score.validate(bad)
+    bad = payload()
+    bad["label_horizon"] = 0
+    with pytest.raises(etf_score.ScorePayloadError, match="bad_label_horizon"):
+        etf_score.validate(bad)
+    bad = payload()
+    bad["data_master_snapshot"] = " " * 3
+    with pytest.raises(etf_score.ScorePayloadError, match="bad_data_master_snapshot"):
+        etf_score.validate(bad)
+    bad = payload()
+    bad["model_text_sha256"] = "xyz"
+    with pytest.raises(etf_score.ScorePayloadError, match="model_text_sha256"):
+        etf_score.validate(bad)
+    bad = payload()
+    bad["scores"][0]["score"] = True
+    with pytest.raises(etf_score.ScorePayloadError, match="bad_score"):
+        etf_score.validate(bad)
+
+
+def test_duplicate_identity_conflicts_on_new_content(engine):
+    cleanup(engine)
+    try:
+        with Session(engine) as s:
+            etf_score.import_payload(s, payload())
+            s.commit()
+            changed_model = payload()
+            changed_model["model_sha256"] = "c" * 64
+            with pytest.raises(etf_score.ScorePayloadError,
+                               match="duplicate_model_sha256_mismatch"):
+                etf_score.import_payload(s, changed_model)
+            s.rollback()
+            changed_scores = payload()
+            changed_scores["scores"][0]["score"] = 0.5
+            with pytest.raises(etf_score.ScorePayloadError,
+                               match="duplicate_content_mismatch"):
+                etf_score.import_payload(s, changed_scores)
+            s.rollback()
+            assert s.scalar(select(func.count()).select_from(EtfScoreRun)) == 1
+            assert s.scalar(select(func.count()).select_from(EtfScore)) == len(CODES)
+    finally:
+        cleanup(engine)
+
+
+def test_expected_session_uses_weekdays():
+    assert etf_score.expected_session(dt.date(2026, 11, 16)) == dt.date(2026, 11, 16)
+    assert etf_score.expected_session(dt.date(2026, 11, 14)) == dt.date(2026, 11, 13)
+    assert etf_score.expected_session(dt.date(2026, 11, 15)) == dt.date(2026, 11, 13)
+
+
+def test_stale_flag_and_expected_cutoff(engine):
+    cleanup(engine)
+    expected = etf_score.expected_session(etf_score.now_cst().date())
+    try:
+        fresh = payload()
+        fresh["data_cutoff"] = expected.isoformat()
+        with Session(engine) as s:
+            etf_score.import_payload(s, fresh)
+            s.commit()
+            out = etf_score.latest(s)
+            assert out["run"]["stale"] is False
+            assert out["run"]["expected_cutoff"] == expected.isoformat()
+            assert out["run"]["staleness_days"] == 0
+        cleanup(engine)
+        old = payload()
+        old["data_cutoff"] = (expected - dt.timedelta(days=7)).isoformat()
+        with Session(engine) as s:
+            etf_score.import_payload(s, old)
+            s.commit()
+            out = etf_score.latest(s)
+            assert out["run"]["stale"] is True
+            assert out["run"]["staleness_days"] == 7
+    finally:
+        cleanup(engine)
+
+
 def test_api_auth_scope_and_payload(engine):
     from fastapi.testclient import TestClient
     from qp.api.main import app
@@ -126,7 +228,7 @@ def test_api_auth_scope_and_payload(engine):
         body = response.json()
         assert body["read_only"] is True and body["is_trade_signal"] is False
         assert body["run"]["model_version"] == "qp-etf-test-v1"
-        assert len(body["scores"]) == 10 and body["scores"][0]["rank"] == 1
+        assert len(body["scores"]) == len(CODES) and body["scores"][0]["rank"] == 1
         assert body["history"][0]["eligible_count"] == 8
     finally:
         cleanup(engine)
