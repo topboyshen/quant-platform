@@ -20,18 +20,22 @@
           <n-descriptions-item label="标签/调仓">
             {{ data.run.label_horizon }} 交易日
           </n-descriptions-item>
-          <n-descriptions-item label="模型 SHA256">
+          <n-descriptions-item label="模型文件 SHA256">
             <n-text code>{{ data.run.model_sha256.slice(0, 16) }}…</n-text>
           </n-descriptions-item>
         </n-descriptions>
+        <n-alert v-if="data.run.stale" type="error" :bordered="false">
+          快照过期：数据截止 {{ data.run.data_cutoff }}，最近应有交易日 {{ data.run.expected_cutoff }}
+          （相差 {{ data.run.staleness_days }} 天）。不要把旧快照当作当日信号。
+        </n-alert>
         <n-grid :cols="4" :x-gap="12" :y-gap="12" responsive="screen">
           <n-gi><n-statistic label="可评分标的" :value="eligibleCount" /></n-gi>
           <n-gi>
-            <n-statistic label="样本外 CAGR"
+            <n-statistic label="组合回测 CAGR（年度重训）"
                          :value="pct(data.run.metrics?.cagr)" />
           </n-gi>
           <n-gi>
-            <n-statistic label="样本外 Sharpe"
+            <n-statistic label="组合回测 Sharpe（年度重训）"
                          :value="num(data.run.metrics?.sharpe)" />
           </n-gi>
           <n-gi>
@@ -40,8 +44,9 @@
           </n-gi>
         </n-grid>
         <n-alert type="warning" :bordered="false">
-          {{ data.run.notes || data.disclaimer }} 样本外指标仅描述 2023-2026 研究区间，不代表未来收益；
-          评分过期或数据缺失时不得当作当日信号。
+          {{ data.run.notes || data.disclaimer }}
+          指标口径：{{ metricPeriod }} 年度重训 walk-forward 组合回测（组合末端因标签未成熟空仓），
+          不是当前冻结 ETF 模型的样本外表现，也不代表未来收益；评分过期或数据缺失时不得当作当日信号。
         </n-alert>
         <n-data-table :columns="columns" :data="data.scores" :row-props="rowProps" size="small"
                       :scroll-x="760" />
@@ -76,7 +81,10 @@ interface Run {
   label_horizon: number
   train_start: string | null
   train_end: string | null
-  metrics: Record<string, number | null> | null
+  stale: boolean
+  expected_cutoff: string
+  staleness_days: number
+  metrics: Record<string, number | string | boolean | null> | null
   notes: string | null
 }
 interface History {
@@ -100,6 +108,7 @@ const data = ref<Payload | null>(null)
 const loading = ref(false)
 const error = ref('')
 const eligibleCount = computed(() => data.value?.scores.filter((s) => s.eligible).length || 0)
+const metricPeriod = computed(() => String(data.value?.run?.metrics?.period || '2023-01-04~2026-11-13'))
 const columns = [
   { title: '排名', key: 'rank', width: 64 },
   { title: '代码', key: 'code', width: 90 },
@@ -114,11 +123,13 @@ const historyColumns = [
   { title: '可评分', key: 'eligible_count', width: 90 },
   { title: '生成时间', key: 'generated_at', width: 200, render: (r: History) => fmt(r.generated_at) },
 ]
-function num(value: number | null | undefined): string {
-  return value == null ? '—' : Number(value).toFixed(2)
+function num(value: unknown): string {
+  return typeof value !== 'number' || !Number.isFinite(value) ? '—' : value.toFixed(2)
 }
-function pct(value: number | null | undefined): string {
-  return value == null ? '—' : `${(Number(value) * 100).toFixed(2)}%`
+function pct(value: unknown): string {
+  return typeof value !== 'number' || !Number.isFinite(value)
+    ? '—'
+    : `${(value * 100).toFixed(2)}%`
 }
 function rowProps(row: Score) {
   return { style: row.rank != null && row.rank <= 8 ? 'background: rgba(24, 160, 88, 0.08)' : '' }
