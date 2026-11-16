@@ -5,6 +5,7 @@ Monorepo merging the nnG8 trading-radar / QuantDinger / research stacks (phase 2
 
 - New kernel architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md)
 - Legacy retirement plan: [`app/deploy/DECOMMISSION-ROADMAP.md`](app/deploy/DECOMMISSION-ROADMAP.md)
+- Known limitations: [`app/deploy/KNOWN-LIMITATIONS.md`](app/deploy/KNOWN-LIMITATIONS.md)
 - Archive policy: [`archive/README.md`](archive/README.md)
 
 Runtime paths on nnG8 are **unchanged** by this repo; services still run from

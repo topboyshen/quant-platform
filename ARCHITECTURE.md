@@ -197,5 +197,6 @@ A failed run is retried by the next slot; failures are recorded in
 - `app/deploy/CHAIN-SHADOW-RUNBOOK.md` — chain dual-write/read switch.
 - `app/deploy/EVIDENCE-MANIFEST.md` — external model/input/export evidence.
 - `app/deploy/DEPLOY-LOCK.md` — runtime/test locks and release venv install.
+- `app/deploy/KNOWN-LIMITATIONS.md` — accepted limitations and monitoring.
 - `app/deploy/DECOMMISSION-ROADMAP.md` — legacy retirement.
 - `archive/README.md` — archive policy.
