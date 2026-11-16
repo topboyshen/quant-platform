@@ -102,6 +102,17 @@ def cmd_reports_compare(a) -> int:
     return 0
 
 
+def cmd_research_etf_score(a) -> int:
+    """Import an offline ETF research score snapshot (read-only shadow)."""
+    from qp.db import session_scope
+    from qp.research import etf_score
+    payload = json.loads(Path(a.import_path).read_text())
+    with session_scope() as s:
+        out = etf_score.import_payload(s, payload)
+    print(json.dumps(out, ensure_ascii=False))
+    return 0 if out.get("ok") else 1
+
+
 def cmd_research_compare(a) -> int:
     from sqlalchemy.orm import Session
 
@@ -254,6 +265,35 @@ def cmd_signals_rule_shadow(a) -> int:
     return 0
 
 
+def cmd_signals_rotation_shadow(a) -> int:
+    """C13 paper account: seed raw history, register next-open start, or advance."""
+    import datetime as dt
+
+    from qp.db import session_scope
+    from qp.signals import rotation_shadow
+    with session_scope() as s:
+        out: dict = {}
+        if a.seed_bars:
+            payload = json.loads(Path(a.seed_bars).read_text())
+            out["seed"] = rotation_shadow.seed_bars(s, payload)
+        if a.initialize:
+            out["initialize"] = rotation_shadow.initialize(
+                s, start_date=dt.date.fromisoformat(a.initialize), phase=a.phase)
+        if a.step:
+            if a.phase != "forward":
+                raise ValueError("--step is forward-only")
+            out["step"] = rotation_shadow.step(
+                s, as_of=dt.date.fromisoformat(a.date) if a.date else None)
+        elif a.until:
+            out["advance"] = rotation_shadow.replay(
+                s, until=dt.date.fromisoformat(a.until), phase=a.phase)
+        if a.summary or not out:
+            out["summary"] = rotation_shadow.summary(s, phase=a.phase, series=False)
+        s.commit()
+    print(json.dumps(out, ensure_ascii=False, default=str))
+    return 0 if all(v.get("ok", True) for v in out.values() if isinstance(v, dict)) else 1
+
+
 def cmd_signals_shadow_record(a) -> int:
     """Backfill the shadow sample channel from blocked-but-triggered decisions."""
     import datetime as dt
@@ -328,6 +368,9 @@ def main(argv: list[str] | None = None) -> int:
     rc.add_argument("--phase2-db", default=os.getenv("QP_PHASE2_DB", "/var/lib/research-system-phase2/phase2.db"))
     rc.add_argument("--qd-dsn", default=os.getenv("QP_QD_DSN"))
     rc.set_defaults(fn=cmd_research_compare)
+    re = rs.add_parser("etf-score")
+    re.add_argument("--import", dest="import_path", required=True)
+    re.set_defaults(fn=cmd_research_etf_score)
     rp = sub.add_parser("reports").add_subparsers(dest="sub", required=True)
     rpc = rp.add_parser("compare")
     rpc.add_argument("--date", required=True)
@@ -370,6 +413,15 @@ def main(argv: list[str] | None = None) -> int:
     rs.add_argument("--until", default=None)
     rs.add_argument("--outcomes", action="store_true")
     rs.set_defaults(fn=cmd_signals_rule_shadow)
+    rr = sg.add_parser("rotation-shadow")
+    rr.add_argument("--seed-bars", default=None)
+    rr.add_argument("--initialize", default=None, metavar="FIRST_EXECUTION_DATE")
+    rr.add_argument("--phase", choices=("forward", "replay"), default="forward")
+    rr.add_argument("--until", default=None)
+    rr.add_argument("--step", action="store_true")
+    rr.add_argument("--date", default=None)
+    rr.add_argument("--summary", action="store_true")
+    rr.set_defaults(fn=cmd_signals_rotation_shadow)
     dc = sub.add_parser("decommission").add_subparsers(dest="sub", required=True)
     dci = dc.add_parser("inventory")
     dci.add_argument("--out", default=None)

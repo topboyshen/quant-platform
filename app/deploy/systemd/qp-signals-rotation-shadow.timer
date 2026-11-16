@@ -1,0 +1,12 @@
+[Unit]
+Description=quant-platform C13 ETF rotation paper portfolio (no live orders/notifications)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 15:50:00 Asia/Shanghai
+OnCalendar=Mon..Fri *-*-* 16:40:00 Asia/Shanghai
+AccuracySec=10s
+Persistent=false
+Unit=qp-job@signals.rotation_shadow.service
+
+[Install]
+WantedBy=timers.target

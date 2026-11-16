@@ -304,3 +304,89 @@ class ExecutionDigest(Base):
     sha256: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     pushed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     push_state: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")  # pending|shadowed|sent|failed
+
+
+class RotationShadowBar(Base):
+    """Daily ETF bars used only by the C13 rotation shadow (raw, unadjusted).
+
+    Split normalization is only for ranking. Execution and valuation always use
+    these raw prices; a new price discontinuity blocks the paper ledger.
+    """
+    __tablename__ = "rotation_shadow_bar"
+    __table_args__ = (
+        Index("ix_rotation_shadow_bar_date", "trade_date"),
+        S,
+    )
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    trade_date: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    open: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
+    high: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
+    low: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
+    close: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
+    volume: Mapped[float] = mapped_column(Numeric(24, 4), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="tencent_day")
+    updated_at: Mapped[dt.datetime] = _now_col()
+
+
+class RotationShadowAccount(Base):
+    """Registered shadow contract and data quality, separate from immutable NAV."""
+    __tablename__ = "rotation_shadow_account"
+    __table_args__ = S
+    rule_version: Mapped[str] = mapped_column(String(32), primary_key=True)
+    phase: Mapped[str] = mapped_column(String(16), primary_key=True)
+    start_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    baseline_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    parameters: Mapped[dict[str, Any]] = _json_col()
+    quality: Mapped[dict[str, Any]] = _json_col()
+    created_at: Mapped[dt.datetime] = _now_col()
+
+
+class RotationShadowRun(Base):
+    """One C13 rebalance decision: signal close -> next-open execution."""
+    __tablename__ = "rotation_shadow_run"
+    __table_args__ = (
+        UniqueConstraint("rule_version", "phase", "signal_date", name="uq_rotation_shadow_run_signal"),
+        Index("ix_rotation_shadow_run_execute", "status", "execute_date"),
+        S,
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    rule_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    phase: Mapped[str] = mapped_column(String(16), nullable=False, default="forward")
+    signal_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    execute_date: Mapped[dt.date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")  # pending|executed
+    universe: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    top_k: Mapped[int] = mapped_column(Integer, nullable=False, default=8)
+    selected: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"),
+                                                default=list)
+    nav_before: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    nav_after: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    turnover: Mapped[float | None] = mapped_column(Numeric(10, 4))
+    fills: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"),
+                                             default=list)
+    detail: Mapped[dict[str, Any]] = _json_col()
+    created_at: Mapped[dt.datetime] = _now_col()
+
+
+class RotationShadowDay(Base):
+    """Daily mark-to-market of the rotation shadow and its two benchmarks."""
+    __tablename__ = "rotation_shadow_day"
+    __table_args__ = (
+        UniqueConstraint("rule_version", "phase", "trade_date", name="uq_rotation_shadow_day_date"),
+        Index("ix_rotation_shadow_day_date", "trade_date"),
+        S,
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    rule_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    phase: Mapped[str] = mapped_column(String(16), nullable=False, default="forward")
+    trade_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    session_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    nav: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
+    cash: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
+    invested: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False)
+    positions: Mapped[dict[str, Any]] = _json_col()
+    benchmark_nav: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    ew_nav: Mapped[float | None] = mapped_column(Numeric(18, 4))
+    exposure: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False, default=0)
+    detail: Mapped[dict[str, Any]] = _json_col()
+    created_at: Mapped[dt.datetime] = _now_col()

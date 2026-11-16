@@ -95,6 +95,15 @@ def outcomes(limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)
         for o, d in rows]}
 
 
+@router.get("/rotation-shadow")
+def rotation_shadow_portfolio(phase: str = Query("forward", pattern="^(forward|replay)$"),
+                              p: Principal = Depends(require_auth),
+                              db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Read-only C13 paper portfolio, never live trading instructions."""
+    from qp.signals import rotation_shadow
+    return rotation_shadow.summary(db, phase=phase)
+
+
 @router.get("/rule-shadow")
 def rule_shadow_samples(rule_version: str = "qp-swing.v2",
                         limit: int = Query(200, ge=1, le=500), offset: int = Query(0, ge=0),
