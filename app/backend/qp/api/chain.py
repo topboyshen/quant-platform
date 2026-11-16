@@ -9,8 +9,8 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from qp.api.main import Principal, get_db, require_auth, require_scope
-from qp.models.chain import (ChainAttempt, ChainDecision, ChainEligibility, ChainOutcome,
-                             ChainSnapshot, ChainState)
+from qp.models.chain import (ChainAttempt, ChainDecision, ChainEligibility, ChainEvidenceLink,
+                             ChainOutcome, ChainSnapshot, ChainState)
 
 router = APIRouter(prefix="/api/signals",
                    dependencies=[Depends(require_scope("signals:read"))])
@@ -116,6 +116,10 @@ def chain_decision(decision_uid: str, p: Principal = Depends(require_auth),
     eligibility = list(db.scalars(select(ChainEligibility)
                                   .where(ChainEligibility.decision_uid == decision_uid)
                                   .order_by(ChainEligibility.evaluation_seq)))
+    evidence = list(db.scalars(select(ChainEvidenceLink)
+                               .where(ChainEvidenceLink.owner_kind == "decision",
+                                      ChainEvidenceLink.owner_id == decision_uid)
+                               .order_by(ChainEvidenceLink.checked_at.desc())))
     return {
         "decision": {"decision_uid": decision.decision_uid, "trade_date": decision.trade_date,
                      "code": decision.code, "name": decision.name,
@@ -138,4 +142,9 @@ def chain_decision(decision_uid: str, p: Principal = Depends(require_auth),
                          "policy_version": e.policy_version, "evaluation_seq": e.evaluation_seq,
                          "evaluated_at": e.evaluated_at,
                          "reason_detail": e.reason_detail} for e in eligibility],
+        "evidence": [{"link_id": e.link_id, "sidecar_kind": e.sidecar_kind,
+                      "sidecar_path": e.sidecar_path, "expected_sha256": e.expected_sha256,
+                      "observed_sha256": e.observed_sha256, "db_state": e.db_state,
+                      "sidecar_state": e.sidecar_state, "checked_at": e.checked_at,
+                      "detail": e.detail} for e in evidence],
     }
