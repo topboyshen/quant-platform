@@ -9,8 +9,8 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
-from sqlalchemy import (BigInteger, Boolean, Date, DateTime, Double, Identity, Index, Integer,
-                        Numeric, String, Text, func, text)
+from sqlalchemy import (BigInteger, Boolean, Date, DateTime, Double, ForeignKey, Identity, Index,
+                        Integer, Numeric, String, Text, UniqueConstraint, func, text)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -717,3 +717,44 @@ class Draft(Base):
     confirmed_at_draft_revision: Mapped[int | None] = mapped_column(Integer)
     saved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     saved_from: Mapped[str | None] = mapped_column(Text)
+
+
+class EtfScoreRun(Base):
+    """Imported research score snapshot; read-only, never an order signal."""
+    __tablename__ = "etf_score_run"
+    __table_args__ = (
+        UniqueConstraint("model_version", "data_cutoff", name="uq_etf_score_run_version_cutoff"),
+        Index("ix_etf_score_run_cutoff", "data_cutoff"),
+        S,
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    data_cutoff: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    generated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    label_horizon: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    train_start: Mapped[dt.date | None] = mapped_column(Date)
+    train_end: Mapped[dt.date | None] = mapped_column(Date)
+    data_master_snapshot: Mapped[str | None] = mapped_column(String(64))
+    metrics: Mapped[dict[str, Any]] = _json_col()
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                    nullable=False)
+
+
+class EtfScore(Base):
+    __tablename__ = "etf_score"
+    __table_args__ = (
+        UniqueConstraint("run_id", "code", name="uq_etf_score_run_code"),
+        Index("ix_etf_score_run_rank", "run_id", "rank"),
+        S,
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("research.etf_score_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(16), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    score: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    rank: Mapped[int | None] = mapped_column(Integer)
+    eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reason: Mapped[str] = mapped_column(String(128), nullable=False, default="")

@@ -27,6 +27,14 @@ def _run(r: BacktestRun) -> dict[str, Any]:
             "initial_capital": _num(r.initial_capital), "created_at": r.created_at}
 
 
+@router.get("/etf-score")
+def etf_score(run_id: int | None = Query(None, ge=1), p: Principal = Depends(require_auth),
+              db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Read-only imported ETF research score snapshot; never an order signal."""
+    from qp.research import etf_score as etf_score_mod
+    return etf_score_mod.latest(db, run_id=run_id)
+
+
 @router.get("/backtests")
 def backtests(status: str | None = None, q: str | None = None,
               limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),

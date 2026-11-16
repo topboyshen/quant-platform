@@ -6,12 +6,14 @@ source is not configured the job is a no-op so the timer can stay enabled.
 """
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from qp.jobs.registry import JobContext, job
+from qp.research import etf_score
 from qp.research.compare import compare_research, write_report
 from qp.research.importer import (import_ai, import_backtests, import_ledger, import_phase2,
                                   import_profit, import_projects)
@@ -43,6 +45,23 @@ def import_phase2_job(ctx: JobContext) -> dict:
         return {"ok": True, "skipped": f"phase2 database not found: {path}"}
     counts = import_phase2(ctx.engine, Phase2Reader(path))
     return {"ok": True, "counts": counts}
+
+
+DEFAULT_ETF_SCORE_INBOX = "/var/lib/qp/etf-score/latest.json"
+
+
+@job("research.etf_score_import",
+     "Import an offline ETF research score snapshot (read-only; never an order/notification)",
+     schedule_hint="Mon-Fri 16:55 CST (after 16:45 offline score)")
+def import_etf_score_job(ctx: JobContext) -> dict:
+    path = Path(os.getenv("QP_ETF_SCORE_INBOX", DEFAULT_ETF_SCORE_INBOX)).expanduser()
+    if not path.is_file():
+        return {"ok": True, "skipped": "no_score_file", "path": str(path)}
+    payload = json.loads(path.read_text())
+    with Session(ctx.engine) as session:
+        out = etf_score.import_payload(session, payload)
+        session.commit()
+    return {"ok": True, **out}
 
 
 @job("research.import_backtests", "Mirror QuantDinger backtest history into research.* "

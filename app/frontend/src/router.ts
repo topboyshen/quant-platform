@@ -39,6 +39,7 @@ export const router = createRouter({
             { path: 'profit', name: 'research-profit', component: () => import('./views/research/Profit.vue') },
             { path: 'ai', name: 'research-ai', component: () => import('./views/research/Ai.vue') },
             { path: 'projects', name: 'research-projects', component: () => import('./views/research/Projects.vue') },
+            { path: 'etf-score', name: 'research-etf-score', component: () => import('./views/research/EtfScore.vue') },
           ],
         },
         {
@@ -49,6 +50,7 @@ export const router = createRouter({
             { path: 'outcomes', name: 'signals-outcomes', component: () => import('./views/signals/Outcomes.vue') },
             { path: 'shadow', name: 'signals-shadow', component: () => import('./views/signals/Shadow.vue') },
             { path: 'rule-shadow', name: 'signals-rule-shadow', component: () => import('./views/signals/RuleShadow.vue') },
+            { path: 'rotation-shadow', name: 'signals-rotation-shadow', component: () => import('./views/signals/RotationShadow.vue') },
             { path: 'compare', name: 'signals-compare', component: () => import('./views/signals/Compare.vue') },
           ],
         },

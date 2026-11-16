@@ -6,6 +6,7 @@
       <n-tab name="profit">盈利研究</n-tab>
       <n-tab name="ai">AI 分析</n-tab>
       <n-tab name="projects">研究项目</n-tab>
+      <n-tab name="etf-score">ETF 评分</n-tab>
     </n-tabs>
     <router-view />
   </n-space>

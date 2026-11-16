@@ -8,13 +8,14 @@
       <n-tab name="outcomes">结果</n-tab>
       <n-tab name="shadow">影子样本</n-tab>
       <n-tab name="rule-shadow">规则影子</n-tab>
+      <n-tab name="rotation-shadow">轮动影子</n-tab>
       <n-tab name="compare">影子对比</n-tab>
     </n-tabs>
     <router-view />
   </n-space>
 </template>
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NH2, NSpace, NTab, NTabs } from 'naive-ui'
 
@@ -22,4 +23,12 @@ const route = useRoute()
 const router = useRouter()
 const active = computed(() => String(route.name || 'signals-runs').replace('signals-', ''))
 function go(name: string) { router.push({ name: `signals-${name}` }) }
+
+// A direct link may mount this lazy layout after the global afterEach hook ran.
+onMounted(() => {
+  nextTick(() => requestAnimationFrame(() => {
+    document.querySelector('.n-tabs-tab--active')
+      ?.scrollIntoView({ inline: 'center', block: 'nearest' })
+  }))
+})
 </script>

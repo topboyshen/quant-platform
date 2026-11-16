@@ -192,6 +192,25 @@ def rule_shadow_outcomes_job(ctx: JobContext) -> dict:
     return out
 
 
+@job("signals.rotation_shadow",
+     "C13 cross-sectional ETF rotation shadow (250d Top8, 20-session rebalance); shadow tables only",
+     schedule_hint="Mon-Fri 15:50, 16:40 CST (idempotent publication-lag retry; no live/notify)")
+def rotation_shadow_job(ctx: JobContext) -> dict:
+    from qp.signals import rotation_shadow
+    today = now_cst().date()
+    with Session(ctx.engine) as session:
+        is_open = session.scalar(select(TradingDay.is_open).where(
+            TradingDay.origin == "qp", TradingDay.date == today))
+        if is_open is None:
+            return {"ok": False, "error": "calendar_day_unknown", "day": today.isoformat()}
+        if not is_open:
+            return {"ok": True, "skipped": "non_trading_day", "day": today.isoformat()}
+        out = rotation_shadow.step(session, as_of=today)
+        session.commit()
+    out["ok"] = bool(out.get("ok"))
+    return out
+
+
 @job("signals.shadow_outcomes",
      "Forward returns for shadow allowed samples (1/3/5/10/20 sessions)",
      schedule_hint="Mon-Fri 16:15 CST (after outcomes 16:10)")
