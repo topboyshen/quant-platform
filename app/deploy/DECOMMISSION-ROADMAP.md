@@ -61,8 +61,15 @@ Source of truth for runtime: `systemctl list-timers --all`, `docker ps`, and
 
 ### Phase 2 — stop-only (M9 execution, requires separate authorization)
 
-- Follow `M9-DECOMMISSION-RUNBOOK.md` §3: disable timers, stop containers.
+- Use [`M9-EXECUTION-CHECKLIST.md`](M9-EXECUTION-CHECKLIST.md): **one unit at a
+  time**, with proof that the replacement owns the responsibility, consumers
+  have switched, independent supervision is live, the observation window has
+  elapsed, and rollback was tested.
+- **No prefix batches** (`astock*`, `quant-*`, `trading-radar*`); no group
+  `docker stop`. A blank checklist field is a hard stop.
 - No `docker rm`, no data deletion, no config removal.
+- Archive with the member-list verification in `M9-DECOMMISSION-RUNBOOK.md` §4;
+  a tarball hash alone does not prove completeness.
 - Record before/after inventory and unit backups.
 - Exit: 2 weeks without rollback and with qp as the only live source.
 

@@ -76,6 +76,13 @@ The ETF record chain is a controlled successor to `target_decision`:
   `fallback=true`, `stale_or_fallback=true`; `QP_CHAIN_READS_FALLBACK=0`
   restores the strict empty response.
 
+External artifacts (model files, frozen inputs, exported score payloads) are
+not decisions, so they use a separate **artifact evidence manifest** rather than
+`chain_evidence_link`: every required file is bound to host/owner/mode/bytes,
+version and SHA-256, with `verified` only on an expected-identity match,
+`unknown` when no expectation exists, and `missing`/`mismatch` kept explicit.
+See [`app/deploy/EVIDENCE-MANIFEST.md`](app/deploy/EVIDENCE-MANIFEST.md).
+
 ### 2.4 Research shadows
 
 - C13 rotation shadow (`signals.rotation_shadow`) — 250-day top-8, daily.
@@ -159,6 +166,9 @@ A failed run is retried by the next slot; failures are recorded in
   coverage, and missing-snapshot handling never silently advance state.
 - **Immutable history**: chain rows and evidence links are append-only; a rerun
   adds an attempt/revision, not a rewrite.
+- **Evidence honesty**: a file that exists but has no expected hash is
+  `unknown`, not verified; a failed/skipped run stays in the observation
+  denominator. CI green proves code, not natural samples.
 - **Shadow-first**: new strategies run read-only with explicit metrics; no
   promotion without a pre-registered evaluation.
 - **Secrets**: tokens/DSNs live in root:qp 0640 files, never in the repo.
@@ -178,5 +188,6 @@ A failed run is retried by the next slot; failures are recorded in
 - `app/README.md` — kernel quick start.
 - `app/deploy/*-RUNBOOK.md` — M4–M15 operations.
 - `app/deploy/CHAIN-SHADOW-RUNBOOK.md` — chain dual-write/read switch.
+- `app/deploy/EVIDENCE-MANIFEST.md` — external model/input/export evidence.
 - `app/deploy/DECOMMISSION-ROADMAP.md` — legacy retirement.
 - `archive/README.md` — archive policy.
