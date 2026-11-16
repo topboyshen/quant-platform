@@ -83,6 +83,11 @@ version and SHA-256, with `verified` only on an expected-identity match,
 `unknown` when no expectation exists, and `missing`/`mismatch` kept explicit.
 See [`app/deploy/EVIDENCE-MANIFEST.md`](app/deploy/EVIDENCE-MANIFEST.md).
 
+The decision detail endpoint uses the `db_row` evidence link to expand legacy
+`target_decision` / `trend_signal` details on demand, labelled
+`source=legacy_target_decision` and `chain_native=false`. The snapshot and list
+endpoints never load that detail, so the chain stays light.
+
 ### 2.4 Research shadows
 
 - C13 rotation shadow (`signals.rotation_shadow`) — 250-day top-8, daily.

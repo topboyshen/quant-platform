@@ -118,6 +118,27 @@
           </n-text>
           <n-data-table v-else size="small" :bordered="false" :data="detail.evidence"
                         :columns="evidenceCols" :pagination="false" />
+          <n-h4>信号明细（legacy 证据行）</n-h4>
+          <n-alert v-if="!detail.legacy_evidence.available" type="warning" :show-icon="true">
+            无法展开：{{ detail.legacy_evidence.reason || 'unknown' }}。链内仍只保留触发数。
+          </n-alert>
+          <template v-else>
+            <n-descriptions :column="2" size="small" bordered>
+              <n-descriptions-item label="来源">legacy target_decision（不是链内载荷）</n-descriptions-item>
+              <n-descriptions-item label="run">{{ detail.legacy_evidence.run_id }}</n-descriptions-item>
+              <n-descriptions-item label="收盘">{{ detail.legacy_evidence.reference_close ?? '—' }}</n-descriptions-item>
+              <n-descriptions-item label="证据状态">
+                {{ detail.legacy_evidence.db_state }} / {{ detail.legacy_evidence.sidecar_state }}
+              </n-descriptions-item>
+            </n-descriptions>
+            <n-alert v-if="!detail.legacy_evidence.verified" type="warning" :show-icon="true">
+              证据未核验通过（{{ detail.legacy_evidence.sidecar_state }}），明细仅供排查。
+            </n-alert>
+            <n-empty v-if="!detail.legacy_evidence.signals.length" description="无 legacy 信号明细" />
+            <n-data-table v-else size="small" :bordered="false"
+                          :data="detail.legacy_evidence.signals"
+                          :columns="legacySignalCols" :pagination="false" />
+          </template>
         </template>
       </n-drawer-content>
     </n-drawer>
@@ -165,7 +186,16 @@ interface Detail { decision: { decision_uid: string; code: string; name: string 
   evidence: { link_id: string; sidecar_kind: string; sidecar_path: string;
     expected_sha256: string | null; observed_sha256: string | null;
     db_state: string; sidecar_state: string; checked_at: string;
-    detail: Record<string, unknown> }[] }
+    detail: Record<string, unknown> }[];
+  legacy_evidence: {
+    available: boolean; reason?: string; source?: string; chain_native?: boolean;
+    link_id?: string; run_id?: number; code?: string; decision_date?: string | null;
+    reference_close?: number | null; decision_state?: string; risk_action?: string;
+    raw_trigger_count?: number; raw_signals?: unknown[]; db_state?: string;
+    sidecar_state?: string; verified?: boolean;
+    signals: { signal_type: string; period: string; data_date: string | null;
+      title: string; detail: Record<string, unknown>; confidence: number | null }[]
+  } }
 
 interface WindowRow { date: string; status: string; run_status: string | null;
   snapshot_status: string | null; compare_ok: boolean | null; decisions: number;
@@ -250,6 +280,13 @@ const evidenceCols = [
   { title: '副档', key: 'sidecar_state', width: 80 },
   { title: '核对时间', key: 'checked_at', width: 160,
     render: (r: { checked_at: string }) => fmt(r.checked_at) },
+]
+const legacySignalCols = [
+  { title: '类型', key: 'signal_type', width: 140 },
+  { title: '周期', key: 'period', width: 70 },
+  { title: '数据日', key: 'data_date', width: 110 },
+  { title: '标题', key: 'title' },
+  { title: '置信', key: 'confidence', width: 80 },
 ]
 
 function iso(value: number) {
