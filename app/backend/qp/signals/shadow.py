@@ -125,15 +125,23 @@ def collect(session: Session, *, as_of: dt.date | None = None, limit: int = 500,
     as_of = as_of or now_cst().date()
     fetcher = fetcher or KlineFetcher(days=DEFAULT_HISTORY_DAYS)
     pending = _pending(session, as_of=as_of, limit=limit)
-    summary: dict[str, Any] = {"checked": 0, "inserted": 0, "not_mature": 0, "unfilled": 0,
-                               "failed": 0, "benchmark_ok": False, "as_of": as_of.isoformat()}
+    summary: dict[str, Any] = {
+        "checked": 0, "inserted": 0, "not_mature": 0, "unfilled": 0,
+        "failed": 0, "benchmark_ok": False, "as_of": as_of.isoformat(),
+        "benchmark_code": settings.benchmark_code, "benchmark_source": None,
+        "benchmark_attempts": [], "benchmark_error": None,
+    }
     if not pending:
         summary["benchmark_ok"] = True
         return summary
     try:
-        benchmark = normalise_bars(fetcher.get(settings.benchmark_code).bars, as_of=as_of)
-    except Exception:
+        result = fetcher.get(settings.benchmark_code)
+        benchmark = normalise_bars(result.bars, as_of=as_of)
+        summary["benchmark_source"] = getattr(result, "source", "") or None
+        summary["benchmark_attempts"] = getattr(result, "attempts", []) or []
+    except Exception as exc:
         benchmark = []
+        summary["benchmark_error"] = type(exc).__name__
     if not benchmark:
         summary["failed"] = len(pending)
         return summary

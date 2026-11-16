@@ -324,16 +324,25 @@ def evaluate_pending(session: Session, *, as_of: dt.date | None = None, limit: i
         chain.reconcile_expired(session, as_of=as_of)
     decisions = _pending_decisions(session, limit=limit, decision_date=decision_date,
                                    allowed_only=chain_on, as_of=as_of)
-    summary: dict[str, Any] = {"checked": 0, "inserted": 0, "not_mature": 0,
-                               "unfilled": 0, "failed": 0, "benchmark_ok": False,
-                               "as_of": as_of.isoformat()}
+    summary: dict[str, Any] = {
+        "checked": 0, "inserted": 0, "not_mature": 0, "unfilled": 0,
+        "failed": 0, "benchmark_ok": False, "as_of": as_of.isoformat(),
+        "benchmark_code": settings.benchmark_code, "benchmark_source": None,
+        "benchmark_attempts": [], "benchmark_error": None,
+    }
     if not decisions:
         summary["benchmark_ok"] = True
         return summary
     try:
-        benchmark = _bars(fetcher, settings.benchmark_code, as_of=as_of)
-    except Exception:
+        result = fetcher.get(settings.benchmark_code)
+        if not isinstance(result, KlineResult):
+            raise TypeError("outcome fetcher must return KlineResult")
+        benchmark = normalise_bars(result.bars, as_of=as_of)
+        summary["benchmark_source"] = result.source or None
+        summary["benchmark_attempts"] = result.attempts or []
+    except Exception as exc:
         benchmark = []
+        summary["benchmark_error"] = type(exc).__name__
     if not benchmark:
         summary["failed"] = len(decisions)
         return summary
