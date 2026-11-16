@@ -1,5 +1,0 @@
-/home/ubuntu/trading-radar/venv/lib/python3.12/site-packages/py_mini_racer/py_mini_racer.py:15: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
-  import pkg_resources
- * Tip: There are .env files present. Install python-dotenv to use them.
-Address already in use
-Port 8081 is in use by another program. Either identify and stop that program, or start the server with a different port.

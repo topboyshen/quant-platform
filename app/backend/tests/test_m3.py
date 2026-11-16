@@ -168,7 +168,13 @@ def test_import_compare_health(engine, market_env):
 
 def test_low_memory_aborts(engine, monkeypatch, market_env):
     from qp.jobs import run_job
-    monkeypatch.setattr(market_env, "MIN_MEM_MB", 10**9)
+
+    def low_memory():
+        # /proc/meminfo is Linux-only; simulate the guard instead of depending
+        # on the host's available RAM or OS.
+        raise market_env.LowMemory("MemAvailable 1MB < simulated threshold")
+
+    monkeypatch.setattr(market_env, "mem_guard", low_memory)
     r = run_job(engine, "market.cninfo", trigger="test")
     assert r.status == "failed" and "LowMemory" in r.error
 

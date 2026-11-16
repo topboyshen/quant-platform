@@ -32,6 +32,20 @@ jobs:
           QP_TEST_PGDATA: ${{ runner.temp }}/qp-pgdata
         run: python -m pytest -q
 
+  security-and-lint:
+    name: security and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Ruff syntax / undefined-name gate
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+          ruff check app/backend --select E9,F63,F7,F82
+
   frontend:
     name: frontend build
     runs-on: ubuntu-latest

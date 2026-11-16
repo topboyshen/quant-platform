@@ -17,5 +17,7 @@ node_modules/
 __pycache__/
 .venv/
 venv/
-qp.egg-info/
+*.egg-info/
 .pytest_cache/
+# accidental file named "!" imported from a legacy snapshot
+\!
