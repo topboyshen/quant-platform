@@ -1,8 +1,10 @@
 """Read-only ETF research score shadow (M15).
 
-Scores are produced by an offline, frozen model and imported as snapshots.  qp
-only validates, stores and displays them; it never trains, orders, notifies or
-writes target_decision/the record chain.  A stale snapshot is shown as stale.
+Scores are produced by offline, frozen models and imported as snapshots.  The
+20d and 5d models are independent artifacts; each snapshot is scoped by label
+horizon so one cannot masquerade as the other.  qp only validates, stores and
+displays them; it never trains, orders, notifies or writes
+target_decision/the record chain.  A stale snapshot is shown as stale.
 """
 from __future__ import annotations
 
@@ -228,19 +230,39 @@ def expected_session(today: dt.date) -> dt.date:
     return day
 
 
-def latest(session: Session, *, run_id: int | None = None) -> dict[str, Any]:
+def horizons(session: Session) -> list[int]:
+    """Label horizons that currently have at least one imported snapshot."""
+    return [int(h) for h in session.scalars(
+        select(EtfScoreRun.label_horizon).distinct()
+        .order_by(EtfScoreRun.label_horizon))]
+
+
+def latest(session: Session, *, run_id: int | None = None,
+           horizon: int | None = None) -> dict[str, Any]:
+    """Latest snapshot, optionally scoped to one label horizon.
+
+    The 5d and 20d shadows are independent model artifacts.  Without a filter
+    the newest snapshot wins (historical behaviour); the page and API pass an
+    explicit horizon so one model can never masquerade as the other.
+    """
+    stmt = select(EtfScoreRun)
+    if horizon is not None:
+        stmt = stmt.where(EtfScoreRun.label_horizon == horizon)
     run = session.get(EtfScoreRun, run_id) if run_id else session.scalar(
-        select(EtfScoreRun).order_by(EtfScoreRun.data_cutoff.desc(),
-                                     EtfScoreRun.id.desc()).limit(1))
+        stmt.order_by(EtfScoreRun.data_cutoff.desc(), EtfScoreRun.id.desc()).limit(1))
+    available = horizons(session)
     if run is None:
         return {"read_only": True, "is_trade_signal": False, "disclaimer": DISCLAIMER,
-                "run": None, "scores": [], "history": []}
+                "run": None, "scores": [], "history": [],
+                "horizon": horizon, "horizons": available}
     rows = list(session.scalars(select(EtfScore).where(EtfScore.run_id == run.id)
                                .order_by(EtfScore.rank.is_(None), EtfScore.rank,
                                          EtfScore.score.desc())))
     history = []
-    for r in session.scalars(select(EtfScoreRun).order_by(EtfScoreRun.data_cutoff.desc(),
-                                                           EtfScoreRun.id.desc()).limit(20)):
+    for r in session.scalars(select(EtfScoreRun)
+                             .where(EtfScoreRun.label_horizon == run.label_horizon)
+                             .order_by(EtfScoreRun.data_cutoff.desc(),
+                                       EtfScoreRun.id.desc()).limit(20)):
         eligible_count = session.scalar(select(func.count()).select_from(EtfScore).where(
             EtfScore.run_id == r.id, EtfScore.eligible.is_(True))) or 0
         history.append({"id": r.id, "model_version": r.model_version,
@@ -250,6 +272,7 @@ def latest(session: Session, *, run_id: int | None = None) -> dict[str, Any]:
     expected = expected_session(now_cst().date())
     return {
         "read_only": True, "is_trade_signal": False, "disclaimer": DISCLAIMER,
+        "horizon": run.label_horizon, "horizons": available,
         "run": {"id": run.id, "model_version": run.model_version,
                 "model_sha256": run.model_sha256, "data_cutoff": run.data_cutoff.isoformat(),
                 "generated_at": run.generated_at, "label_horizon": run.label_horizon,

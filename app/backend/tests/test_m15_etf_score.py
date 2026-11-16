@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from unittest.mock import patch
+import json
 
 import pytest
 from sqlalchemy import delete, func, select, text
@@ -16,7 +16,8 @@ from qp.signals.universe import TARGETS
 CODES = [t.code for t in TARGETS]
 
 
-def payload() -> dict:
+def payload(*, horizon: int = 20, version: str = "qp-etf-test-v1",
+            cutoff: dt.date | None = None) -> dict:
     scores = []
     for i, code in enumerate(CODES):
         eligible = i < 8
@@ -25,13 +26,13 @@ def payload() -> dict:
                        "rank": i + 1 if eligible else None,
                        "eligible": eligible, "reason": "" if eligible else "not_eligible"})
     return {
-        "model_version": "qp-etf-test-v1",
+        "model_version": version,
         "model_sha256": "a" * 64,
         "model_text_sha256": "b" * 64,
         "universe": "fixed_40_current_pool",
-        "data_cutoff": (dt.date.today() - dt.timedelta(days=1)).isoformat(),
+        "data_cutoff": (cutoff or dt.date.today() - dt.timedelta(days=1)).isoformat(),
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-        "label_horizon": 20,
+        "label_horizon": horizon,
         "train_start": "2020-01-01",
         "train_end": "2025-12-24",
         "data_master_snapshot": "etf-master-test",
@@ -207,6 +208,71 @@ def test_stale_flag_and_expected_cutoff(engine):
         cleanup(engine)
 
 
+def test_horizons_coexist_and_history_is_scoped(engine):
+    cleanup(engine)
+    try:
+        with Session(engine) as s:
+            etf_score.import_payload(s, payload(version="qp-etf-test-20", horizon=20))
+            s.commit()
+            etf_score.import_payload(s, payload(version="qp-etf-test-5", horizon=5))
+            s.commit()
+            out20 = etf_score.latest(s, horizon=20)
+            out5 = etf_score.latest(s, horizon=5)
+            assert out20["run"]["label_horizon"] == 20
+            assert out20["run"]["model_version"] == "qp-etf-test-20"
+            assert out5["run"]["label_horizon"] == 5
+            assert out5["run"]["model_version"] == "qp-etf-test-5"
+            assert out20["horizons"] == [5, 20]
+            assert [r["model_version"] for r in out20["history"]] == ["qp-etf-test-20"]
+            assert [r["model_version"] for r in out5["history"]] == ["qp-etf-test-5"]
+            assert etf_score.latest(s, horizon=99)["run"] is None
+    finally:
+        cleanup(engine)
+
+
+def test_job_imports_both_horizons(tmp_path, engine, monkeypatch):
+    cleanup(engine)
+    try:
+        (tmp_path / "latest.json").write_text(json.dumps(
+            payload(version="qp-etf-job-20", horizon=20)))
+        (tmp_path / "latest-5d.json").write_text(json.dumps(
+            payload(version="qp-etf-job-5", horizon=5)))
+        monkeypatch.setenv("QP_ETF_SCORE_INBOX", str(tmp_path / "latest.json"))
+        from qp.jobs.registry import JobContext
+        from qp.jobs.research import import_etf_score_job
+        out = import_etf_score_job(JobContext(engine=engine, run_id=0,
+                                              name="research.etf_score_import"))
+        assert out["ok"] is True
+        assert [row["model_version"] for row in out["imports"]] == [
+            "qp-etf-job-20", "qp-etf-job-5"]
+        with Session(engine) as s:
+            assert etf_score.latest(s, horizon=20)["run"]["model_version"] == "qp-etf-job-20"
+            assert etf_score.latest(s, horizon=5)["run"]["model_version"] == "qp-etf-job-5"
+    finally:
+        cleanup(engine)
+
+
+def test_job_bad_5d_rolls_back_20d(tmp_path, engine, monkeypatch):
+    cleanup(engine)
+    try:
+        (tmp_path / "latest.json").write_text(json.dumps(
+            payload(version="qp-etf-job-good-20", horizon=20)))
+        bad = payload(version="qp-etf-job-bad-5", horizon=5)
+        bad["scores"].pop()
+        (tmp_path / "latest-5d.json").write_text(json.dumps(bad))
+        monkeypatch.setenv("QP_ETF_SCORE_INBOX", str(tmp_path / "latest.json"))
+        from qp.jobs.registry import JobContext
+        from qp.jobs.research import import_etf_score_job
+        with pytest.raises(etf_score.ScorePayloadError, match="missing_codes"):
+            import_etf_score_job(JobContext(engine=engine, run_id=0,
+                                            name="research.etf_score_import"))
+        with Session(engine) as s:
+            assert s.scalar(select(func.count()).select_from(EtfScoreRun)) == 0
+            assert s.scalar(select(func.count()).select_from(EtfScore)) == 0
+    finally:
+        cleanup(engine)
+
+
 def test_api_auth_scope_and_payload(engine):
     from fastapi.testclient import TestClient
     from qp.api.main import app
@@ -215,6 +281,7 @@ def test_api_auth_scope_and_payload(engine):
     try:
         with Session(engine) as s:
             etf_score.import_payload(s, payload())
+            etf_score.import_payload(s, payload(version="qp-etf-test-5d", horizon=5))
             token = create_service_token(s, f"m15-{dt.datetime.now().timestamp()}", ["research:read"])
             other = create_service_token(s, f"m15-other-{dt.datetime.now().timestamp()}", ["signals:read"])
             s.commit()
@@ -228,8 +295,16 @@ def test_api_auth_scope_and_payload(engine):
         body = response.json()
         assert body["read_only"] is True and body["is_trade_signal"] is False
         assert body["run"]["model_version"] == "qp-etf-test-v1"
+        assert body["horizon"] == 20
         assert len(body["scores"]) == len(CODES) and body["scores"][0]["rank"] == 1
         assert body["history"][0]["eligible_count"] == 8
+        five = client.get("/api/research/etf-score?horizon=5",
+                          headers={"authorization": f"Bearer {token}"})
+        assert five.status_code == 200
+        assert five.json()["run"]["model_version"] == "qp-etf-test-5d"
+        assert five.json()["horizon"] == 5
+        assert client.get("/api/research/etf-score?horizon=0",
+                          headers={"authorization": f"Bearer {token}"}).status_code == 422
     finally:
         cleanup(engine)
 

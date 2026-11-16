@@ -54,14 +54,23 @@ DEFAULT_ETF_SCORE_INBOX = "/var/lib/qp/etf-score/latest.json"
      "Import an offline ETF research score snapshot (read-only; never an order/notification)",
      schedule_hint="Mon-Fri 16:55 CST (after 16:45 offline score)")
 def import_etf_score_job(ctx: JobContext) -> dict:
+    """Import the 20d snapshot and, when present, the independent 5d shadow.
+
+    Both payloads are validated before one commit.  A malformed 5d file must
+    not leave a half-imported 20d snapshot behind; the next timer retries.
+    """
     path = Path(os.getenv("QP_ETF_SCORE_INBOX", DEFAULT_ETF_SCORE_INBOX)).expanduser()
-    if not path.is_file():
-        return {"ok": True, "skipped": "no_score_file", "path": str(path)}
-    payload = json.loads(path.read_text())
+    paths = [path, path.with_name("latest-5d.json")]
+    existing = [p for p in paths if p.is_file()]
+    if not existing:
+        return {"ok": True, "skipped": "no_score_file", "path": str(path),
+                "paths": [str(p) for p in paths]}
+    payloads = [(p, json.loads(p.read_text())) for p in existing]
     with Session(ctx.engine) as session:
-        out = etf_score.import_payload(session, payload)
+        imports = [{"path": str(p), **etf_score.import_payload(session, payload)}
+                   for p, payload in payloads]
         session.commit()
-    return {"ok": True, **out}
+    return {"ok": True, "imports": imports}
 
 
 @job("research.import_backtests", "Mirror QuantDinger backtest history into research.* "
