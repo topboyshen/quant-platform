@@ -252,7 +252,7 @@ def test_job_imports_both_horizons(tmp_path, engine, monkeypatch):
         cleanup(engine)
 
 
-def test_job_bad_5d_rolls_back_20d(tmp_path, engine, monkeypatch):
+def test_job_bad_5d_keeps_20d_and_reports_failure(tmp_path, engine, monkeypatch):
     cleanup(engine)
     try:
         (tmp_path / "latest.json").write_text(json.dumps(
@@ -263,12 +263,38 @@ def test_job_bad_5d_rolls_back_20d(tmp_path, engine, monkeypatch):
         monkeypatch.setenv("QP_ETF_SCORE_INBOX", str(tmp_path / "latest.json"))
         from qp.jobs.registry import JobContext
         from qp.jobs.research import import_etf_score_job
-        with pytest.raises(etf_score.ScorePayloadError, match="missing_codes"):
-            import_etf_score_job(JobContext(engine=engine, run_id=0,
-                                            name="research.etf_score_import"))
+        out = import_etf_score_job(JobContext(engine=engine, run_id=0,
+                                              name="research.etf_score_import"))
+        assert out["ok"] is False and out["failed"] == ["5d"]
+        by_feed = {row["feed"]: row for row in out["imports"]}
+        assert by_feed["20d"]["ok"] is True
+        assert by_feed["5d"]["ok"] is False and "missing_codes" in by_feed["5d"]["error"]
         with Session(engine) as s:
-            assert s.scalar(select(func.count()).select_from(EtfScoreRun)) == 0
-            assert s.scalar(select(func.count()).select_from(EtfScore)) == 0
+            assert s.scalar(select(func.count()).select_from(EtfScoreRun)) == 1
+            assert s.scalar(select(func.count()).select_from(EtfScore)) == len(CODES)
+            assert etf_score.latest(s, horizon=20)["run"]["model_version"] == "qp-etf-job-good-20"
+            assert etf_score.latest(s, horizon=5)["run"] is None
+    finally:
+        cleanup(engine)
+
+
+def test_job_bad_20d_keeps_5d(tmp_path, engine, monkeypatch):
+    cleanup(engine)
+    try:
+        bad = payload(version="qp-etf-job-bad-20", horizon=20)
+        bad["scores"].pop()
+        (tmp_path / "latest.json").write_text(json.dumps(bad))
+        (tmp_path / "latest-5d.json").write_text(json.dumps(
+            payload(version="qp-etf-job-good-5", horizon=5)))
+        monkeypatch.setenv("QP_ETF_SCORE_INBOX", str(tmp_path / "latest.json"))
+        from qp.jobs.registry import JobContext
+        from qp.jobs.research import import_etf_score_job
+        out = import_etf_score_job(JobContext(engine=engine, run_id=0,
+                                              name="research.etf_score_import"))
+        assert out["ok"] is False and out["failed"] == ["20d"]
+        with Session(engine) as s:
+            assert etf_score.latest(s, horizon=20)["run"] is None
+            assert etf_score.latest(s, horizon=5)["run"]["model_version"] == "qp-etf-job-good-5"
     finally:
         cleanup(engine)
 

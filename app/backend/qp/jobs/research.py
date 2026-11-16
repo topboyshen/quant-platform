@@ -19,6 +19,7 @@ from qp.models.signals import RotationShadowDay, RotationShadowRun
 from qp.research import etf_score
 from qp.signals.eod import now_cst
 from qp.signals.universe import TARGETS
+from qp.signals.watchdog import build_daily_report, run_watchdog
 from qp.research.compare import compare_research, write_report
 from qp.research.importer import (import_ai, import_backtests, import_ledger, import_phase2,
                                   import_profit, import_projects)
@@ -61,21 +62,31 @@ DEFAULT_ETF_SCORE_INBOX = "/var/lib/qp/etf-score/latest.json"
 def import_etf_score_job(ctx: JobContext) -> dict:
     """Import the 20d snapshot and, when present, the independent 5d shadow.
 
-    Both payloads are validated before one commit.  A malformed 5d file must
-    not leave a half-imported 20d snapshot behind; the next timer retries.
+    Each horizon has its own savepoint.  A malformed 5d file must not roll back
+    a valid 20d snapshot (and vice versa); the failing feed is recorded, the
+    job is marked failed so the timer retries, and a retry re-imports the good
+    feed as an idempotent duplicate.
     """
     path = Path(os.getenv("QP_ETF_SCORE_INBOX", DEFAULT_ETF_SCORE_INBOX)).expanduser()
-    paths = [path, path.with_name("latest-5d.json")]
-    existing = [p for p in paths if p.is_file()]
+    feeds = [("20d", path), ("5d", path.with_name("latest-5d.json"))]
+    existing = [(label, p) for label, p in feeds if p.is_file()]
     if not existing:
         return {"ok": True, "skipped": "no_score_file", "path": str(path),
-                "paths": [str(p) for p in paths]}
-    payloads = [(p, json.loads(p.read_text())) for p in existing]
+                "paths": [str(p) for _, p in feeds]}
+    imports: list[dict] = []
     with Session(ctx.engine) as session:
-        imports = [{"path": str(p), **etf_score.import_payload(session, payload)}
-                   for p, payload in payloads]
+        for label, feed in existing:
+            try:
+                payload = json.loads(feed.read_text())
+                with session.begin_nested():
+                    result = etf_score.import_payload(session, payload)
+                imports.append({"feed": label, "path": str(feed), "ok": True, **result})
+            except Exception as exc:  # isolate one feed; report it, keep the other
+                imports.append({"feed": label, "path": str(feed), "ok": False,
+                                "error": f"{type(exc).__name__}: {exc}"[:300]})
         session.commit()
-    return {"ok": True, "imports": imports}
+    failed = [row["feed"] for row in imports if not row["ok"]]
+    return {"ok": not failed, "imports": imports, "failed": failed}
 
 
 TARGET_NAMES = {target.code: target.name for target in TARGETS}
@@ -169,27 +180,42 @@ def build_etf_shadow_report(session: Session, *, today) -> dict:
     }
 
 
+def build_combined_report(session: Session, *, today) -> dict:
+    """17:40 single message: EOD market/risk/signal + ETF research shadow."""
+    now = now_cst()
+    audit = run_watchdog(session, now=now, send_alert=False)
+    daily = build_daily_report(session, result=audit, now=now)
+    shadow = build_etf_shadow_report(session, today=today)
+    daily["report_type"] = "daily_combined_report"
+    daily["etf_shadow"] = shadow
+    daily["read_only"] = True
+    daily["is_trade_signal"] = False
+    daily["combined_from"] = ["eod_daily_report", "etf_shadow_report"]
+    return daily
+
+
 @job("research.etf_shadow_report",
-     "Read-only 17:40 5d/20d score + C13 research shadow (no orders/formal chain)",
+     "17:40 combined daily: EOD market/risk/signal + 5d/20d + C13 (read-only)",
      schedule_hint="Mon-Fri 17:40 CST (after 17:25 score import)")
 def etf_shadow_report_job(ctx: JobContext) -> dict:
     today = now_cst().date()
     with Session(ctx.engine) as session:
-        payload = build_etf_shadow_report(session, today=today)
+        payload = build_combined_report(session, today=today)
         from qp.jobs.builtin import enqueue
         mode = ("live" if get_settings().signals_notify_mode.strip().lower() == "live"
                 else "shadow")
         inserted = enqueue(
             session, channel="telegram",
             recipient="signals" if mode == "live" else "shadow:signals-etf",
-            dedup_key=f"etf-shadow:{today.isoformat()}",
-            subject=f"ETF 研究影子 {today.isoformat()}",
+            dedup_key=f"daily-combined:{today.isoformat()}",
+            subject=f"每日报告 {today.isoformat()}",
             body=json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str),
             source_job_run_id=ctx.run_id, mode=mode)
         session.commit()
     return {"ok": True, "enqueued": inserted, "mode": mode,
             "trade_date": today.isoformat(),
-            "missing": payload["data_quality"]["missing"]}
+            "missing": payload["etf_shadow"]["data_quality"]["missing"],
+            "combined": True}
 
 
 @job("research.import_backtests", "Mirror QuantDinger backtest history into research.* "

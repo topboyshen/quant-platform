@@ -51,6 +51,9 @@ def _daily(payload: dict, subject: str | None) -> str:
     signals = payload.get("today_trend_signals")
     if signals is not None:
         lines.append(f"当日趋势信号：{signals} 条")
+    shadow = payload.get("etf_shadow")
+    if isinstance(shadow, dict):
+        lines.extend([""] + _shadow_lines(shadow))
     conclusion = payload.get("conclusion")
     if conclusion:
         lines.extend(["", f"结论：{conclusion}"])
@@ -78,38 +81,48 @@ def _pct(value: object, digits: int = 2) -> str:
         return "—"
 
 
-def _etf_shadow(payload: dict, subject: str | None) -> str:
-    day = payload.get("trade_date") or ""
-    lines = [f"【qp】{subject or f'ETF 研究影子 {day}'}", "",
-             "只读研究影子：不是交易信号，不下单、不写正式记录链。"]
+def _names(block: dict | None) -> list[str]:
+    return [str(item.get("name") or item.get("code")) for item in (block or {}).get("top8") or []]
+
+
+def _shadow_lines(payload: dict) -> list[str]:
     scores = payload.get("scores") or {}
-    for horizon in ("5", "20"):
-        block = scores.get(horizon)
-        if not block:
-            lines.append(f"{horizon}d：缺失")
-            continue
-        lines.append(f"{horizon}d {block.get('model_version')} · cutoff "
-                     f"{block.get('data_cutoff')} · {block.get('eligible')}/40"
-                     + (" · STALE" if block.get("stale") else ""))
-        top = block.get("top8") or []
-        if top:
-            lines.append("  " + " · ".join(
-                f"{item.get('code')} {item.get('name')} {_pct(item.get('score'))}"
-                for item in top))
+    s5, s20 = scores.get("5"), scores.get("20")
+    lines = ["ETF 研究观察（不是买卖建议）"]
+    n5, n20 = _names(s5), _names(s20)
+    if n5 and n20 and set(n5) == set(n20):
+        lines.append(f"5日/20日模型都选中这{len(n5)}只：" + "、".join(n5))
+    else:
+        if n5:
+            lines.append("5日模型前8：" + "、".join(n5))
+        elif not s5:
+            lines.append("5日模型：今天没有快照")
+        if n20:
+            lines.append("20日模型前8：" + "、".join(n20))
+        elif not s20:
+            lines.append("20日模型：今天没有快照")
     rotation = payload.get("rotation") or {}
     if rotation:
-        lines.append("C13：" + f"NAV {float(rotation.get('nav') or 0):,.0f}"
-                     + (f"（{_pct(rotation.get('nav_return'))}）"
-                        if rotation.get("nav_return") is not None else "")
-                     + f" · 510300 {_pct(rotation.get('benchmark_return'))}"
-                     + f" · EW {_pct(rotation.get('ew_return'))}")
+        lines.append("纸面轮动：今天 " + _pct(rotation.get("nav_return"))
+                     + "；沪深300 " + _pct(rotation.get("benchmark_return"))
+                     + "；40只等权 " + _pct(rotation.get("ew_return")))
         positions = rotation.get("positions") or []
         if positions:
-            lines.append("  持仓：" + " / ".join(
+            lines.append("持有：" + "、".join(
                 str(item.get("name") or item.get("code")) for item in positions))
-    data_quality = payload.get("data_quality") or {}
-    if data_quality.get("note"):
-        lines.append("数据：" + str(data_quality["note"]))
+    quality = payload.get("data_quality") or {}
+    if quality.get("missing") or quality.get("stale"):
+        lines.append("数据：" + "；".join((quality.get("missing") or []) + (quality.get("stale") or [])))
+    else:
+        lines.append("数据：40只ETF齐全，截至今天收盘")
+    lines.append("说明：5日模型历史检验仍不稳定，只观察，不用于实盘。")
+    return lines
+
+
+def _etf_shadow(payload: dict, subject: str | None) -> str:
+    day = payload.get("trade_date") or ""
+    lines = [f"【qp】{subject or f'ETF 研究观察 {day}'}", ""]
+    lines.extend(_shadow_lines(payload))
     if payload.get("conclusion"):
         lines.extend(["", "结论：" + str(payload["conclusion"])])
     return "\n".join(lines)
@@ -128,4 +141,6 @@ def render_outbox(row: Outbox) -> str:
             return _clip(_failure(payload, row.subject))
         if report_type == "etf_shadow_report":
             return _clip(_etf_shadow(payload, row.subject))
+        if report_type == "daily_combined_report":
+            return _clip(_daily(payload, row.subject))
     return _clip(f"{row.subject or 'qp 通知'}\n\n{row.body}")

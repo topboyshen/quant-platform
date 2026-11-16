@@ -580,13 +580,17 @@ def run_watchdog(session: Session, *, now: dt.datetime | None = None,
     result["notification_plan"] = plan
     result["calendar_source"] = calendar_source
     if plan == "daily":
-        payload = build_daily_report(session, result=result, now=local)
-        result["shadow_outbox"] = _enqueue(
-            session, trade_date=local.date(), kind="daily",
-            subject=f"EOD 日报 {local.date().isoformat()}", payload=payload,
-            source_job_run_id=source_job_run_id)
-        result["daily_report"] = {"conclusion": payload["conclusion"],
-                                  "terminal_ok": payload["terminal_ok"]}
+        if get_settings().signals_combined_report:
+            result["notification_plan"] = "combined_at_1740"
+            result["combined_deferred"] = True
+        else:
+            payload = build_daily_report(session, result=result, now=local)
+            result["shadow_outbox"] = _enqueue(
+                session, trade_date=local.date(), kind="daily",
+                subject=f"EOD 日报 {local.date().isoformat()}", payload=payload,
+                source_job_run_id=source_job_run_id)
+            result["daily_report"] = {"conclusion": payload["conclusion"],
+                                      "terminal_ok": payload["terminal_ok"]}
     elif plan == "failure":
         payload = {
             "schema_version": 1,

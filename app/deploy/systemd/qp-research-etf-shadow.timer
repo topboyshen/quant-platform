@@ -1,5 +1,5 @@
 [Unit]
-Description=quant-platform 17:40 read-only ETF 5d/20d + C13 research shadow report
+Description=quant-platform 17:40 combined daily: EOD market/risk/signal + ETF shadow
 
 [Timer]
 OnCalendar=Mon..Fri *-*-* 17:40:00 Asia/Shanghai
