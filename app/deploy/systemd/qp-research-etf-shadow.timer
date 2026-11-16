@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform 17:40 read-only ETF 5d/20d + C13 research shadow report
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 17:40:00 Asia/Shanghai
+AccuracySec=10s
+Persistent=false
+Unit=qp-job@research.etf_shadow_report.service
+
+[Install]
+WantedBy=timers.target
