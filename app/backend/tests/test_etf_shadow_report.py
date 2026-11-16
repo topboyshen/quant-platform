@@ -9,7 +9,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from qp.jobs import JOBS
-from qp.jobs.research import build_etf_shadow_report
+from qp.jobs.research import build_combined_report, build_etf_shadow_report
 from qp.models.market import IndexClose
 from qp.models.notify import Outbox
 from qp.models.signals import MacroSlice, RiskState
@@ -54,10 +54,11 @@ def test_render_etf_shadow_report():
                      payload(), ensure_ascii=False), mode="live")
     text = render_outbox(row)
     assert "ETF 研究影子 2026-11-16" in text
-    assert "20d qp-etf-lgbm20-v1-test" in text and "5d qp-etf-lgbm5-v1-test" in text
-    assert "515050 5G通信ETF +6.86%" in text
-    assert "C13：NAV 994,562" in text and "持仓：纳指ETF / 半导体ETF" in text
-    assert "不构成推荐" in text
+    assert "ETF 研究观察（不是买卖建议）" in text
+    assert "5日/20日模型都选中这1只：5G通信ETF" in text
+    assert "纸面轮动：今天 -0.54%；沪深300 -0.42%；40只等权 -1.22%" in text
+    assert "持有：纳指ETF、半导体ETF" in text
+    assert "只观察，不用于实盘" in text
     assert '"report_type"' not in text
 
 
@@ -121,6 +122,36 @@ def test_daily_builder_exposes_market_risk_and_funnel(engine):
     assert "成交额 14,845 亿" in out["macro_text"]
     assert "评估 40/40" in out["funnel"]
     assert "今日无 allowed 信号" in out["conclusion"]
+
+
+def test_combined_renderer_contains_both_sections():
+    body = {"report_type": "daily_combined_report", "trade_date": "2026-11-16",
+            "etf_shadow": payload()}
+    body["terminal_ok"] = True
+    body["market"] = {"text": "上证 3,602.57（-0.87%）"}
+    body["macro_text"] = "宏观：成交额 14,845 亿"
+    body["risk_text"] = "风险闸门：critical；VIX 19.30"
+    body["funnel"] = "信号漏斗：评估 40/40 · 触发 0 · allowed 0"
+    body["reading"] = {"market_data": "标的行情：40/40 合格"}
+    body["conclusion"] = "今日无 allowed 信号；不支持推荐。"
+    row = Outbox(channel="telegram", recipient="signals", dedup_key="combined:render",
+                 subject="每日报告 2026-11-16", body=json.dumps(body, ensure_ascii=False),
+                 mode="live")
+    text = render_outbox(row)
+    assert "市场：上证 3,602.57" in text
+    assert "风险闸门：critical" in text
+    assert "ETF 研究观察（不是买卖建议）" in text
+    assert "纸面轮动" in text
+    assert "不支持推荐" in text
+
+
+def test_combined_builder_has_shadow(engine):
+    with Session(engine) as s:
+        out = build_combined_report(s, today=dt.date(2030, 1, 2))
+    assert out["report_type"] == "daily_combined_report"
+    assert out["read_only"] is True and out["is_trade_signal"] is False
+    assert "etf_shadow" in out
+    assert "missing" in out["etf_shadow"]["data_quality"]
 
 
 def test_empty_builder_is_explicit(engine):

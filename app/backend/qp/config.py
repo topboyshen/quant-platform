@@ -17,6 +17,7 @@ class Settings:
     api_health_url: str
     notify_mode: str  # default enqueue mode: "shadow" | "live"
     signals_notify_mode: str  # M4 live switch; "shadow" | "live"
+    signals_combined_report: bool  # one 17:40 daily report instead of 15:50 + 17:40
     notify_kill_switch: bool
     notify_disabled_file: str
     notify_max_attempts: int
@@ -45,6 +46,8 @@ def get_settings() -> Settings:
         api_health_url=os.getenv("QP_API_HEALTH_URL", "http://127.0.0.1:18800/api/health"),
         notify_mode=os.getenv("QP_NOTIFY_MODE", "shadow"),
         signals_notify_mode=os.getenv("QP_SIGNALS_NOTIFY_MODE", "shadow"),
+        signals_combined_report=os.getenv("QP_SIGNALS_COMBINED_REPORT", "0").strip().lower()
+        in {"1", "true", "yes", "on"},
         notify_kill_switch=os.getenv("QP_NOTIFY_KILL_SWITCH", "0").strip().lower()
         in {"1", "true", "yes", "on"},
         notify_disabled_file=os.getenv("QP_NOTIFY_DISABLED_FILE", "/etc/qp/notify.disabled"),

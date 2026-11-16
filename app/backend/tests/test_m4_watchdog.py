@@ -171,6 +171,21 @@ def test_expected_data_gap_is_deferred_but_unexpected_failure_pages(engine):
         cleanup(engine)
 
 
+def test_combined_mode_defers_daily_to_1740(engine, monkeypatch):
+    cleanup(engine)
+    monkeypatch.setenv("QP_SIGNALS_COMBINED_REPORT", "1")
+    try:
+        seed_run(engine, target_count=1, decision_states=("no_trigger",), with_snapshot=True)
+        with Session(engine) as session:
+            out = run_watchdog(session, now=at(15, 50))
+            session.commit()
+        assert out["notification_plan"] == "combined_at_1740"
+        assert out["combined_deferred"] is True
+        assert not outbox_rows(engine)
+    finally:
+        cleanup(engine)
+
+
 def test_success_evidence_and_incomplete_evidence(engine):
     cleanup(engine)
     try:
