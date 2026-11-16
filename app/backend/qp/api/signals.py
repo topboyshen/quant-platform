@@ -190,7 +190,9 @@ def _latest_chain_eligibility(db: Session, uids: list[str],
 def _pool_from_chain(db: Session, day: dt.date | None) -> dict[str, Any]:
     """P7 read path: build the ETF pool from the record-chain snapshot."""
     empty = {"decision_date": day.isoformat() if day else None, "run": None, "counts": {},
-             "items": [], "source": "chain", "snapshot": None}
+             "items": [], "source": "chain", "snapshot": None,
+             "fallback": False, "stale_or_fallback": True,
+             "chain_snapshot_available": False}
     if day is None:
         return empty
     snapshot = db.scalar(select(ChainSnapshot).where(ChainSnapshot.business_date == day)
@@ -257,6 +259,8 @@ def _pool_from_chain(db: Session, day: dt.date | None) -> dict[str, Any]:
     items.sort(key=lambda item: item["code"])
     return {"decision_date": day.isoformat(), "run": None, "counts": counts, "items": items,
             "source": "chain",
+            "fallback": False, "stale_or_fallback": False,
+            "chain_snapshot_available": True,
             "snapshot": {"snapshot_id": snapshot.snapshot_id, "digest": snapshot.digest,
                          "status": body.get("status"), "cutoff_at": snapshot.cutoff_at,
                          "generated_at": snapshot.generated_at}}
@@ -301,7 +305,9 @@ def _pool_from_legacy(db: Session, day: dt.date | None) -> dict[str, Any]:
         })
     return {"decision_date": day.isoformat() if day else None,
             "run": None if run is None else _run(run),
-            "counts": counts, "items": items, "source": "legacy", "snapshot": None}
+            "counts": counts, "items": items, "source": "legacy", "snapshot": None,
+            "fallback": False, "stale_or_fallback": run is None,
+            "chain_snapshot_available": None}
 
 
 @router.get("/etf-pool")
@@ -314,10 +320,28 @@ def etf_pool(date: str | None = None, p: Principal = Depends(require_auth),
             day = dt.date.fromisoformat(date)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="bad date") from exc
-    if get_settings().chain_reads:
+    settings = get_settings()
+    requested = day
+    if settings.chain_reads:
         if day is None:
             day = db.scalar(select(func.max(ChainSnapshot.business_date)))
-        return _pool_from_chain(db, day)
+            if day is None and settings.chain_reads_fallback:
+                day = db.scalar(select(func.max(EodRun.decision_date)))
+        body = _pool_from_chain(db, day)
+        if body["chain_snapshot_available"] or not settings.chain_reads_fallback:
+            return body
+        # No snapshot for the requested/latest day: serve the legacy decision
+        # table, but mark the response so the page cannot mistake it for chain
+        # evidence.
+        legacy = _pool_from_legacy(db, day)
+        legacy.update({
+            "source": "legacy_fallback",
+            "fallback": True,
+            "stale_or_fallback": True,
+            "requested_date": requested.isoformat() if requested else None,
+            "chain_snapshot_available": False,
+        })
+        return legacy
     if day is None:
         day = db.scalar(select(func.max(EodRun.decision_date)))
     return _pool_from_legacy(db, day)
