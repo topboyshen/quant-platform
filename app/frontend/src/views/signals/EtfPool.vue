@@ -11,11 +11,17 @@
         {{ state }} {{ n }}
       </n-tag>
     </n-space>
-    <n-alert v-if="data?.source === 'chain'" type="info" :show-icon="true">
+    <n-alert v-if="data?.source === 'chain'" :type="data.stale_or_fallback ? 'warning' : 'info'"
+             :show-icon="true">
       读取自记录链快照
       <template v-if="data.snapshot"> {{ data.snapshot.snapshot_id }}（{{ data.snapshot.status }}）</template>
       <template v-else>：该交易日没有快照</template>
       · 收盘字段记录链不存储，显示为 —
+    </n-alert>
+    <n-alert v-if="data?.source === 'legacy_fallback'" type="warning" :show-icon="true">
+      记录链没有该交易日的快照，已回退到 legacy 决策表
+      <template v-if="data.requested_date">（请求日 {{ data.requested_date }}）</template>。
+      数据仍可用，但不是链式结果，不应作为记录链证据。
     </n-alert>
     <AsyncState :loading="loading" :error="error" :empty="!loading && !error && !items.length" :emptyText="emptyText">
       <n-data-table :columns="columns" :data="items" size="small" :row-props="rowProps" />
@@ -64,7 +70,17 @@ import { api } from '../../api/client'
 interface Signal { signal_type: string; period: string; data_date: string | null; title: string; confidence: number | null }
 interface Item { code: string; name: string; sector: string; state: string; risk_action: string | null; risk_level: string | null; reason_code: string | null; reference_close: number | null; raw_trigger_count: number | null; signal_count: number; signals: Signal[] }
 interface Snapshot { snapshot_id: string; digest: string; status: string | null }
-interface Pool { decision_date: string | null; counts: Record<string, number>; items: Item[]; source: string; snapshot: Snapshot | null }
+interface Pool {
+  decision_date: string | null
+  counts: Record<string, number>
+  items: Item[]
+  source: string
+  snapshot: Snapshot | null
+  fallback?: boolean
+  stale_or_fallback?: boolean
+  requested_date?: string | null
+  chain_snapshot_available?: boolean | null
+}
 
 const tab = ref('pool')
 const ts = ref<number | null>(null)

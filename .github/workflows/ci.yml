@@ -26,7 +26,8 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[test]" pgserver
+          pip install -r requirements.lock
+          pip install --no-deps -e .
       - name: Test
         env:
           QP_TEST_PGDATA: ${{ runner.temp }}/qp-pgdata
@@ -88,7 +89,8 @@ jobs:
         working-directory: app/backend
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[test]" pgserver
+          pip install -r requirements.lock
+          pip install --no-deps -e .
       - name: Install frontend
         working-directory: app/frontend
         run: |

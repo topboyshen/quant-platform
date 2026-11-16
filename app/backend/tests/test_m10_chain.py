@@ -642,6 +642,8 @@ def test_etf_pool_switch_reads_chain_snapshot(engine, client, chain_on, monkeypa
     assert response.status_code == 200
     body = response.json()
     assert body["source"] == "chain"
+    assert body["fallback"] is False and body["stale_or_fallback"] is False
+    assert body["chain_snapshot_available"] is True
     assert body["snapshot"]["status"] == "complete"
     assert body["counts"] == {"allowed": 1, "blocked": 1, "no_trigger": 1}
     items = {item["code"]: item for item in body["items"]}
@@ -652,16 +654,51 @@ def test_etf_pool_switch_reads_chain_snapshot(engine, client, chain_on, monkeypa
     assert items["510300"]["sector"] == "test"
 
 
-def test_etf_pool_switch_without_snapshot_is_empty(engine, client, chain_on, monkeypatch):
+def test_etf_pool_strict_mode_without_snapshot_is_empty(engine, client, chain_on, monkeypatch):
     _cleanup(engine)
     token = _signals_token(engine)
     monkeypatch.setenv("QP_CHAIN_READS", "1")
+    monkeypatch.setenv("QP_CHAIN_READS_FALLBACK", "0")
     day = DAY + dt.timedelta(days=7)
     response = client.get(f"/api/signals/etf-pool?date={day}",
                           headers={"authorization": f"Bearer {token}"})
     assert response.status_code == 200
     body = response.json()
     assert body["source"] == "chain" and body["snapshot"] is None and body["items"] == []
+    assert body["stale_or_fallback"] is True and body["chain_snapshot_available"] is False
+
+
+def test_etf_pool_falls_back_to_legacy_when_snapshot_missing(engine, client, chain_on,
+                                                             monkeypatch):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    with Session(engine) as session:
+        session.execute(TargetDecision.__table__.delete()
+                        .where(TargetDecision.decision_date == DAY))
+        for code, state, trigger, risk in (("510300", "allowed", 1, "allowed"),
+                                           ("510500", "no_trigger", 0, "allowed"),
+                                           ("159915", "blocked", 1, "blocked")):
+            session.add(TargetDecision(
+                run_id=run_id, decision_date=DAY, code=code, name=code, sector="宽基",
+                data_status="ok", decision_state=state, risk_action=risk,
+                risk_level="ok", reason_code="r", reference_close=1.0,
+                raw_trigger_count=trigger, raw_signals=[], validation_split="live_oos"))
+        session.commit()
+    token = _signals_token(engine)
+    monkeypatch.setenv("QP_CHAIN_READS", "1")
+    monkeypatch.delenv("QP_CHAIN_READS_FALLBACK", raising=False)
+    response = client.get(f"/api/signals/etf-pool?date={DAY}",
+                          headers={"authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "legacy_fallback"
+    assert body["fallback"] is True and body["stale_or_fallback"] is True
+    assert body["chain_snapshot_available"] is False
+    assert body["requested_date"] == DAY.isoformat()
+    assert body["run"] is not None and len(body["items"]) == 40
+    states = {item["code"]: item["state"] for item in body["items"]}
+    assert states["510300"] == "allowed" and states["159915"] == "blocked"
 
 
 def test_etf_pool_defaults_to_legacy_when_switch_is_off(engine, client, chain_on, monkeypatch):
