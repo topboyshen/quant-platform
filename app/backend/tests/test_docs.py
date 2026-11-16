@@ -12,11 +12,13 @@ def test_architecture_and_roadmap_are_linked():
     readme = (root() / "README.md").read_text(encoding="utf-8")
     assert "ARCHITECTURE.md" in readme
     assert "DECOMMISSION-ROADMAP.md" in readme
+    assert "KNOWN-LIMITATIONS.md" in readme
     assert (root() / "ARCHITECTURE.md").is_file()
     assert (root() / "app/deploy/DECOMMISSION-ROADMAP.md").is_file()
     assert (root() / "app/deploy/EVIDENCE-MANIFEST.md").is_file()
     assert (root() / "app/deploy/M9-EXECUTION-CHECKLIST.md").is_file()
     assert (root() / "app/deploy/DEPLOY-LOCK.md").is_file()
+    assert (root() / "app/deploy/KNOWN-LIMITATIONS.md").is_file()
     assert (root() / "app/deploy/bin/qp-release-venv").is_file()
     assert (root() / "archive/README.md").is_file()
 
@@ -33,6 +35,13 @@ def test_roadmap_keeps_the_four_phases():
         assert phase in roadmap, phase
     assert "M9-EXECUTION-CHECKLIST.md" in roadmap
     assert "No prefix batches" in roadmap
+
+
+def test_known_limitations_records_eastmoney():
+    limitations = (root() / "app/deploy/KNOWN-LIMITATIONS.md").read_text(encoding="utf-8")
+    assert "KL-001" in limitations
+    assert "Eastmoney" in limitations
+    assert "accepted" in limitations
 
 
 def test_m9_archive_does_not_hide_failures():
