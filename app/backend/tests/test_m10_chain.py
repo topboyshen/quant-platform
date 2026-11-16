@@ -12,7 +12,7 @@ from qp.models.chain import (ChainAttempt, ChainBatch, ChainDecision, ChainEligi
                              ChainEvidenceLink, ChainImportRegister, ChainOutcome, ChainPolicy,
                              ChainState)
 from qp.models.market import TradingDay
-from qp.models.signals import DecisionOutcome, EodRun, TargetDecision
+from qp.models.signals import DecisionOutcome, EodRun, TargetDecision, TrendSignal
 from qp.signals import chain
 
 TABLES = {
@@ -433,9 +433,41 @@ def test_chain_api_snapshot_decisions_detail(engine, client, chain_on):
         assert len(detail["evidence"]) == 1
         assert detail["evidence"][0]["sidecar_kind"] == "db_row"
         assert detail["evidence"][0]["sidecar_path"].startswith("signals.target_decision:")
+        assert detail["legacy_evidence"]["available"] is False
+        assert detail["legacy_evidence"]["reason"] == "target_decision_missing"
         assert client.get("/api/signals/chain/decision/qd_missing", headers=headers).status_code == 404
     finally:
         _cleanup(engine)
+
+def test_chain_decision_detail_expands_legacy_signals(engine, client, chain_on):
+    _cleanup(engine)
+    _calendar(engine, DAY)
+    run_id = _run(engine)
+    _insert_targets(engine, run_id)
+    with Session(engine) as session:
+        session.add(TrendSignal(
+            decision_date=DAY, code="510300", name="510300",
+            signal_type="macd_golden", period="W", data_date=DAY,
+            title="MACD 金叉", detail={"sample": 1}, confidence=0.8))
+        session.commit()
+    with Session(engine) as session:
+        chain.register_run(session, run=session.get(EodRun, run_id),
+                           decisions=_decisions(), run_status="success")
+        session.commit()
+        uid = chain.decision_uid_for(session, DAY, "510300")
+    token = _signals_token(engine)
+    response = client.get(f"/api/signals/chain/decision/{uid}",
+                          headers={"authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    evidence = response.json()["legacy_evidence"]
+    assert evidence["available"] is True and evidence["chain_native"] is False
+    assert evidence["run_id"] == run_id and evidence["code"] == "510300"
+    assert evidence["db_state"] == "present" and evidence["verified"] is True
+    assert evidence["reference_close"] == 1.0
+    assert [s["signal_type"] for s in evidence["signals"]] == ["macd_golden"]
+    assert evidence["signals"][0]["confidence"] == 0.8
+    assert evidence["signals"][0]["detail"] == {"sample": 1}
+
 
 def test_pool_page_has_record_chain_tab():
     from pathlib import Path
@@ -445,8 +477,10 @@ def test_pool_page_has_record_chain_tab():
     assert 'tab="研究池"' in pool and 'tab="记录链"' in pool and "<ChainPanel" in pool
     for label in ("检查", "触发", "风控拦截", "风控放行", "进入样本"):
         assert label in panel, label
-    for label in ("待成熟", "合格且成熟", "历史排除", "成员无决策", "触发缺资格", "证据链接"):
+    for label in ("待成熟", "合格且成熟", "历史排除", "成员无决策", "触发缺资格",
+                  "证据链接", "信号明细"):
         assert label in panel, label
+    assert "legacy_evidence" in panel
     assert "/signals/chain/snapshot" in panel and "/signals/chain/decisions" in panel
     assert "/signals/chain/decision/" in panel
 

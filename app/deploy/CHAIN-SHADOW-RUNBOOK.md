@@ -67,6 +67,7 @@ PASS 条件：当天有终态 EOD run、有快照、`compare` 无差异、`loss`
 - `input_evidence_sha256` 为决策输入的稳定摘要（run|日期|代码|数据状态|触发数|信号数|收盘），native 与历史导入写入，migration `0014` 回填；可用同一表达式在 SQL 重算核对。
 - `chain_evidence_link` 已接线：`register_run` 为每条 native 决策写一条 `sidecar_kind=db_row` 的证据链接，`sidecar_path=signals.target_decision:run=<id>:code=<code>`；`expected_sha256` 取决策输入摘要，`observed_sha256` 从 `target_decision` 行重算。行存在且一致为 `db_state=present / sidecar_state=verified`，行缺失为 `missing / pending`，字段变化为 `present / failed`。该表只增不改；同一决策重跑不会重复插入。
 - 外部副档（非数据库行）仍预留：未来接入时新增 `sidecar_kind` 与路径，不改现有 `db_row` 语义。详情 API `/api/signals/chain/decision/{uid}` 与页面抽屉展示证据链接。
+- 详情 API 只在**单条决策**上按 `db_row` 证据只读展开 legacy `target_decision` / `trend_signal`，返回 `legacy_evidence`（`source=legacy_target_decision`、`chain_native=false`、`verified` 取证据状态）；快照和列表不加载明细，主链保持轻量。证据行缺失时返回 `available=false` 和原因，不伪造信号。
 - 日报链路已按需求删除，方案中的“日报读同一快照”不再适用；窗口表与页面承担展示。
 - P6 影子窗口（11-16 ~ 11-20）与 P7 切读仍未完成，切换条件见 §3/§4。
 
