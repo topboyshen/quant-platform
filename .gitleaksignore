@@ -15,3 +15,7 @@ ce0c9704a8b205c2bf85680bf78bb1412879b8c7:research/astock/test/test_akshare_provi
 research/astock/test/test_akshare_provider.py:aws-access-token:1197
 ce0c9704a8b205c2bf85680bf78bb1412879b8c7:research/astock/test/test_akshare_provider.py:aws-access-token:1202
 research/astock/test/test_akshare_provider.py:aws-access-token:1202
+
+# Embedded runtime-capsule payloads (base64 blobs), not credentials — verified 2026-11-16.
+ops/opt/qd-log-health-periodic-dual-20261014-v1/child_entry.py:generic-api-key:7
+ops/opt/qd-log-health-periodic-dual-20261014-v1/root_entry.py:generic-api-key:9
