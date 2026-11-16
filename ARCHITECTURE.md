@@ -177,8 +177,10 @@ A failed run is retried by the next slot; failures are recorded in
 
 - Backend: `pytest` with an embedded PostgreSQL 16 (`pgserver`); 434 passed,
   1 skipped on 2026-11-16.
-- Dependencies: `app/backend/requirements.lock` (uv-compiled) is the install
-  source for CI and releases.
+- Dependencies: `app/backend/requirements.lock` (test extra) is the CI source;
+  `app/backend/requirements-runtime.lock` is the release source, installed by
+  `app/deploy/bin/qp-release-venv`. The runtime pins are a subset of the test
+  lock (`tests/test_lockfiles.py`).
 - Frontend: Vitest + `vue-tsc` + Vite build; Playwright smoke logs in and walks
   the top-level pages against a real migrated database.
 - Security: ruff `E9/F63/F7/F82` + Gitleaks full-history scan.
@@ -189,5 +191,6 @@ A failed run is retried by the next slot; failures are recorded in
 - `app/deploy/*-RUNBOOK.md` — M4–M15 operations.
 - `app/deploy/CHAIN-SHADOW-RUNBOOK.md` — chain dual-write/read switch.
 - `app/deploy/EVIDENCE-MANIFEST.md` — external model/input/export evidence.
+- `app/deploy/DEPLOY-LOCK.md` — runtime/test locks and release venv install.
 - `app/deploy/DECOMMISSION-ROADMAP.md` — legacy retirement.
 - `archive/README.md` — archive policy.

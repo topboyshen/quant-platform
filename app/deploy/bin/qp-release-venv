@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Build a release venv from the repo-pinned runtime lock.
+#
+#   sudo app/deploy/bin/qp-release-venv /opt/qp/releases/<version>
+#
+# The release bundle carries backend/requirements-runtime.lock.  This script
+# installs exactly those pins, installs the qp package without resolving
+# dependencies again, and copies the runtime lock to the release root so
+# /opt/qp/current/requirements.lock is always the same file CI pins.
+set -Eeuo pipefail
+
+REL=${1:?usage: qp-release-venv /opt/qp/releases/<version>}
+LOCK="$REL/backend/requirements-runtime.lock"
+
+[ -d "$REL/backend" ] || { echo "missing backend: $REL/backend" >&2; exit 1; }
+[ -f "$LOCK" ] || { echo "missing runtime lock: $LOCK" >&2; exit 1; }
+if grep -q '^qp @' "$LOCK"; then
+  echo "runtime lock must not contain an editable qp entry" >&2
+  exit 1
+fi
+
+python3 -m venv "$REL/venv"
+"$REL/venv/bin/pip" install -q --disable-pip-version-check -r "$LOCK"
+"$REL/venv/bin/pip" install -q --disable-pip-version-check --no-deps "$REL/backend"
+install -m 0644 "$LOCK" "$REL/requirements.lock"
+
+"$REL/venv/bin/qp" --help >/dev/null
+echo "VENV_OK $REL"

@@ -16,6 +16,8 @@ def test_architecture_and_roadmap_are_linked():
     assert (root() / "app/deploy/DECOMMISSION-ROADMAP.md").is_file()
     assert (root() / "app/deploy/EVIDENCE-MANIFEST.md").is_file()
     assert (root() / "app/deploy/M9-EXECUTION-CHECKLIST.md").is_file()
+    assert (root() / "app/deploy/DEPLOY-LOCK.md").is_file()
+    assert (root() / "app/deploy/bin/qp-release-venv").is_file()
     assert (root() / "archive/README.md").is_file()
 
 
