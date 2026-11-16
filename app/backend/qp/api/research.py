@@ -28,11 +28,16 @@ def _run(r: BacktestRun) -> dict[str, Any]:
 
 
 @router.get("/etf-score")
-def etf_score(run_id: int | None = Query(None, ge=1), p: Principal = Depends(require_auth),
+def etf_score(run_id: int | None = Query(None, ge=1),
+              horizon: int = Query(20, ge=1, le=250),
+              p: Principal = Depends(require_auth),
               db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Read-only imported ETF research score snapshot; never an order signal."""
+    """Read-only imported ETF research score snapshot; defaults to the 20d model.
+
+    ``?horizon=5`` selects the independent 5d shadow.  Never an order signal.
+    """
     from qp.research import etf_score as etf_score_mod
-    return etf_score_mod.latest(db, run_id=run_id)
+    return etf_score_mod.latest(db, run_id=run_id, horizon=horizon)
 
 
 @router.get("/backtests")
