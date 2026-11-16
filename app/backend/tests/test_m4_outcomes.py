@@ -258,8 +258,33 @@ def test_benchmark_failure_marks_every_decision_failed_without_rows(engine):
                                    decision_date=DAY)
             session.commit()
             assert out["benchmark_ok"] is False and out["failed"] == 1
+            assert out["benchmark_code"] == BENCHMARK
+            assert out["benchmark_error"] == "RuntimeError"
             assert session.scalar(select(DecisionOutcome.id)
                                   .where(DecisionOutcome.decision_id == decision_id)) is None
+    finally:
+        cleanup(engine)
+
+
+def test_benchmark_empty_attempts_are_reported(engine):
+    seed_decision(engine)
+
+    class EmptyBenchmarkFetcher(FakeFetcher):
+        def get(self, code: str):
+            if code == BENCHMARK:
+                return KlineResult(bars=[], source="", attempts=[
+                    {"source": "tencent", "error": "HTTPError"}])
+            return super().get(code)
+
+    try:
+        with Session(engine) as session:
+            out = evaluate_pending(session, as_of=SESSIONS[-1],
+                                   fetcher=EmptyBenchmarkFetcher({CODE: code_bars()}),
+                                   decision_date=DAY)
+            session.commit()
+        assert out["benchmark_ok"] is False
+        assert out["benchmark_attempts"][0]["source"] == "tencent"
+        assert out["benchmark_error"] is None
     finally:
         cleanup(engine)
 

@@ -50,6 +50,16 @@ class FakeFetcher:
         return KlineResult(bars=list(self.bars[code]), source="test")
 
 
+class BenchmarkDownFetcher(FakeFetcher):
+    def get(self, code: str) -> KlineResult:
+        if code == BENCHMARK:
+            return KlineResult(bars=[], source="", attempts=[
+                {"source": "tencent", "rows": 0, "latest_date": None, "error": "HTTPError"},
+                {"source": "sina", "rows": 0, "latest_date": None, "error": "Timeout"},
+            ])
+        return super().get(code)
+
+
 def cleanup(engine) -> None:
     with Session(engine) as session:
         session.execute(delete(ShadowOutcome))
@@ -140,6 +150,24 @@ def test_collect_outcomes_and_idempotent(engine):
         assert sorted(row.horizon_sessions for row in outcomes) == [1, 3, 5, 10, 20]
         assert all(row.fill_status == "filled" for row in outcomes)
         assert all(float(row.net_return) > 0 for row in outcomes)
+    finally:
+        cleanup(engine)
+
+
+def test_collect_benchmark_failure_reports_attempts(engine):
+    cleanup(engine)
+    try:
+        seed(engine)
+        with Session(engine) as session:
+            shadow.record(session, decision_date=DAY)
+            session.commit()
+            out = shadow.collect(session, as_of=SESSIONS[-1], fetcher=BenchmarkDownFetcher())
+            session.commit()
+        assert out["benchmark_ok"] is False
+        assert out["failed"] == 1
+        assert out["benchmark_code"] == BENCHMARK
+        assert out["benchmark_error"] is None
+        assert [attempt["source"] for attempt in out["benchmark_attempts"]] == ["tencent", "sina"]
     finally:
         cleanup(engine)
 

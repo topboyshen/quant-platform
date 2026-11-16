@@ -1,8 +1,9 @@
 [Unit]
-Description=quant-platform shadow sample outcomes at 16:15 CST
+Description=quant-platform shadow sample outcomes at 16:15/16:45 CST
 
 [Timer]
 OnCalendar=Mon..Fri *-*-* 16:15:00 Asia/Shanghai
+OnCalendar=Mon..Fri *-*-* 16:45:00 Asia/Shanghai
 AccuracySec=30s
 Persistent=false
 Unit=qp-job@signals.shadow_outcomes.service
