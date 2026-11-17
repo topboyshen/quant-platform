@@ -148,8 +148,14 @@ def healthcheck(ctx: JobContext) -> dict:
                 body=f"qp healthcheck failed: {failed}",
                 source_job_run_id=ctx.run_id,
             )
+        try:
+            from qp.jobs.alert_rules import evaluate_alerts
+
+            alerts = evaluate_alerts(s, ctx.run_id)
+        except Exception as exc:  # a rule bug must be visible, not break the health probe
+            alerts = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         s.commit()
-    return {"ok": ok, "checks": {c[0]: {"ok": c[1], "value": c[2]} for c in checks}}
+    return {"ok": ok, "checks": {c[0]: {"ok": c[1], "value": c[2]} for c in checks}, "alerts": alerts}
 
 
 @job(
