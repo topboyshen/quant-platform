@@ -199,23 +199,32 @@ def build_combined_report(session: Session, *, today) -> dict:
      schedule_hint="Mon-Fri 17:40 CST (after 17:25 score import)")
 def etf_shadow_report_job(ctx: JobContext) -> dict:
     today = now_cst().date()
+    combined = get_settings().signals_combined_report
     with Session(ctx.engine) as session:
-        payload = build_combined_report(session, today=today)
+        if combined:
+            payload = build_combined_report(session, today=today)
+            dedup_key = f"daily-combined:{today.isoformat()}"
+            subject = f"每日报告 {today.isoformat()}"
+            missing = payload["etf_shadow"]["data_quality"]["missing"]
+        else:
+            payload = build_etf_shadow_report(session, today=today)
+            dedup_key = f"etf-shadow:{today.isoformat()}"
+            subject = f"ETF 研究观察 {today.isoformat()}"
+            missing = payload["data_quality"]["missing"]
         from qp.jobs.builtin import enqueue
         mode = ("live" if get_settings().signals_notify_mode.strip().lower() == "live"
                 else "shadow")
         inserted = enqueue(
             session, channel="telegram",
             recipient="signals" if mode == "live" else "shadow:signals-etf",
-            dedup_key=f"daily-combined:{today.isoformat()}",
-            subject=f"每日报告 {today.isoformat()}",
+            dedup_key=dedup_key,
+            subject=subject,
             body=json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str),
             source_job_run_id=ctx.run_id, mode=mode)
         session.commit()
     return {"ok": True, "enqueued": inserted, "mode": mode,
-            "trade_date": today.isoformat(),
-            "missing": payload["etf_shadow"]["data_quality"]["missing"],
-            "combined": True}
+            "trade_date": today.isoformat(), "missing": missing,
+            "combined": combined}
 
 
 @job("research.import_backtests", "Mirror QuantDinger backtest history into research.* "
