@@ -1,5 +1,6 @@
 """Minimal rate-limited HTTP client (stdlib). Outbound goes through the host mihomo proxy
 (QP_HTTP_PROXY, default http://127.0.0.1:7890) unless a source is direct in the legacy code too."""
+
 from __future__ import annotations
 
 import json
@@ -42,8 +43,16 @@ def _opener(proxy: bool):
     return urllib.request.build_opener(*handlers)
 
 
-def fetch(url: str, *, params: dict | None = None, data: dict | None = None, headers: dict | None = None,
-          proxy: bool = True, timeout: float = 20, max_bytes: int = 8_000_000) -> Resp:
+def fetch(
+    url: str,
+    *,
+    params: dict | None = None,
+    data: dict | None = None,
+    headers: dict | None = None,
+    proxy: bool = True,
+    timeout: float = 20,
+    max_bytes: int = 8_000_000,
+) -> Resp:
     """GET (or POST form when data is given). Enforces a per-host minimum interval (rate limit)."""
     if params:
         url = url + ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
@@ -61,8 +70,13 @@ def fetch(url: str, *, params: dict | None = None, data: dict | None = None, hea
             raw = r.read(max_bytes + 1)
             if len(raw) > max_bytes:
                 raise FetchError("response_too_large")
-            return Resp(r.status, raw, round((time.monotonic() - t0) * 1000, 1), proxy,
-                        {k.lower(): v for k, v in r.headers.items()})
+            return Resp(
+                r.status,
+                raw,
+                round((time.monotonic() - t0) * 1000, 1),
+                proxy,
+                {k.lower(): v for k, v in r.headers.items()},
+            )
     except urllib.error.HTTPError as e:
         raise FetchError(f"http_{e.code}") from None
     except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:

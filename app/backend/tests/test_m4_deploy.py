@@ -1,4 +1,5 @@
 """M4.7 deployment package: timer -> registered job wiring and shadow-only invariants."""
+
 from __future__ import annotations
 
 from pathlib import Path

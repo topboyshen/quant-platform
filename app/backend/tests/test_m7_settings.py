@@ -1,4 +1,5 @@
 """M7.5 settings API: account and platform read view."""
+
 from __future__ import annotations
 
 from sqlalchemy import delete
@@ -17,6 +18,7 @@ def test_settings_by_service_token(engine, client):
     import uuid
 
     from qp.auth.sessions import create_service_token
+
     cleanup(engine)
     try:
         with Session(engine) as s:
@@ -37,11 +39,19 @@ def test_settings_by_service_token(engine, client):
 
 def test_settings_by_user_session(engine, client):
     from qp.auth.passwords import hash_password
+
     cleanup(engine)
     try:
         with Session(engine) as s:
-            s.add(User(username="m7", password_hash=hash_password("pw123456"), hash_scheme="argon2",
-                       role="admin", is_active=True))
+            s.add(
+                User(
+                    username="m7",
+                    password_hash=hash_password("pw123456"),
+                    hash_scheme="argon2",
+                    role="admin",
+                    is_active=True,
+                )
+            )
             s.commit()
         login = client.post("/api/auth/login", json={"username": "m7", "password": "pw123456"})
         assert login.status_code == 200

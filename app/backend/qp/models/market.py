@@ -2,6 +2,7 @@
 market summaries, data-source status, CNINFO counts, legacy-import reconciliation, compare and health
 results. Rows carry ``origin``: 'qp' (fetched/computed by the new platform), 'legacy' (read-only
 import of legacy outputs) or 'qlib' (read-only catalog of the legacy Qlib directory)."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -95,6 +96,7 @@ class MarketSummary(Base):
 
 class LegacySnapshot(Base):
     """Index of legacy research-data snapshot.db rows (metadata + sha256 only, never payload)."""
+
     __tablename__ = "legacy_snapshot"
     __table_args__ = S
     date: Mapped[dt.date] = mapped_column(Date, primary_key=True)

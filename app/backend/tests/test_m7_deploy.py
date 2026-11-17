@@ -1,4 +1,5 @@
 """M7.6 frontend package: router coverage, shared state usage, runbook."""
+
 from __future__ import annotations
 
 import os
@@ -37,10 +38,12 @@ def test_runbook_documents_build_release_and_rollback():
     assert "node_modules" in text and "sourcemap" in text
     assert "/next/settings" in text
 
+
 def test_layout_collapses_navigation_on_narrow_screens():
     text = (FRONTEND / "src" / "views" / "Layout.vue").read_text(encoding="utf-8")
     assert "menu-toggle" in text and "@media (max-width: 860px)" in text
     assert "n-drawer" in text.lower() and "navOpen" in text
+
 
 def test_mobile_styles_keep_tables_scrollable():
     css = (FRONTEND / "src" / "styles.css").read_text(encoding="utf-8")
@@ -51,6 +54,7 @@ def test_mobile_styles_keep_tables_scrollable():
     assert ".n-drawer" in css and "max-width: 100vw" in css
     main = (FRONTEND / "src" / "main.ts").read_text(encoding="utf-8")
     assert "styles.css" in main
+
 
 def test_restore_drill_is_guarded_and_self_verifying():
     path = DEPLOY / "bin" / "qp-restore-drill"

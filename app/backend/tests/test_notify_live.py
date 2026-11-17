@@ -1,4 +1,5 @@
 """M4 live delivery: per-row shadow/live semantics, Telegram sender, kill switch and timer."""
+
 from __future__ import annotations
 
 import json
@@ -50,35 +51,38 @@ def _live_env(monkeypatch, tmp_path: Path) -> tuple[Path, Path]:
 
 
 def _row(key: str, *, mode: str, body: str = "hello", subject: str | None = "测试") -> Outbox:
-    return Outbox(channel="telegram", recipient="signals", dedup_key=key, subject=subject,
-                  body=body, mode=mode, status="pending")
+    return Outbox(
+        channel="telegram", recipient="signals", dedup_key=key, subject=subject, body=body, mode=mode, status="pending"
+    )
 
 
 def _daily_payload() -> str:
-    return json.dumps({
-        "schema_version": 2,
-        "report_type": "eod_daily_report",
-        "trade_date": "2026-11-13",
-        "terminal_ok": True,
-        "terminal_reason": "",
-        "counts": {"targets": 40, "evaluated": 40, "failed": 0, "signals": 0},
-        "today_trend_signals": 0,
-        "reading": {
-            "market_data": "标的行情：40/40 合格",
-            "macro": "宏观数据：完整",
-            "signals": "信号：无触发",
-            "research_eligibility": "研究资格：批次成功",
+    return json.dumps(
+        {
+            "schema_version": 2,
+            "report_type": "eod_daily_report",
+            "trade_date": "2026-11-13",
+            "terminal_ok": True,
+            "terminal_reason": "",
+            "counts": {"targets": 40, "evaluated": 40, "failed": 0, "signals": 0},
+            "today_trend_signals": 0,
+            "reading": {
+                "market_data": "标的行情：40/40 合格",
+                "macro": "宏观数据：完整",
+                "signals": "信号：无触发",
+                "research_eligibility": "研究资格：批次成功",
+            },
+            "conclusion": "暂无可评价样本；描述性结果，不支持推荐。",
         },
-        "conclusion": "暂无可评价样本；描述性结果，不支持推荐。",
-    }, ensure_ascii=False)
+        ensure_ascii=False,
+    )
 
 
 def test_enqueue_defaults_to_shadow_and_live_is_explicit(engine, monkeypatch, clean_outbox):
     monkeypatch.setenv("QP_NOTIFY_MODE", "shadow")
     with Session(engine) as s:
         assert enqueue(s, channel="telegram", recipient="ops", dedup_key="m4live:enq:1", body="x")
-        assert enqueue(s, channel="telegram", recipient="signals", dedup_key="m4live:enq:2",
-                       body="x", mode="live")
+        assert enqueue(s, channel="telegram", recipient="signals", dedup_key="m4live:enq:2", body="x", mode="live")
         s.commit()
         rows = {r.dedup_key: r for r in s.scalars(select(Outbox)).all()}
     assert rows["m4live:enq:1"].mode == "shadow"
@@ -87,11 +91,9 @@ def test_enqueue_defaults_to_shadow_and_live_is_explicit(engine, monkeypatch, cl
 
 def test_live_row_is_sent_and_receipt_recorded(engine, monkeypatch, tmp_path, clean_outbox):
     _live_env(monkeypatch, tmp_path)
-    monkeypatch.setattr(TelegramSender, "send",
-                        lambda self, text: SendResult(message_id=777, latency_ms=12))
+    monkeypatch.setattr(TelegramSender, "send", lambda self, text: SendResult(message_id=777, latency_ms=12))
     with Session(engine) as s:
-        s.add(_row("m4live:send:1", mode="live", body=_daily_payload(),
-                   subject="EOD 日报 2026-11-13"))
+        s.add(_row("m4live:send:1", mode="live", body=_daily_payload(), subject="EOD 日报 2026-11-13"))
         s.commit()
     run = run_job(engine, "notify.send", trigger="test")
     assert run.status == "succeeded"
@@ -198,8 +200,14 @@ def test_transient_error_retries_then_fails_at_max_attempts(engine, monkeypatch,
 
 
 def test_render_daily_report_is_human_readable():
-    row = Outbox(channel="telegram", recipient="signals", dedup_key="render:1",
-                 subject="EOD 日报 2026-11-13", body=_daily_payload(), mode="live")
+    row = Outbox(
+        channel="telegram",
+        recipient="signals",
+        dedup_key="render:1",
+        subject="EOD 日报 2026-11-13",
+        body=_daily_payload(),
+        mode="live",
+    )
     text = render_outbox(row)
     assert "EOD 日报 2026-11-13" in text
     assert "终态：正常" in text
@@ -211,9 +219,11 @@ def test_render_daily_report_is_human_readable():
 def test_watchdog_enqueue_uses_signals_live_mode(engine, monkeypatch, clean_outbox):
     monkeypatch.setenv("QP_SIGNALS_NOTIFY_MODE", "live")
     from qp.signals.watchdog import _enqueue
+
     with Session(engine) as s:
-        out = _enqueue(s, trade_date=date(2026, 11, 13), kind="daily", subject="EOD 日报",
-                       payload={"a": 1}, source_job_run_id=None)
+        out = _enqueue(
+            s, trade_date=date(2026, 11, 13), kind="daily", subject="EOD 日报", payload={"a": 1}, source_job_run_id=None
+        )
         s.commit()
         row = s.scalar(select(Outbox).where(Outbox.dedup_key == "watchdog:2026-11-13:daily"))
     assert out["mode"] == "live" and out["enqueued"] is True
@@ -229,6 +239,12 @@ def test_notify_timer_targets_registered_job_and_never_backfills():
 
 def test_live_runbook_documents_switch_and_emergency_stop():
     text = (DEPLOY / "M4-LIVE-RUNBOOK.md").read_text(encoding="utf-8")
-    for token in ("QP_SIGNALS_NOTIFY_MODE", "QP_NOTIFY_KILL_SWITCH", "telegram_bot_token",
-                  "delivery_attempt", "回滚", "不补发"):
+    for token in (
+        "QP_SIGNALS_NOTIFY_MODE",
+        "QP_NOTIFY_KILL_SWITCH",
+        "telegram_bot_token",
+        "delivery_attempt",
+        "回滚",
+        "不补发",
+    ):
         assert token in text

@@ -5,6 +5,7 @@ Both importers are read-only on the source side and only write the qp
 rows are upserted by their natural primary key so a re-run never duplicates
 and upstream status transitions are mirrored.
 """
+
 from __future__ import annotations
 
 import json
@@ -92,24 +93,27 @@ PHASE2_SPECS: tuple[TableSpec, ...] = (
 )
 
 QD_SPECS: tuple[TableSpec, ...] = (
-    TableSpec(BacktestRun, "run_id", "qd_backtest_runs",
-              json_columns=("strategy_config", "config_snapshot", "result_json"),
-              column_map=(("id", "run_id"),)),
+    TableSpec(
+        BacktestRun,
+        "run_id",
+        "qd_backtest_runs",
+        json_columns=("strategy_config", "config_snapshot", "result_json"),
+        column_map=(("id", "run_id"),),
+    ),
     TableSpec(BacktestEquity, ("run_id", "point_index"), "qd_backtest_equity_points"),
-    TableSpec(BacktestTrade, ("run_id", "trade_index"), "qd_backtest_trades",
-              json_columns=("payload_json",)),
-    TableSpec(BacktestOrder, ("run_id", "order_seq"), "qd_backtest_orders",
-              json_columns=("payload_json",)),
-    TableSpec(BacktestFill, ("run_id", "fill_seq"), "qd_backtest_fills",
-              json_columns=("payload_json",)),
-    TableSpec(BacktestAccountPoint, ("run_id", "point_seq"), "qd_backtest_account_points",
-              json_columns=("payload_json",)),
+    TableSpec(BacktestTrade, ("run_id", "trade_index"), "qd_backtest_trades", json_columns=("payload_json",)),
+    TableSpec(BacktestOrder, ("run_id", "order_seq"), "qd_backtest_orders", json_columns=("payload_json",)),
+    TableSpec(BacktestFill, ("run_id", "fill_seq"), "qd_backtest_fills", json_columns=("payload_json",)),
+    TableSpec(
+        BacktestAccountPoint, ("run_id", "point_seq"), "qd_backtest_account_points", json_columns=("payload_json",)
+    ),
 )
 
 AI_SPECS: tuple[TableSpec, ...] = (
     TableSpec(AiTask, "id", "qd_analysis_tasks", json_columns=("result_json",)),
-    TableSpec(AiMemory, "id", "qd_analysis_memory",
-              json_columns=("reasons", "scores", "indicators_snapshot", "raw_result")),
+    TableSpec(
+        AiMemory, "id", "qd_analysis_memory", json_columns=("reasons", "scores", "indicators_snapshot", "raw_result")
+    ),
     TableSpec(AiSession, "id", "ai_chat_sessions"),
     TableSpec(AiMessage, "id", "ai_chat_messages"),
 )
@@ -118,18 +122,20 @@ PROJECT_SPECS: tuple[TableSpec, ...] = (
     TableSpec(Project, "id", "qd_research_projects", json_columns=("subject",)),
     TableSpec(Branch, "id", "qd_research_branches"),
     TableSpec(Admission, "id", "qd_research_admission"),
-    TableSpec(AdmissionAudit, "id", "qd_research_admission_audit",
-              json_columns=("before", "after")),
+    TableSpec(AdmissionAudit, "id", "qd_research_admission_audit", json_columns=("before", "after")),
     TableSpec(Draft, "id", "qd_research_drafts", json_columns=("payload",)),
 )
 
 PROFIT_SPECS: tuple[TableSpec, ...] = (
-    TableSpec(ProfitRun, "id", "qd_profit_research_runs",
-              json_columns=("backtest_json", "paper_json")),
+    TableSpec(ProfitRun, "id", "qd_profit_research_runs", json_columns=("backtest_json", "paper_json")),
     TableSpec(ProfitPick, "id", "qd_profit_picks"),
     TableSpec(ProfitObservation, "id", "qd_profit_pick_observations"),
-    TableSpec(ProfitRunAttempt, "execution_id", "qd_profit_research_run_attempts",
-              json_columns=("run_document", "result_document", "previous_projection")),
+    TableSpec(
+        ProfitRunAttempt,
+        "execution_id",
+        "qd_profit_research_run_attempts",
+        json_columns=("run_document", "result_document", "previous_projection"),
+    ),
 )
 
 
@@ -167,15 +173,13 @@ def upsert_rows(session: Session, spec: TableSpec, rows: Iterable[dict[str, Any]
     values = list(prepared.values())
     # Keep statements bounded: a 50k-row equity mirror must not build one giant INSERT.
     for start in range(0, len(values), 1000):
-        stmt = pg_insert(table).values(values[start:start + 1000])
-        update_cols = {c.name: stmt.excluded[c.name]
-                       for c in table.columns if c.name not in pks}
+        stmt = pg_insert(table).values(values[start : start + 1000])
+        update_cols = {c.name: stmt.excluded[c.name] for c in table.columns if c.name not in pks}
         session.execute(stmt.on_conflict_do_update(index_elements=list(pks), set_=update_cols))
     return len(values)
 
 
-def _run_import(engine: Engine, source: str, specs: tuple[TableSpec, ...],
-                reader: Any) -> dict[str, int]:
+def _run_import(engine: Engine, source: str, specs: tuple[TableSpec, ...], reader: Any) -> dict[str, int]:
     counts: dict[str, int] = {}
     with Session(engine) as session:
         run = ImportRun(source=source, status="running", counts={})
@@ -212,39 +216,34 @@ def import_phase2(engine: Engine, reader: Any, *, specs: tuple[TableSpec, ...] =
     return _run_import(engine, "phase2", specs, reader)
 
 
-def import_backtests(engine: Engine, reader: Any, *,
-                     specs: tuple[TableSpec, ...] = QD_SPECS) -> dict[str, int]:
+def import_backtests(engine: Engine, reader: Any, *, specs: tuple[TableSpec, ...] = QD_SPECS) -> dict[str, int]:
     return _run_import(engine, "quantdinger", specs, reader)
 
 
-def import_ai(engine: Engine, reader: Any, *,
-              specs: tuple[TableSpec, ...] = AI_SPECS) -> dict[str, int]:
+def import_ai(engine: Engine, reader: Any, *, specs: tuple[TableSpec, ...] = AI_SPECS) -> dict[str, int]:
     return _run_import(engine, "quantdinger_ai", specs, reader)
 
 
-def import_profit(engine: Engine, reader: Any, *,
-                  specs: tuple[TableSpec, ...] = PROFIT_SPECS) -> dict[str, int]:
+def import_profit(engine: Engine, reader: Any, *, specs: tuple[TableSpec, ...] = PROFIT_SPECS) -> dict[str, int]:
     return _run_import(engine, "quantdinger_profit", specs, reader)
 
 
-def import_projects(engine: Engine, reader: Any, *,
-                    specs: tuple[TableSpec, ...] = PROJECT_SPECS) -> dict[str, int]:
+def import_projects(engine: Engine, reader: Any, *, specs: tuple[TableSpec, ...] = PROJECT_SPECS) -> dict[str, int]:
     return _run_import(engine, "quantdinger_projects", specs, reader)
 
 
 def latest_import_run(session: Session, source: str) -> ImportRun | None:
-    return session.scalar(select(ImportRun).where(ImportRun.source == source)
-                          .order_by(ImportRun.id.desc()).limit(1))
+    return session.scalar(select(ImportRun).where(ImportRun.source == source).order_by(ImportRun.id.desc()).limit(1))
 
 
-def compare_counts(engine: Engine, reader: Any, specs: tuple[TableSpec, ...],
-                   source_schema: str) -> list[dict[str, Any]]:
+def compare_counts(
+    engine: Engine, reader: Any, specs: tuple[TableSpec, ...], source_schema: str
+) -> list[dict[str, Any]]:
     """Read-only row-count comparison: source table vs qp mirror."""
     out: list[dict[str, Any]] = []
     with Session(engine) as session:
         for spec in specs:
             source_n = len(reader.fetch(spec.source_table))
             qp_n = session.scalar(select(func.count()).select_from(spec.model.__table__)) or 0
-            out.append({"table": spec.model.__tablename__, "source": source_n, "qp": qp_n,
-                        "match": source_n == qp_n})
+            out.append({"table": spec.model.__tablename__, "source": source_n, "qp": qp_n, "match": source_n == qp_n})
     return out

@@ -4,6 +4,7 @@ Nothing is sent.  ``notify.outbox`` keeps the cross-module view, while
 ``reports.report_delivery`` keeps the report-specific send result.  A recipient
 receipt is recorded separately by :mod:`qp.reports.receipts`.
 """
+
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -28,20 +29,26 @@ def _body(report: Report) -> str:
     return f"{report.kind} {report.business_date.isoformat()} v{report.version}"
 
 
-def shadow_deliver(session: Session, report: Report, *, channel: str = "telegram",
-                   target: str = "ops") -> tuple[ReportDelivery, Outbox | None]:
+def shadow_deliver(
+    session: Session, report: Report, *, channel: str = "telegram", target: str = "ops"
+) -> tuple[ReportDelivery, Outbox | None]:
     """Create/refresh the shadow delivery for one report; idempotent."""
     delivery = record_delivery(session, report, channel=channel, target=target, mode="shadow")
     outbox = None
     if delivery.status == "pending":
-        mark_delivery(session, delivery, status="shadowed",
-                      send_result={"note": SHADOW_NOTE})
+        mark_delivery(session, delivery, status="shadowed", send_result={"note": SHADOW_NOTE})
         key = _outbox_dedup_key(report)
         outbox = session.scalar(select(Outbox).where(Outbox.dedup_key == key))
         if outbox is None:
-            outbox = Outbox(channel=channel, recipient=target, dedup_key=key,
-                            subject=f"{report.kind} {report.business_date.isoformat()}",
-                            body=_body(report), mode="shadow", status="pending")
+            outbox = Outbox(
+                channel=channel,
+                recipient=target,
+                dedup_key=key,
+                subject=f"{report.kind} {report.business_date.isoformat()}",
+                body=_body(report),
+                mode="shadow",
+                status="pending",
+            )
             session.add(outbox)
             session.flush()
     return delivery, outbox

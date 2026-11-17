@@ -1,4 +1,5 @@
 """M13 rule shadow: v2 signal generation, cooldown, outcomes and API."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -55,8 +56,9 @@ def cleanup(engine) -> None:
         session.execute(delete(RuleShadowOutcome))
         session.execute(delete(RuleShadowSignal))
         session.execute(delete(TargetDecision).where(TargetDecision.decision_date == DAY))
-        session.execute(delete(TradingDay).where(TradingDay.origin == "qp",
-                                                  TradingDay.date.in_([DAY, *BEFORE, *AFTER])))
+        session.execute(
+            delete(TradingDay).where(TradingDay.origin == "qp", TradingDay.date.in_([DAY, *BEFORE, *AFTER]))
+        )
         session.commit()
 
 
@@ -73,8 +75,10 @@ def target() -> Target:
 
 def test_tables_exist(engine):
     with engine.connect() as c:
-        names = {row[0] for row in c.execute(text(
-            "select table_name from information_schema.tables where table_schema='signals'"))}
+        names = {
+            row[0]
+            for row in c.execute(text("select table_name from information_schema.tables where table_schema='signals'"))
+        }
     assert {"rule_shadow_signal", "rule_shadow_outcome"} <= names
 
 
@@ -83,22 +87,21 @@ def test_generate_records_only_two_x_volume(engine):
     try:
         calendar(engine, [DAY])
         with Session(engine) as session:
-            quiet = rule_shadow.generate(session, day=DAY,
-                                         fetcher=FakeFetcher({CODE: cross_bars(1600.0)}),
-                                         targets=[target()])
+            quiet = rule_shadow.generate(
+                session, day=DAY, fetcher=FakeFetcher({CODE: cross_bars(1600.0)}), targets=[target()]
+            )
             session.commit()
         assert quiet["inserted"] == 0
         with Session(engine) as session:
-            out = rule_shadow.generate(session, day=DAY,
-                                       fetcher=FakeFetcher({CODE: cross_bars(3000.0)}),
-                                       targets=[target()])
+            out = rule_shadow.generate(
+                session, day=DAY, fetcher=FakeFetcher({CODE: cross_bars(3000.0)}), targets=[target()]
+            )
             session.commit()
             rows = list(session.scalars(select(RuleShadowSignal)))
         assert out["inserted"] == 1
         assert len(rows) == 1
         row = rows[0]
-        assert (row.code, row.rule_version, row.signal_type) == (
-            CODE, rule_shadow.V2_RULE, rule_shadow.V2_SIGNAL_TYPE)
+        assert (row.code, row.rule_version, row.signal_type) == (CODE, rule_shadow.V2_RULE, rule_shadow.V2_SIGNAL_TYPE)
         assert float(row.reference_close) == 11.0
         assert float(row.volume_ratio) > 2.0
     finally:
@@ -127,14 +130,19 @@ def test_cooldown_counts_trading_sessions(engine):
         later = business_days(DAY + dt.timedelta(days=1), 6)
         calendar(engine, [DAY, *later])
         with Session(engine) as session:
-            session.add(RuleShadowSignal(
-                rule_version=rule_shadow.V2_RULE, signal_type=rule_shadow.V2_SIGNAL_TYPE,
-                decision_date=DAY, code=CODE, name="x", sector="宽基"))
+            session.add(
+                RuleShadowSignal(
+                    rule_version=rule_shadow.V2_RULE,
+                    signal_type=rule_shadow.V2_SIGNAL_TYPE,
+                    decision_date=DAY,
+                    code=CODE,
+                    name="x",
+                    sector="宽基",
+                )
+            )
             session.commit()
-            assert rule_shadow._cooldown_ok(session, rule_version=rule_shadow.V2_RULE,
-                                            code=CODE, day=later[0]) is False
-            assert rule_shadow._cooldown_ok(session, rule_version=rule_shadow.V2_RULE,
-                                            code=CODE, day=later[4]) is True
+            assert rule_shadow._cooldown_ok(session, rule_version=rule_shadow.V2_RULE, code=CODE, day=later[0]) is False
+            assert rule_shadow._cooldown_ok(session, rule_version=rule_shadow.V2_RULE, code=CODE, day=later[4]) is True
     finally:
         cleanup(engine)
 
@@ -144,9 +152,11 @@ def test_collect_outcomes_and_idempotent(engine):
     try:
         calendar(engine, [DAY, *AFTER])
         code_bars = cross_bars(3000.0) + flat_bars(AFTER, close=11.0, volume=1000.0)
-        bench_bars = flat_bars(BEFORE) + [
-            DailyBar(DAY, open=10.0, high=10.2, low=10.0, close=10.1, volume=1000.0)] + \
-            flat_bars(AFTER, close=10.2, volume=1000.0)
+        bench_bars = (
+            flat_bars(BEFORE)
+            + [DailyBar(DAY, open=10.0, high=10.2, low=10.0, close=10.1, volume=1000.0)]
+            + flat_bars(AFTER, close=10.2, volume=1000.0)
+        )
         fetcher = FakeFetcher({CODE: code_bars, BENCHMARK: bench_bars})
         with Session(engine) as session:
             rule_shadow.generate(session, day=DAY, fetcher=fetcher, targets=[target()])
@@ -167,23 +177,24 @@ def test_api_returns_rule_samples(engine):
 
     from qp.api.main import app
     from qp.auth.sessions import create_service_token
+
     cleanup(engine)
     try:
         calendar(engine, [DAY, *AFTER])
         code_bars = cross_bars(3000.0) + flat_bars(AFTER, close=11.0, volume=1000.0)
-        bench_bars = flat_bars(BEFORE) + [
-            DailyBar(DAY, open=10.0, high=10.2, low=10.0, close=10.1, volume=1000.0)] + \
-            flat_bars(AFTER, close=10.2, volume=1000.0)
+        bench_bars = (
+            flat_bars(BEFORE)
+            + [DailyBar(DAY, open=10.0, high=10.2, low=10.0, close=10.1, volume=1000.0)]
+            + flat_bars(AFTER, close=10.2, volume=1000.0)
+        )
         fetcher = FakeFetcher({CODE: code_bars, BENCHMARK: bench_bars})
         with Session(engine) as session:
             rule_shadow.generate(session, day=DAY, fetcher=fetcher, targets=[target()])
             rule_shadow.collect(session, as_of=AFTER[-1], fetcher=fetcher)
-            token = create_service_token(session, f"m13-rule-{dt.datetime.now().timestamp()}",
-                                         ["signals:read"])
+            token = create_service_token(session, f"m13-rule-{dt.datetime.now().timestamp()}", ["signals:read"])
             session.commit()
         client = TestClient(app, base_url="https://testserver")
-        response = client.get("/api/signals/rule-shadow",
-                              headers={"authorization": f"Bearer {token}"})
+        response = client.get("/api/signals/rule-shadow", headers={"authorization": f"Bearer {token}"})
         assert response.status_code == 200
         body = response.json()
         assert body["total"] == 1 and body["summary"]["outcomes"] == 5

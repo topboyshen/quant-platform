@@ -1,4 +1,5 @@
 """Top-level documentation guard: the map and the retirement plan stay linked."""
+
 from __future__ import annotations
 
 from pathlib import Path

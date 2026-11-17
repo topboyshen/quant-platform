@@ -1,4 +1,5 @@
 """M8.5 deployment package: timer wiring, runbook and env keys."""
+
 from __future__ import annotations
 
 from pathlib import Path

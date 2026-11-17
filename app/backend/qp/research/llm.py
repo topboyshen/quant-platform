@@ -7,6 +7,7 @@ audit trail without spending tokens.
 
 The user decision for M5 is: shadow period replays only, no real Kimi calls.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -86,29 +87,59 @@ def complete(session: Session, req: LLMRequest, *, shadow: bool | None = None) -
 
     if not shadow:
         err = LLMLiveDisabledError("live LLM calls are not implemented in M5; replay only")
-        session.add(LlmCall(request_sha256=digest, provider=req.provider, model=req.model,
-                            mode="live", shadow=False, status="refused", error=str(err)))
+        session.add(
+            LlmCall(
+                request_sha256=digest,
+                provider=req.provider,
+                model=req.model,
+                mode="live",
+                shadow=False,
+                status="refused",
+                error=str(err),
+            )
+        )
         session.flush()
         raise err
 
     task_id = req.metadata.get("replay_task_id")
     task = session.get(AiTask, task_id) if task_id is not None else None
     if task is None or not task.result_json:
-        err = LLMShadowError(
-            "shadow replay requires metadata.replay_task_id of an imported ai_task "
-            "with result_json")
-        session.add(LlmCall(request_sha256=digest, provider=req.provider, model=req.model,
-                            mode="replay", shadow=True, status="missing_replay", error=str(err)))
+        err = LLMShadowError("shadow replay requires metadata.replay_task_id of an imported ai_task with result_json")
+        session.add(
+            LlmCall(
+                request_sha256=digest,
+                provider=req.provider,
+                model=req.model,
+                mode="replay",
+                shadow=True,
+                status="missing_replay",
+                error=str(err),
+            )
+        )
         session.flush()
         raise err
 
     text = json.dumps(task.result_json, ensure_ascii=False, sort_keys=True)
-    response = LLMResponse(text=text, provider=task.model or req.provider,
-                           model=task.model or req.model, mode="replay", status="replayed",
-                           request_sha256=digest)
-    session.add(LlmCall(request_sha256=digest, provider=response.provider,
-                        model=response.model, mode="replay", shadow=True, status="replayed",
-                        response_sha256=_sha256(text), usage={},
-                        latency_ms=int((time.monotonic() - started) * 1000)))
+    response = LLMResponse(
+        text=text,
+        provider=task.model or req.provider,
+        model=task.model or req.model,
+        mode="replay",
+        status="replayed",
+        request_sha256=digest,
+    )
+    session.add(
+        LlmCall(
+            request_sha256=digest,
+            provider=response.provider,
+            model=response.model,
+            mode="replay",
+            shadow=True,
+            status="replayed",
+            response_sha256=_sha256(text),
+            usage={},
+            latency_ms=int((time.monotonic() - started) * 1000),
+        )
+    )
     session.flush()
     return response

@@ -4,6 +4,7 @@
 next to ``current``.  In a source checkout or test process they are absent, so the
 package version is the fallback.
 """
+
 from __future__ import annotations
 
 import os

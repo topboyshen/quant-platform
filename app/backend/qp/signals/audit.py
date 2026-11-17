@@ -1,4 +1,5 @@
 """Run-level audit: mirrors the legacy ``_audit_result`` bounded, conservative outcome."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -37,16 +38,15 @@ def audit_result(result: dict[str, Any]) -> dict[str, Any]:
     allowed_count = decision_count - blocked_count
 
     raw_reason_codes = result.get("audit_reason_codes", [])
-    reason_codes = [
-        str(value)[:64]
-        for value in raw_reason_codes
-        if isinstance(value, str) and value
-    ] if isinstance(raw_reason_codes, list) else []
+    reason_codes = (
+        [str(value)[:64] for value in raw_reason_codes if isinstance(value, str) and value]
+        if isinstance(raw_reason_codes, list)
+        else []
+    )
 
     collect_status = result.get("collect_status", {})
     if isinstance(collect_status, dict) and any(
-        isinstance(item, dict)
-        and (item.get("available") is not True or item.get("stale") or item.get("anomalous"))
+        isinstance(item, dict) and (item.get("available") is not True or item.get("stale") or item.get("anomalous"))
         for item in collect_status.values()
     ):
         reason_codes.append("macro_data_partial")

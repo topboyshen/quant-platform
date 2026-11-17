@@ -1,4 +1,5 @@
 """Legacy swing history import: read-only, idempotent, never touches today's run."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -34,18 +35,69 @@ def make_db(tmp_path: Path) -> Path:
       notified_at TEXT, created_at TEXT);
     """)
     for i, day in enumerate((D1, D2, TODAY), start=1):
-        con.execute("INSERT INTO swing_eod_run VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (i, f"run-{day}", day, day, "success", f"{day}T15:30:00+08:00",
-                     f"{day}T15:31:00+08:00", 40, 40, 0, 1, 1, 0, "emitted", "[]", "{}",
-                     f"{day}T15:31:00+08:00"))
-        con.execute("INSERT INTO eod_target_decision VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (f"dec-{day}", f"run-{day}", "snap", day, f"{day}T15:30:30+08:00", day,
-                     "510300", "沪深300ETF", "宽基", "ok", "allowed", 1, "[]", "allowed",
-                     "growth_ok", "trigger", 4.12, "", f"{day}T15:30:30+08:00"))
-        con.execute("INSERT INTO trend_signal VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (i, day, "510300", "沪深300ETF", "volume_breakout_ma60", "D", day,
-                     "放量突破", '{"close": 4.12}', 0.55, f"{day}T15:30:30+08:00",
-                     f"{day}T15:30:30+08:00"))
+        con.execute(
+            "INSERT INTO swing_eod_run VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                i,
+                f"run-{day}",
+                day,
+                day,
+                "success",
+                f"{day}T15:30:00+08:00",
+                f"{day}T15:31:00+08:00",
+                40,
+                40,
+                0,
+                1,
+                1,
+                0,
+                "emitted",
+                "[]",
+                "{}",
+                f"{day}T15:31:00+08:00",
+            ),
+        )
+        con.execute(
+            "INSERT INTO eod_target_decision VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                f"dec-{day}",
+                f"run-{day}",
+                "snap",
+                day,
+                f"{day}T15:30:30+08:00",
+                day,
+                "510300",
+                "沪深300ETF",
+                "宽基",
+                "ok",
+                "allowed",
+                1,
+                "[]",
+                "allowed",
+                "growth_ok",
+                "trigger",
+                4.12,
+                "",
+                f"{day}T15:30:30+08:00",
+            ),
+        )
+        con.execute(
+            "INSERT INTO trend_signal VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                i,
+                day,
+                "510300",
+                "沪深300ETF",
+                "volume_breakout_ma60",
+                "D",
+                day,
+                "放量突破",
+                '{"close": 4.12}',
+                0.55,
+                f"{day}T15:30:30+08:00",
+                f"{day}T15:30:30+08:00",
+            ),
+        )
     con.commit()
     con.close()
     return path

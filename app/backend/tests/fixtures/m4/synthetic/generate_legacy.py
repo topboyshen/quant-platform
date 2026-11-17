@@ -12,6 +12,7 @@ never hand-written: the risk-gate matrix comes from
 ``radar_swing_eod._apply_eod_risk_gate`` and the volume-breakout case from
 ``radar.swing.trend_strategy.TrendConfirmStrategy`` in the legacy runtime.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -56,14 +57,17 @@ def risk_gate_matrix() -> dict:
     cases = []
     for entry in levels:
         allowed, blocked = radar_swing_eod._apply_eod_risk_gate(
-            list(signals), targets, entry["risk_state"], logging.getLogger("fixture"))
-        cases.append({
-            **entry,
-            "expected": {
-                "allowed": [signal.code for signal in allowed],
-                "blocked": [signal.code for signal in blocked],
-            },
-        })
+            list(signals), targets, entry["risk_state"], logging.getLogger("fixture")
+        )
+        cases.append(
+            {
+                **entry,
+                "expected": {
+                    "allowed": [signal.code for signal in allowed],
+                    "blocked": [signal.code for signal in blocked],
+                },
+            }
+        )
     return {"targets": targets, "cases": cases}
 
 
@@ -88,13 +92,13 @@ def volume_breakout_case() -> dict:
             close, volume = 99.0, 1000.0
         elif offset == 79:
             close, volume = 101.0, 3000.0
-        bars.append({"date": day.isoformat(), "open": close, "high": close,
-                     "low": close, "close": close, "volume": volume})
+        bars.append(
+            {"date": day.isoformat(), "open": close, "high": close, "low": close, "close": close, "volume": volume}
+        )
     frame = pd.DataFrame(bars)
     frame["date"] = pd.to_datetime(frame["date"])
     frame.attrs["source"] = "synthetic-fixture"
-    strategy = TrendConfirmStrategy(_BarsFetcher(frame), logging.getLogger("fixture"),
-                                    daily_breakout_enabled=True)
+    strategy = TrendConfirmStrategy(_BarsFetcher(frame), logging.getLogger("fixture"), daily_breakout_enabled=True)
     signals = strategy.evaluate("510300", "沪深300ETF")
     return {
         "code": "510300",
@@ -123,8 +127,7 @@ def main() -> None:
         "generator": "tests/fixtures/m4/synthetic/generate_legacy.py",
         "legacy_source": {
             "radar_swing_eod.py": _sha256(radar_swing_eod.__file__),
-            "radar/swing/trend_strategy.py": _sha256(
-                sys.modules["radar.swing.trend_strategy"].__file__),
+            "radar/swing/trend_strategy.py": _sha256(sys.modules["radar.swing.trend_strategy"].__file__),
         },
         "risk_gate": risk_gate_matrix(),
         "volume_breakout": volume_breakout_case(),

@@ -1,4 +1,5 @@
 """M4.4 outcome collection: legacy execution model, unfilled states and idempotency."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -35,15 +36,22 @@ def business_days(start: dt.date, count: int) -> list[dt.date]:
 SESSIONS = business_days(DAY + dt.timedelta(days=1), 20)  # entry + 20 horizon sessions
 
 
-def bar(day: dt.date, *, open_: float, close: float, high: float | None = None,
-        low: float | None = None) -> DailyBar:
-    return DailyBar(day, open=open_, high=high if high is not None else max(open_, close),
-                    low=low if low is not None else min(open_, close), close=close, volume=1000.0)
+def bar(day: dt.date, *, open_: float, close: float, high: float | None = None, low: float | None = None) -> DailyBar:
+    return DailyBar(
+        day,
+        open=open_,
+        high=high if high is not None else max(open_, close),
+        low=low if low is not None else min(open_, close),
+        close=close,
+        volume=1000.0,
+    )
 
 
 def benchmark_bars() -> list[DailyBar]:
-    return [bar(day, open_=100.0, close=100.0 + index * 0.5, high=102.0, low=99.0)
-            for index, day in enumerate(SESSIONS, start=1)]
+    return [
+        bar(day, open_=100.0, close=100.0 + index * 0.5, high=102.0, low=99.0)
+        for index, day in enumerate(SESSIONS, start=1)
+    ]
 
 
 def code_bars() -> list[DailyBar]:
@@ -53,15 +61,17 @@ def code_bars() -> list[DailyBar]:
     bars.append(bar(SESSIONS[2], open_=10.5, close=10.7, high=10.8, low=10.3))
     bars.append(bar(SESSIONS[3], open_=10.7, close=11.0, high=11.2, low=10.6))
     for index, day in enumerate(SESSIONS[4:], start=5):
-        bars.append(bar(day, open_=11.0, close=11.0 + index * 0.01,
-                        high=11.3, low=10.8))
+        bars.append(bar(day, open_=11.0, close=11.0 + index * 0.01, high=11.3, low=10.8))
     return bars
 
 
-def decision(day: dt.date = DAY, reference: float | None = 9.8,
-             completed: set[int] | None = None) -> dict:
-    return {"decision_id": 1, "decision_date": day, "reference_close": reference,
-            "completed_horizons": completed or set()}
+def decision(day: dt.date = DAY, reference: float | None = 9.8, completed: set[int] | None = None) -> dict:
+    return {
+        "decision_id": 1,
+        "decision_date": day,
+        "reference_close": reference,
+        "completed_horizons": completed or set(),
+    }
 
 
 def by_horizon(rows: list[dict]) -> dict[int, dict]:
@@ -70,8 +80,9 @@ def by_horizon(rows: list[dict]) -> dict[int, dict]:
 
 # --------------------------------------------------------------------------- execution model
 def test_filled_horizons_use_next_session_open_and_horizon_close():
-    rows = by_horizon(evaluate_decision(decision(), code_bars=code_bars(),
-                                        benchmark_bars=benchmark_bars(), as_of=SESSIONS[-1]))
+    rows = by_horizon(
+        evaluate_decision(decision(), code_bars=code_bars(), benchmark_bars=benchmark_bars(), as_of=SESSIONS[-1])
+    )
     assert sorted(rows) == [1, 3, 5, 10, 20]
     one = rows[1]
     assert (one["fill_status"], one["fill_reason"]) == ("filled", "next_session_open")
@@ -98,8 +109,9 @@ def test_filled_horizons_use_next_session_open_and_horizon_close():
 
 def test_missing_entry_bar_is_unfilled_not_zero():
     bars = [item for item in code_bars() if item.date != SESSIONS[0]]
-    rows = by_horizon(evaluate_decision(decision(), code_bars=bars,
-                                        benchmark_bars=benchmark_bars(), as_of=SESSIONS[-1]))
+    rows = by_horizon(
+        evaluate_decision(decision(), code_bars=bars, benchmark_bars=benchmark_bars(), as_of=SESSIONS[-1])
+    )
     assert set(rows) == {1, 3, 5, 10, 20}
     assert all(row["fill_status"] == "unfilled" for row in rows.values())
     assert {row["fill_reason"] for row in rows.values()} == {"suspended_or_no_next_session_bar"}
@@ -109,37 +121,42 @@ def test_missing_entry_bar_is_unfilled_not_zero():
 def test_limit_up_gap_has_no_executable_liquidity():
     bars = code_bars()
     bars[1] = bar(SESSIONS[0], open_=10.8, close=10.8, high=10.8, low=10.8)
-    rows = by_horizon(evaluate_decision(decision(), code_bars=bars,
-                                        benchmark_bars=benchmark_bars(), as_of=SESSIONS[-1]))
+    rows = by_horizon(
+        evaluate_decision(decision(), code_bars=bars, benchmark_bars=benchmark_bars(), as_of=SESSIONS[-1])
+    )
     assert {row["fill_reason"] for row in rows.values()} == {"limit_up_no_executable_liquidity"}
 
 
 def test_missing_exit_bar_only_affects_that_horizon():
     bars = [item for item in code_bars() if item.date != SESSIONS[2]]
-    rows = by_horizon(evaluate_decision(decision(), code_bars=bars,
-                                        benchmark_bars=benchmark_bars(), as_of=SESSIONS[-1]))
+    rows = by_horizon(
+        evaluate_decision(decision(), code_bars=bars, benchmark_bars=benchmark_bars(), as_of=SESSIONS[-1])
+    )
     assert rows[1]["fill_status"] == "filled"
-    assert (rows[3]["fill_status"], rows[3]["fill_reason"]) == (
-        "unfilled", "exit_bar_missing_or_suspended")
+    assert (rows[3]["fill_status"], rows[3]["fill_reason"]) == ("unfilled", "exit_bar_missing_or_suspended")
 
 
 def test_notional_below_one_board_lot_is_unfilled():
     bars = [bar(DAY, open_=2000.0, close=2000.0)]
     bars.append(bar(SESSIONS[0], open_=2000.0, close=2000.0, high=2000.0, low=2000.0))
     bars.append(bar(SESSIONS[1], open_=2100.0, close=2100.0, high=2100.0, low=2100.0))
-    rows = evaluate_decision(decision(reference=2000.0), code_bars=bars,
-                             benchmark_bars=benchmark_bars(), as_of=SESSIONS[1],
-                             settings=OutcomeSettings(notional=100_000))
+    rows = evaluate_decision(
+        decision(reference=2000.0),
+        code_bars=bars,
+        benchmark_bars=benchmark_bars(),
+        as_of=SESSIONS[1],
+        settings=OutcomeSettings(notional=100_000),
+    )
     assert rows[0]["fill_status"] == "unfilled"
     assert rows[0]["fill_reason"] == "notional_below_one_board_lot"
 
 
 def test_only_matured_and_unrecorded_horizons_are_returned():
-    rows = evaluate_decision(decision(completed={1}), code_bars=code_bars(),
-                             benchmark_bars=benchmark_bars(), as_of=SESSIONS[2])
+    rows = evaluate_decision(
+        decision(completed={1}), code_bars=code_bars(), benchmark_bars=benchmark_bars(), as_of=SESSIONS[2]
+    )
     assert sorted(int(row["horizon_sessions"]) for row in rows) == [3]
-    assert evaluate_decision(decision(), code_bars=code_bars(),
-                             benchmark_bars=benchmark_bars(), as_of=DAY) == []
+    assert evaluate_decision(decision(), code_bars=code_bars(), benchmark_bars=benchmark_bars(), as_of=DAY) == []
 
 
 def test_normalise_bars_filters_as_of_and_duplicates():
@@ -164,28 +181,48 @@ class FakeFetcher:
         return KlineResult(bars=value, source="test", attempts=[])
 
 
-def seed_decision(engine, *, day: dt.date = DAY, code: str = CODE,
-                  state: str = "allowed", reference: float | None = 9.8,
-                  target_count: int = 1) -> int:
+def seed_decision(
+    engine,
+    *,
+    day: dt.date = DAY,
+    code: str = CODE,
+    state: str = "allowed",
+    reference: float | None = 9.8,
+    target_count: int = 1,
+) -> int:
     with Session(engine) as session:
         session.execute(delete(EodRun).where(EodRun.decision_date == day))
-        run = EodRun(decision_date=day, attempt_no=1, status="success",
-                     decision_outcome="emitted" if state == "allowed" else "no_signal",
-                     target_count=target_count, evaluated_count=target_count, failed_count=0,
-                     signal_count=1 if state == "allowed" else 0,
-                     allowed_signal_count=1 if state == "allowed" else 0,
-                     blocked_signal_count=0, reason_codes=[])
+        run = EodRun(
+            decision_date=day,
+            attempt_no=1,
+            status="success",
+            decision_outcome="emitted" if state == "allowed" else "no_signal",
+            target_count=target_count,
+            evaluated_count=target_count,
+            failed_count=0,
+            signal_count=1 if state == "allowed" else 0,
+            allowed_signal_count=1 if state == "allowed" else 0,
+            blocked_signal_count=0,
+            reason_codes=[],
+        )
         session.add(run)
         session.flush()
         row = TargetDecision(
-            run_id=run.run_id, decision_date=day, code=code, name="创业板ETF", sector="成长",
+            run_id=run.run_id,
+            decision_date=day,
+            code=code,
+            name="创业板ETF",
+            sector="成长",
             data_status="ok" if state != "data_failed" else "failed",
             decision_state=state,
             risk_action="allowed" if state == "allowed" else "not_applicable",
             risk_level="ok",
             reason_code="signal_allowed" if state == "allowed" else "trend_data_unavailable",
-            reference_close=reference, raw_trigger_count=1 if state != "no_trigger" else 0,
-            raw_signals=[], validation_split="live_oos")
+            reference_close=reference,
+            raw_trigger_count=1 if state != "no_trigger" else 0,
+            raw_signals=[],
+            validation_split="live_oos",
+        )
         session.add(row)
         session.commit()
         return row.id
@@ -202,25 +239,25 @@ def test_evaluate_pending_persists_and_is_idempotent(engine):
     fetcher = FakeFetcher({BENCHMARK: benchmark_bars(), CODE: code_bars()})
     try:
         with Session(engine) as session:
-            first = evaluate_pending(session, as_of=SESSIONS[2], fetcher=fetcher,
-                                     decision_date=DAY)
+            first = evaluate_pending(session, as_of=SESSIONS[2], fetcher=fetcher, decision_date=DAY)
             session.commit()
-        assert (first["checked"], first["inserted"], first["not_mature"], first["failed"]) == (
-            1, 2, 0, 0)
+        assert (first["checked"], first["inserted"], first["not_mature"], first["failed"]) == (1, 2, 0, 0)
         with Session(engine) as session:
-            second = evaluate_pending(session, as_of=SESSIONS[2], fetcher=fetcher,
-                                      decision_date=DAY)
+            second = evaluate_pending(session, as_of=SESSIONS[2], fetcher=fetcher, decision_date=DAY)
             session.commit()
         assert (second["checked"], second["inserted"], second["not_mature"]) == (1, 0, 1)
         with Session(engine) as session:
-            third = evaluate_pending(session, as_of=SESSIONS[-1], fetcher=fetcher,
-                                     decision_date=DAY)
+            third = evaluate_pending(session, as_of=SESSIONS[-1], fetcher=fetcher, decision_date=DAY)
             session.commit()
         assert (third["inserted"], third["failed"]) == (3, 0)
         with Session(engine) as session:
-            rows = list(session.execute(
-                select(DecisionOutcome).where(DecisionOutcome.decision_id == decision_id)
-                .order_by(DecisionOutcome.horizon_sessions)).scalars())
+            rows = list(
+                session.execute(
+                    select(DecisionOutcome)
+                    .where(DecisionOutcome.decision_id == decision_id)
+                    .order_by(DecisionOutcome.horizon_sessions)
+                ).scalars()
+            )
             assert [row.horizon_sessions for row in rows] == [1, 3, 5, 10, 20]
             assert all(row.fill_status == "filled" for row in rows)
             assert rows[0].entry_date == SESSIONS[0]
@@ -233,20 +270,22 @@ def test_evaluate_pending_persists_and_is_idempotent(engine):
 
 def test_data_failed_decision_still_records_unfilled_horizons(engine):
     """Legacy C6 row counts include data_failed decisions as unfilled rows."""
-    decision_id = seed_decision(engine, code="512890", state="data_failed",
-                                reference=None)
+    decision_id = seed_decision(engine, code="512890", state="data_failed", reference=None)
     # Entry bar exists but neither a reference close nor a pre-decision bar does.
     fetcher = FakeFetcher({BENCHMARK: benchmark_bars(), "512890": [code_bars()[1]]})
     try:
         with Session(engine) as session:
-            out = evaluate_pending(session, as_of=SESSIONS[-1], fetcher=fetcher,
-                                   decision_date=DAY)
+            out = evaluate_pending(session, as_of=SESSIONS[-1], fetcher=fetcher, decision_date=DAY)
             session.commit()
         assert out["inserted"] == 5 and out["unfilled"] == 5
         with Session(engine) as session:
-            rows = list(session.execute(
-                select(DecisionOutcome).where(DecisionOutcome.decision_id == decision_id)
-                .order_by(DecisionOutcome.horizon_sessions)).scalars())
+            rows = list(
+                session.execute(
+                    select(DecisionOutcome)
+                    .where(DecisionOutcome.decision_id == decision_id)
+                    .order_by(DecisionOutcome.horizon_sessions)
+                ).scalars()
+            )
             assert {row.fill_status for row in rows} == {"unfilled"}
             assert {row.fill_reason for row in rows} == {"decision_reference_close_missing"}
     finally:
@@ -258,14 +297,12 @@ def test_benchmark_failure_marks_every_decision_failed_without_rows(engine):
     fetcher = FakeFetcher({BENCHMARK: RuntimeError("down"), CODE: code_bars()})
     try:
         with Session(engine) as session:
-            out = evaluate_pending(session, as_of=SESSIONS[-1], fetcher=fetcher,
-                                   decision_date=DAY)
+            out = evaluate_pending(session, as_of=SESSIONS[-1], fetcher=fetcher, decision_date=DAY)
             session.commit()
             assert out["benchmark_ok"] is False and out["failed"] == 1
             assert out["benchmark_code"] == BENCHMARK
             assert out["benchmark_error"] == "RuntimeError"
-            assert session.scalar(select(DecisionOutcome.id)
-                                  .where(DecisionOutcome.decision_id == decision_id)) is None
+            assert session.scalar(select(DecisionOutcome.id).where(DecisionOutcome.decision_id == decision_id)) is None
     finally:
         cleanup(engine)
 
@@ -276,15 +313,14 @@ def test_benchmark_empty_attempts_are_reported(engine):
     class EmptyBenchmarkFetcher(FakeFetcher):
         def get(self, code: str):
             if code == BENCHMARK:
-                return KlineResult(bars=[], source="", attempts=[
-                    {"source": "tencent", "error": "HTTPError"}])
+                return KlineResult(bars=[], source="", attempts=[{"source": "tencent", "error": "HTTPError"}])
             return super().get(code)
 
     try:
         with Session(engine) as session:
-            out = evaluate_pending(session, as_of=SESSIONS[-1],
-                                   fetcher=EmptyBenchmarkFetcher({CODE: code_bars()}),
-                                   decision_date=DAY)
+            out = evaluate_pending(
+                session, as_of=SESSIONS[-1], fetcher=EmptyBenchmarkFetcher({CODE: code_bars()}), decision_date=DAY
+            )
             session.commit()
         assert out["benchmark_ok"] is False
         assert out["benchmark_attempts"][0]["source"] == "tencent"

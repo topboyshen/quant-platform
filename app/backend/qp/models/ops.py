@@ -35,15 +35,22 @@ class JobRun(Base):
     __tablename__ = "job_run"
     __table_args__ = (
         # at most one successful run per (job, dedup_key)
-        Index("uq_job_run_success_dedup", "job_name", "dedup_key", unique=True,
-              postgresql_where=text("status = 'succeeded' AND dedup_key IS NOT NULL")),
+        Index(
+            "uq_job_run_success_dedup",
+            "job_name",
+            "dedup_key",
+            unique=True,
+            postgresql_where=text("status = 'succeeded' AND dedup_key IS NOT NULL"),
+        ),
         Index("ix_job_run_job_started", "job_name", "started_at"),
         {"schema": "ops"},
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     job_name: Mapped[str] = mapped_column(String(128), nullable=False)
     dedup_key: Mapped[str | None] = mapped_column(String(256))
-    status: Mapped[str] = mapped_column(String(32), nullable=False)  # running|succeeded|failed|skipped_locked|skipped_dup
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )  # running|succeeded|failed|skipped_locked|skipped_dup
     trigger: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")  # timer|manual|api
     host: Mapped[str | None] = mapped_column(String(128))
     pid: Mapped[int | None] = mapped_column(Integer)
@@ -58,7 +65,9 @@ class HealthCheck(Base):
     __tablename__ = "health_check"
     __table_args__ = {"schema": "ops"}
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
     check: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
     value: Mapped[float | None] = mapped_column(Float)
@@ -76,14 +85,18 @@ class Alert(TimestampMixin, Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     resolved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
-    detail: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict)
+    detail: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict
+    )
 
 
 class MetricSnapshot(Base):
     __tablename__ = "metric_snapshot"
     __table_args__ = {"schema": "ops"}
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)
     labels: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
@@ -91,6 +104,7 @@ class MetricSnapshot(Base):
 
 class LegacyUnit(Base):
     """Read-only register of legacy systemd units/timers (task center). qp never controls these."""
+
     __tablename__ = "legacy_unit"
     __table_args__ = {"schema": "ops"}
     scope: Mapped[str] = mapped_column(String(16), primary_key=True)  # system|user
@@ -118,6 +132,7 @@ class LegacyUnit(Base):
 
 class Inventory(Base):
     """Latest snapshot per kind (containers, ports, certs, egress, logs, host, pg, coverage, services, projects)."""
+
     __tablename__ = "inventory"
     __table_args__ = {"schema": "ops"}
     kind: Mapped[str] = mapped_column(String(64), primary_key=True)

@@ -4,6 +4,7 @@ qp derives the expected failure atoms from the stage artifacts and compares them
 with the legacy alert state.  Atoms use the legacy ``date|code|reason`` shape so
 the two sides are directly comparable.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -30,14 +31,18 @@ def expected_atoms(payload: dict[str, Any]) -> list[str]:
     precollect = payload.get("precollect") or {}
     atoms: list[str] = []
 
-    generation_ok = (bool(generation) and generation.get("status") == "succeeded"
-                     and generation.get("child_exit_code") in (0, None))
+    generation_ok = (
+        bool(generation) and generation.get("status") == "succeeded" and generation.get("child_exit_code") in (0, None)
+    )
     if not generation_ok:
         atoms.append(_atom(day, "generation_failed"))
-    elif (not seal or seal.get("state") != "SEALED"
-          or seal.get("target_matches") is False
-          or seal.get("report_sha_matches") is False
-          or seal.get("digest_present") is not True):
+    elif (
+        not seal
+        or seal.get("state") != "SEALED"
+        or seal.get("target_matches") is False
+        or seal.get("report_sha_matches") is False
+        or seal.get("digest_present") is not True
+    ):
         atoms.append(_atom(day, "seal_invalid"))
     # relay can be blocked by a stale digest even when generation failed
     attempt = relay.get("attempt") or {}
@@ -46,8 +51,7 @@ def expected_atoms(payload: dict[str, Any]) -> list[str]:
         atoms.append(_atom(day, "relay_blocked", str(attempt.get("reason") or "")))
     elif not attempt and generation_ok:
         atoms.append(_atom(day, "relay_missing"))
-    if delivery and (delivery.get("status") != "confirmed"
-                     or delivery.get("content_match") is False):
+    if delivery and (delivery.get("status") != "confirmed" or delivery.get("content_match") is False):
         atoms.append(_atom(day, "relay_unconfirmed"))
     if precollect and precollect.get("payload_sha256_ok") is False:
         atoms.append(_atom(day, "precollect_invalid"))

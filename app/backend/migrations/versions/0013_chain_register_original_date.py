@@ -7,10 +7,11 @@ The column existed but the first history import did not populate it.  The table
 is append-only (a trigger rejects UPDATE), so the repair runs as a migration
 with the trigger disabled, exactly once.  Future imports write the date inline.
 """
+
 from alembic import op
 
-revision = '0013'
-down_revision = '0012'
+revision = "0013"
+down_revision = "0012"
 branch_labels = None
 depends_on = None
 

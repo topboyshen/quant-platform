@@ -1,4 +1,5 @@
 """Password hashing: argon2id for new hashes; verify legacy QuantDinger hashes (bcrypt, sha256$salt$hex)."""
+
 from __future__ import annotations
 
 import hashlib

@@ -1,4 +1,5 @@
 """Deterministic tests for the pure-Python indicator semantics (pandas parity targets)."""
+
 import datetime as dt
 
 import pytest
@@ -73,15 +74,19 @@ def test_weekly_golden_cross_diagnostics():
 
 def test_weekly_golden_cross_insufficient_history():
     start = dt.date(2026, 1, 5)
-    bars = [Bar(start + dt.timedelta(days=7 * week + offset), 10.0, open=10, high=10, low=10, volume=100)
-            for week in range(34) for offset in range(5)]
+    bars = [
+        Bar(start + dt.timedelta(days=7 * week + offset), 10.0, open=10, high=10, low=10, volume=100)
+        for week in range(34)
+        for offset in range(5)
+    ]
     triggered, diag = weekly_golden_cross(bars)
     assert triggered is False and diag["completed_bars"] == 34
 
 
 def test_volume_breakout_triggers_on_cross_and_volume():
-    bars = [Bar(dt.date(2026, 1, 1) + dt.timedelta(days=i), 10.0, open=10, high=10, low=10, volume=100)
-            for i in range(64)]
+    bars = [
+        Bar(dt.date(2026, 1, 1) + dt.timedelta(days=i), 10.0, open=10, high=10, low=10, volume=100) for i in range(64)
+    ]
     bars.append(Bar(bars[-1].date + dt.timedelta(days=1), 11.0, open=10, high=11, low=10, volume=200))
     triggered, diag = volume_breakout(bars)
     assert triggered is True
@@ -103,7 +108,7 @@ def test_volume_ratio_is_rounded_before_the_threshold():
     """Legacy rounds the raw ratio to 2 decimals and compares ``>=``; 1.496 triggers."""
     base = [Bar(dt.date(2026, 1, 1) + dt.timedelta(days=i), 10.0, volume=100) for i in range(64)]
     below = base + [Bar(base[-1].date + dt.timedelta(days=1), 11.0, volume=149.4)]  # 1.494 -> 1.49
-    at = base + [Bar(base[-1].date + dt.timedelta(days=1), 11.0, volume=149.6)]       # 1.496 -> 1.50
+    at = base + [Bar(base[-1].date + dt.timedelta(days=1), 11.0, volume=149.6)]  # 1.496 -> 1.50
     triggered, diag = volume_breakout(below)
     assert triggered is False and diag["volume_ratio"] == 1.49
     triggered, diag = volume_breakout(at)

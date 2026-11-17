@@ -1,4 +1,5 @@
 """M7.4 report center APIs: reports, deliveries and receipts."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -21,23 +22,41 @@ def cleanup(engine) -> None:
 
 def seed(engine) -> None:
     with Session(engine) as session:
-        daily = Report(kind="daily_research_summary", business_date=DAY, version=1,
-                       status="frozen", content_sha256="a" * 64,
-                       payload={"text": "daily body"})
-        digest = Report(kind="research_digest", business_date=DAY, version=1,
-                        status="frozen", content_sha256="b" * 64,
-                        payload={"note": "digest"})
+        daily = Report(
+            kind="daily_research_summary",
+            business_date=DAY,
+            version=1,
+            status="frozen",
+            content_sha256="a" * 64,
+            payload={"text": "daily body"},
+        )
+        digest = Report(
+            kind="research_digest",
+            business_date=DAY,
+            version=1,
+            status="frozen",
+            content_sha256="b" * 64,
+            payload={"note": "digest"},
+        )
         session.add_all([daily, digest])
         session.flush()
-        session.add(ReportSource(report_id=daily.id, source="legacy_daily_summary",
-                                 locator="/tmp/x.json", sha256="c" * 64))
-        delivery = ReportDelivery(report_id=daily.id, channel="telegram", target="ops",
-                                  mode="shadow", status="shadowed", dedup_key="k-1",
-                                  send_result={"note": "shadow mode: not sent"})
+        session.add(
+            ReportSource(report_id=daily.id, source="legacy_daily_summary", locator="/tmp/x.json", sha256="c" * 64)
+        )
+        delivery = ReportDelivery(
+            report_id=daily.id,
+            channel="telegram",
+            target="ops",
+            mode="shadow",
+            status="shadowed",
+            dedup_key="k-1",
+            send_result={"note": "shadow mode: not sent"},
+        )
         session.add(delivery)
         session.flush()
-        session.add(ReportReceipt(delivery_id=delivery.id, status="received",
-                                  received_at=NOW, evidence={"execution_id": "e-1"}))
+        session.add(
+            ReportReceipt(delivery_id=delivery.id, status="received", received_at=NOW, evidence={"execution_id": "e-1"})
+        )
         session.commit()
 
 
@@ -45,6 +64,7 @@ def _token(engine) -> str:
     import uuid
 
     from qp.auth.sessions import create_service_token
+
     with Session(engine) as s:
         tok = create_service_token(s, f"m7-reports-{uuid.uuid4().hex[:8]}", ["reports:read"])
         s.commit()

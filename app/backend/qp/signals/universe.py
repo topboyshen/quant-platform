@@ -4,6 +4,7 @@ Copied from the legacy ``config.swing.json`` ``targets`` list on 2026-11-12 so t
 run evaluates the same 40 ETFs and sectors.  Keep this list immutable during the shadow
 window; changing it invalidates the day-over-day comparison.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

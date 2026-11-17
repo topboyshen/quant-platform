@@ -1,4 +1,5 @@
 """Keep the CI/test lock and the release runtime lock on the same pins."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,8 +25,7 @@ def parse_lock(path: Path) -> dict[str, str]:
 def test_runtime_pins_are_a_subset_of_the_test_lock():
     runtime = parse_lock(repo_root() / "app/backend/requirements-runtime.lock")
     full = parse_lock(repo_root() / "app/backend/requirements.lock")
-    missing = {name: version for name, version in runtime.items()
-               if full.get(name) != version}
+    missing = {name: version for name, version in runtime.items() if full.get(name) != version}
     assert not missing, missing
     for test_only in ("pytest", "httpx", "pgserver"):
         assert test_only not in runtime, test_only

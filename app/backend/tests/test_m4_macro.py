@@ -1,4 +1,5 @@
 """Macro slice and macro-risk parity fixtures (pure parsers + fake HTTP routes)."""
+
 import datetime as dt
 
 import pytest
@@ -22,8 +23,7 @@ def tencent_quote(code: str, observed: str, amount_wan: float) -> dict:
     quote = [""] * 38
     quote[30] = observed.replace("-", "") + "150000"
     quote[37] = str(amount_wan)
-    return {"data": {code: {"qt": {code: quote},
-                            "qfqday": [[observed, "1", "1", "1", "1", "1"]]}}}
+    return {"data": {code: {"qt": {code: quote}, "qfqday": [[observed, "1", "1", "1", "1", "1"]]}}}
 
 
 def sina_text(sh_yuan: float, sz_yuan: float, observed: str) -> str:
@@ -34,8 +34,7 @@ def sina_text(sh_yuan: float, sz_yuan: float, observed: str) -> str:
         values[30] = observed
         return ",".join(values)
 
-    return (f'var hq_str_sh000001="{fields(sh_yuan)}";\n'
-            f'var hq_str_sz399001="{fields(sz_yuan)}";\n')
+    return f'var hq_str_sh000001="{fields(sh_yuan)}";\nvar hq_str_sz399001="{fields(sz_yuan)}";\n'
 
 
 def test_parse_tencent_total_requires_matching_quote_and_bar():
@@ -52,17 +51,19 @@ def test_parse_sina_total_units_and_component_rules():
     text = sina_text(600_000_000_000.0, 500_000_000_000.0, "2026-11-12")
     assert macro.parse_sina_total(text) == (11000.0, "2026-11-12")
     with pytest.raises(ValueError):
-        macro.parse_sina_total('\n'.join(text.splitlines()[:1]))
+        macro.parse_sina_total("\n".join(text.splitlines()[:1]))
     with pytest.raises(ValueError):
         macro.parse_sina_total(text.replace("2026-11-12", "2026-11-11", 1))
 
 
 def test_parse_margin_and_limit_payloads():
-    sse = {"result": [
-        {"opDate": "20261111", "rzrqjyzl": 1_193_012_000_000},
-        {"opDate": "20261110", "rzrqjyzl": 1_188_312_000_000},
-        {"opDate": "bad", "rzrqjyzl": 1},
-    ]}
+    sse = {
+        "result": [
+            {"opDate": "20261111", "rzrqjyzl": 1_193_012_000_000},
+            {"opDate": "20261110", "rzrqjyzl": 1_188_312_000_000},
+            {"opDate": "bad", "rzrqjyzl": 1},
+        ]
+    }
     assert macro.parse_sse_margin(sse) == [("2026-11-11", 11930.12), ("2026-11-10", 11883.12)]
     assert macro.parse_szse_margin([{"data": [{"jrrzrjye": "10,940.38"}]}]) == 10940.38
     assert macro.parse_limit_pool({"data": {"tc": 54}}) == 54
@@ -72,10 +73,12 @@ def test_parse_margin_and_limit_payloads():
 
 
 def _macro_fetch(observed_total: str = "2026-11-12"):
-    sse = {"result": [
-        {"opDate": "20261111", "rzrqjyzl": 1_193_012_000_000},
-        {"opDate": "20261110", "rzrqjyzl": 1_188_312_000_000},
-    ]}
+    sse = {
+        "result": [
+            {"opDate": "20261111", "rzrqjyzl": 1_193_012_000_000},
+            {"opDate": "20261110", "rzrqjyzl": 1_188_312_000_000},
+        ]
+    }
     szse_by_date = {"2026-11-11": "10,940.38", "2026-11-10": "10,816.88"}
 
     def fake(url, *, params=None, **kwargs):
@@ -104,8 +107,10 @@ def test_collect_macro_slice_matches_legacy_units_and_formulas():
     assert got["margin_growth_pct"] == 0.751
     assert (got["limit_up"], got["limit_down"], got["limit_ratio"]) == (54, 1, 27.0)
     assert got["source"] == "tencent+sse+szse+eastmoney"
-    assert all(status["available"] and not status["stale"] and not status["anomalous"]
-               for status in got["collect_status"].values())
+    assert all(
+        status["available"] and not status["stale"] and not status["anomalous"]
+        for status in got["collect_status"].values()
+    )
 
 
 def test_stale_total_amount_is_kept_and_flagged():
@@ -172,14 +177,12 @@ def test_evaluate_risk_reuses_fresh_observations_only():
     assert sorted(got["cached_fields"]) == ["crude_oil", "us_10y", "vix"]
     assert got["missing_fields"] == []
 
-    stale = macro.evaluate_risk(
-        {}, previous_state={"vix": 15.0, "observed_at": {"vix": now - 901}}, now=now)
+    stale = macro.evaluate_risk({}, previous_state={"vix": 15.0, "observed_at": {"vix": now - 901}}, now=now)
     assert stale["level"] == "warning"
     assert stale["cached_fields"] == []
     assert sorted(stale["missing_fields"]) == ["crude_oil", "us_10y", "vix"]
 
-    future = macro.evaluate_risk(
-        {}, previous_state={"vix": 15.0, "observed_at": {"vix": now + 10}}, now=now)
+    future = macro.evaluate_risk({}, previous_state={"vix": 15.0, "observed_at": {"vix": now + 10}}, now=now)
     assert future["vix"] is None
 
 
@@ -208,8 +211,11 @@ def test_wti_spot_fallback_is_env_gated(monkeypatch):
     def fred(series, fetch_fn, now=None):
         calls.append(series)
         if series == "DCOILWTICO":
-            return 75.0, {"source": "fred_dcoilwtico_spot_daily",
-                          "source_timestamp": 1_000_000.0, "available_at": 1_000_000.0}
+            return 75.0, {
+                "source": "fred_dcoilwtico_spot_daily",
+                "source_timestamp": 1_000_000.0,
+                "available_at": 1_000_000.0,
+            }
         raise ValueError("no")
 
     monkeypatch.setattr(macro, "fetch_yahoo_value", yahoo)

@@ -5,6 +5,7 @@ ingest job. Opens SQLite databases with mode=ro. Never modifies, locks or touche
 Also computes a shadow Qlib market summary (breadth/coverage/top lists; same rules as
 research-data qlib_summary.qlib_market) by seeking into *.day.bin files (no copy of Qlib data).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -59,8 +60,16 @@ def legacy_calendar(path: Path) -> dict:
         return {"ok": False, "path": str(path)}
     d = json.loads(raw)
     dates = sorted({str(x)[:10] for x in d.get("trading_dates") or []})
-    return {"ok": True, "path": str(path), "file_sha256": sha256_bytes(raw), "generated_at": d.get("generated_at"),
-            "source": d.get("source"), "dates": dates, "rows": len(dates), "checksum": canon(dates)}
+    return {
+        "ok": True,
+        "path": str(path),
+        "file_sha256": sha256_bytes(raw),
+        "generated_at": d.get("generated_at"),
+        "source": d.get("source"),
+        "dates": dates,
+        "rows": len(dates),
+        "checksum": canon(dates),
+    }
 
 
 def legacy_index_close(path: Path) -> dict:
@@ -68,12 +77,26 @@ def legacy_index_close(path: Path) -> dict:
     if raw is None:
         return {"ok": False, "path": str(path)}
     d = json.loads(raw)
-    rows = [{"symbol": c["symbol"], "trade_date": c["trade_date"], "close": round(float(c["close"]), 4),
-             "source": c.get("source") or ""} for c in d.get("closes") or []]
+    rows = [
+        {
+            "symbol": c["symbol"],
+            "trade_date": c["trade_date"],
+            "close": round(float(c["close"]), 4),
+            "source": c.get("source") or "",
+        }
+        for c in d.get("closes") or []
+    ]
     rows.sort(key=lambda r: (r["symbol"], r["trade_date"]))
-    return {"ok": True, "path": str(path), "file_sha256": sha256_bytes(raw), "fetched_at": d.get("fetched_at"),
-            "trade_date": d.get("trade_date"), "stale": d.get("stale"), "rows": rows,
-            "checksum": canon(f"{r['symbol']}|{r['trade_date']}|{r['close']:.4f}|{r['source']}" for r in rows)}
+    return {
+        "ok": True,
+        "path": str(path),
+        "file_sha256": sha256_bytes(raw),
+        "fetched_at": d.get("fetched_at"),
+        "trade_date": d.get("trade_date"),
+        "stale": d.get("stale"),
+        "rows": rows,
+        "checksum": canon(f"{r['symbol']}|{r['trade_date']}|{r['close']:.4f}|{r['source']}" for r in rows),
+    }
 
 
 def _lines(path: Path) -> tuple[list[str], str | None]:
@@ -96,8 +119,12 @@ def qlib_catalog(root: Path, status_path: Path) -> dict:
         lines, sha = _lines(root / f"instruments/{idx}.txt")
         raw_rows = [tuple(ln.split()[:3]) for ln in lines if len(ln.split()) >= 3]
         rows = [list(r) for r in sorted(set(raw_rows))]
-        members[idx] = {"file_sha256": sha, "rows": rows, "raw_rows": len(raw_rows),
-                        "checksum": canon(sorted(f"{idx}|{a}|{b}|{c}" for a, b, c in rows))}
+        members[idx] = {
+            "file_sha256": sha,
+            "rows": rows,
+            "raw_rows": len(raw_rows),
+            "checksum": canon(sorted(f"{idx}|{a}|{b}|{c}" for a, b, c in rows)),
+        }
     try:
         feature_dirs = sum(1 for _ in os.scandir(root / "features"))
     except OSError:
@@ -107,8 +134,11 @@ def qlib_catalog(root: Path, status_path: Path) -> dict:
     if raw:
         try:
             s = json.loads(raw)
-            status = {k: s.get(k) for k in ("status", "mode", "plannedDate", "targetDate", "time", "failureStage", "error")
-                      if k in s}
+            status = {
+                k: s.get(k)
+                for k in ("status", "mode", "plannedDate", "targetDate", "time", "failureStage", "error")
+                if k in s
+            }
             if isinstance(status.get("error"), str):
                 status["error"] = status["error"][:200]
         except ValueError:
@@ -118,10 +148,20 @@ def qlib_catalog(root: Path, status_path: Path) -> dict:
         tag = (root.parent / ".tag").read_text().strip()[:64]
     except OSError:
         pass
-    return {"ok": bool(cal), "root": str(root), "calendar": cal, "calendar_sha256": cal_sha, "calendar_checksum": canon(cal),
-            "instruments": insts, "instruments_sha256": inst_sha,
-            "instruments_checksum": canon(sorted(f"{a}|{b}|{c}" for a, b, c in insts)),
-            "members": members, "feature_dirs": feature_dirs, "update_status": status, "tag": tag}
+    return {
+        "ok": bool(cal),
+        "root": str(root),
+        "calendar": cal,
+        "calendar_sha256": cal_sha,
+        "calendar_checksum": canon(cal),
+        "instruments": insts,
+        "instruments_sha256": inst_sha,
+        "instruments_checksum": canon(sorted(f"{a}|{b}|{c}" for a, b, c in insts)),
+        "members": members,
+        "feature_dirs": feature_dirs,
+        "update_status": status,
+        "tag": tag,
+    }
 
 
 # ---- shadow Qlib market summary (mirrors qlib_summary.qlib_market breadth/coverage/top lists) ----
@@ -154,7 +194,13 @@ def _reference_date(root: Path, cal: list[str], sym: str) -> str | None:
     start = bins["close"].start
     usable = min(b.length for b in bins.values())
     for i in range(usable - 1, max(0, usable - 40), -1):
-        vals = (bins["close"].at(i - 1), bins["close"].at(i), bins["high"].at(i), bins["low"].at(i), bins["amount"].at(i))
+        vals = (
+            bins["close"].at(i - 1),
+            bins["close"].at(i),
+            bins["high"].at(i),
+            bins["low"].at(i),
+            bins["amount"].at(i),
+        )
         if all(math.isfinite(v) for v in vals) and 0 <= start + i < len(cal):
             return cal[start + i]
     return None
@@ -199,13 +245,16 @@ def qlib_summary(root: Path, cal: list[str], insts: list[list[str]], date: str) 
         rows.append((s, chg, am))
     coverage = len(rows) / eligible if eligible else 0.0
     rows.sort(key=lambda r: -r[1])
-    return {"ok": True, "date": date,
-            "coverage": {"valid": len(rows), "eligible": eligible, "invalid": invalid, "ratio": round(coverage, 6)},
-            "breadth": {"up": up, "down": down, "flat": flat, "total": up + down + flat},
-            "structure_errors": errors,
-            "topGainers": [{"sym": r[0], "chg": round(r[1] * 100, 2)} for r in rows[:10]],
-            "topLosers": [{"sym": r[0], "chg": round(r[1] * 100, 2)} for r in rows[-10:][::-1]],
-            "topAmount": [{"sym": r[0], "amount": round(r[2], 0)} for r in sorted(rows, key=lambda r: -r[2])[:10]]}
+    return {
+        "ok": True,
+        "date": date,
+        "coverage": {"valid": len(rows), "eligible": eligible, "invalid": invalid, "ratio": round(coverage, 6)},
+        "breadth": {"up": up, "down": down, "flat": flat, "total": up + down + flat},
+        "structure_errors": errors,
+        "topGainers": [{"sym": r[0], "chg": round(r[1] * 100, 2)} for r in rows[:10]],
+        "topLosers": [{"sym": r[0], "chg": round(r[1] * 100, 2)} for r in rows[-10:][::-1]],
+        "topAmount": [{"sym": r[0], "amount": round(r[2], 0)} for r in sorted(rows, key=lambda r: -r[2])[:10]],
+    }
 
 
 def legacy_core(path: Path) -> dict:
@@ -215,18 +264,41 @@ def legacy_core(path: Path) -> dict:
     try:
         rows = []
         for date, schema, payload, psha in c.execute(
-                "SELECT date, schema, payload, payload_sha256 FROM core_market ORDER BY date"):
+            "SELECT date, schema, payload, payload_sha256 FROM core_market ORDER BY date"
+        ):
             p = json.loads(payload)
             q = p.get("qlib") or {}
-            rows.append({"date": date, "schema": schema, "payload_sha256": psha,
-                         "computed_sha256": sha256_bytes(payload.encode() if isinstance(payload, str) else payload),
-                         "generated_at": p.get("generatedAt"),
-                         "qlib": {k: q.get(k) for k in ("date", "coverage", "breadth", "limitUpCount", "limitDownCount",
-                                                        "topGainers", "topLosers", "topAmount", "generation")}})
+            rows.append(
+                {
+                    "date": date,
+                    "schema": schema,
+                    "payload_sha256": psha,
+                    "computed_sha256": sha256_bytes(payload.encode() if isinstance(payload, str) else payload),
+                    "generated_at": p.get("generatedAt"),
+                    "qlib": {
+                        k: q.get(k)
+                        for k in (
+                            "date",
+                            "coverage",
+                            "breadth",
+                            "limitUpCount",
+                            "limitDownCount",
+                            "topGainers",
+                            "topLosers",
+                            "topAmount",
+                            "generation",
+                        )
+                    },
+                }
+            )
     finally:
         c.close()
-    return {"ok": True, "path": str(path), "rows": rows,
-            "checksum": canon(f"{r['date']}|{r['payload_sha256']}" for r in rows)}
+    return {
+        "ok": True,
+        "path": str(path),
+        "rows": rows,
+        "checksum": canon(f"{r['date']}|{r['payload_sha256']}" for r in rows),
+    }
 
 
 def legacy_snapshot_index(path: Path) -> dict:
@@ -241,11 +313,17 @@ def legacy_snapshot_index(path: Path) -> dict:
                 keys = sorted(json.loads(b))[:60]
             except ValueError:
                 keys = []
-            rows.append({"date": date, "generated_at": gen, "payload_sha256": sha256_bytes(b), "bytes": len(b), "keys": keys})
+            rows.append(
+                {"date": date, "generated_at": gen, "payload_sha256": sha256_bytes(b), "bytes": len(b), "keys": keys}
+            )
     finally:
         c.close()
-    return {"ok": True, "path": str(path), "rows": rows,
-            "checksum": canon(f"{r['date']}|{r['payload_sha256']}" for r in rows)}
+    return {
+        "ok": True,
+        "path": str(path),
+        "rows": rows,
+        "checksum": canon(f"{r['date']}|{r['payload_sha256']}" for r in rows),
+    }
 
 
 def legacy_health(path: Path, last_run: Path) -> dict:
@@ -254,13 +332,35 @@ def legacy_health(path: Path, last_run: Path) -> dict:
     if raw:
         d = json.loads(raw)
         issues = d.get("issues") or []
-        out = {"ok": True, "path": str(path), "file_sha256": sha256_bytes(raw),
-               **{k: d.get(k) for k in ("status", "generatedAt", "effectiveTradeDate", "businessMode",
-                                        "independentExpectedMarketDate", "independentCalendarStatus", "activeContract")},
-               "issues": [{"code": (i.get("code") or i.get("kind") or i.get("check")) if isinstance(i, dict) else str(i)[:80],
-                           "severity": i.get("severity") if isinstance(i, dict) else None} for i in issues][:30],
-               "qlib": {k: (d.get("qlib") or {}).get(k) for k in ("status", "latestDate", "tag", "calendarLast", "marketDate")
-                        if k in (d.get("qlib") or {})}}
+        out = {
+            "ok": True,
+            "path": str(path),
+            "file_sha256": sha256_bytes(raw),
+            **{
+                k: d.get(k)
+                for k in (
+                    "status",
+                    "generatedAt",
+                    "effectiveTradeDate",
+                    "businessMode",
+                    "independentExpectedMarketDate",
+                    "independentCalendarStatus",
+                    "activeContract",
+                )
+            },
+            "issues": [
+                {
+                    "code": (i.get("code") or i.get("kind") or i.get("check")) if isinstance(i, dict) else str(i)[:80],
+                    "severity": i.get("severity") if isinstance(i, dict) else None,
+                }
+                for i in issues
+            ][:30],
+            "qlib": {
+                k: (d.get("qlib") or {}).get(k)
+                for k in ("status", "latestDate", "tag", "calendarLast", "marketDate")
+                if k in (d.get("qlib") or {})
+            },
+        }
     raw = _read(last_run, 2_000_000)
     if raw:
         d = json.loads(raw)
@@ -273,8 +373,13 @@ def cninfo_staging(work: Path) -> dict:
     for p in sorted(glob.glob(str(work / "*cninfo*" / "*.json")))[-15:]:
         try:
             st = os.stat(p)
-            files.append({"name": os.path.basename(p), "bytes": st.st_size,
-                          "mtime": dt.datetime.fromtimestamp(st.st_mtime, dt.UTC).isoformat()})
+            files.append(
+                {
+                    "name": os.path.basename(p),
+                    "bytes": st.st_size,
+                    "mtime": dt.datetime.fromtimestamp(st.st_mtime, dt.UTC).isoformat(),
+                }
+            )
         except OSError:
             pass
     return {"ok": True, "files": files}
@@ -283,13 +388,15 @@ def cninfo_staging(work: Path) -> dict:
 def collect(paths: dict, summary_dates: list[str] | None = None) -> dict:
     t0 = time.monotonic()
     snap: dict = {"schema": "qp.market-legacy.v1", "collected_at": dt.datetime.now(dt.UTC).isoformat()}
-    for name, fn in (("calendar", lambda: legacy_calendar(paths["calendar"])),
-                     ("index_close", lambda: legacy_index_close(paths["index_close"])),
-                     ("qlib", lambda: qlib_catalog(paths["qlib"], paths["qlib_status"])),
-                     ("core_market", lambda: legacy_core(paths["core_db"])),
-                     ("snapshot_db", lambda: legacy_snapshot_index(paths["snapshot_db"])),
-                     ("health", lambda: legacy_health(paths["health"], paths["core_last_run"])),
-                     ("cninfo", lambda: cninfo_staging(paths["cninfo_staging"]))):
+    for name, fn in (
+        ("calendar", lambda: legacy_calendar(paths["calendar"])),
+        ("index_close", lambda: legacy_index_close(paths["index_close"])),
+        ("qlib", lambda: qlib_catalog(paths["qlib"], paths["qlib_status"])),
+        ("core_market", lambda: legacy_core(paths["core_db"])),
+        ("snapshot_db", lambda: legacy_snapshot_index(paths["snapshot_db"])),
+        ("health", lambda: legacy_health(paths["health"], paths["core_last_run"])),
+        ("cninfo", lambda: cninfo_staging(paths["cninfo_staging"])),
+    ):
         try:
             snap[name] = fn()
         except Exception as e:  # noqa: BLE001 - record type only

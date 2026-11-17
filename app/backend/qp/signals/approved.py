@@ -14,6 +14,7 @@ files and the ``signals.execution_digest`` row with ``push_state='shadowed'`` an
 never performs an HTTP POST.  HMAC signing is exposed for the compare harness and
 future switch-over, but the job does not send.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -38,8 +39,7 @@ from qp.models.signals import ApprovedIntake, ExecutionDigest
 CST = dt.timezone(dt.timedelta(hours=8))
 UTC = dt.UTC
 MAX_SKEW_SEC = 300
-REQUIRED_FIELDS = ("idempotency_key", "signal_type", "symbol", "confidence", "expires_at",
-                   "provenance", "decision")
+REQUIRED_FIELDS = ("idempotency_key", "signal_type", "symbol", "confidence", "expires_at", "provenance", "decision")
 ALLOWED_SIDES = (None, "long", "short", "flat")
 DIGEST_SCHEMA_VERSION = "0.2"
 MAX_DIGEST_ITEMS = 20
@@ -59,8 +59,7 @@ def parse_expires(raw: Any) -> dt.datetime | None:
         return None
 
 
-def risk_check(payload: dict[str, Any],
-               *, now: dt.datetime | None = None) -> tuple[bool, str]:
+def risk_check(payload: dict[str, Any], *, now: dt.datetime | None = None) -> tuple[bool, str]:
     """Legacy risk gate; the result and detail string are C8-compared verbatim."""
     missing = [key for key in REQUIRED_FIELDS if key not in payload]
     if missing:
@@ -112,8 +111,7 @@ def canonical_payload_sha256(payload: dict[str, Any]) -> str:
     JSON is the only representation both sides can reproduce.  The hash still covers
     the full payload (including any token fields) but does not reveal them.
     """
-    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True,
-                     separators=(",", ":")).encode("utf-8")
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 
@@ -121,33 +119,51 @@ def payload_sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def record_intake(session: Session, *, payload: dict[str, Any], raw: bytes, source: str,
-                  received_at: dt.datetime | None = None,
-                  now: dt.datetime | None = None) -> dict[str, Any]:
+def record_intake(
+    session: Session,
+    *,
+    payload: dict[str, Any],
+    raw: bytes,
+    source: str,
+    received_at: dt.datetime | None = None,
+    now: dt.datetime | None = None,
+) -> dict[str, Any]:
     """Insert once by idempotency key; never overwrite an existing decision."""
     key = str(payload["idempotency_key"])
     passed, detail = risk_check(payload, now=now)
     status = "accepted" if passed else "rejected"
-    stmt = (pg_insert(ApprovedIntake)
-            .values(idempotency_key=key, source=source, received_at=received_at or utcnow(),
-                    status=status, detail=detail,
-                    risk_check={"passed": passed, "detail": detail},
-                    payload_sha256=canonical_payload_sha256(payload), payload=payload)
-            .on_conflict_do_nothing(index_elements=["idempotency_key"])
-            .returning(ApprovedIntake.id))
+    stmt = (
+        pg_insert(ApprovedIntake)
+        .values(
+            idempotency_key=key,
+            source=source,
+            received_at=received_at or utcnow(),
+            status=status,
+            detail=detail,
+            risk_check={"passed": passed, "detail": detail},
+            payload_sha256=canonical_payload_sha256(payload),
+            payload=payload,
+        )
+        .on_conflict_do_nothing(index_elements=["idempotency_key"])
+        .returning(ApprovedIntake.id)
+    )
     inserted = session.execute(stmt).first()
     if inserted is None:
-        existing = session.execute(select(ApprovedIntake)
-                                   .where(ApprovedIntake.idempotency_key == key)).scalar_one()
-        return {"duplicate": True, "status": existing.status, "detail": existing.detail,
-                "idempotency_key": key}
+        existing = session.execute(select(ApprovedIntake).where(ApprovedIntake.idempotency_key == key)).scalar_one()
+        return {"duplicate": True, "status": existing.status, "detail": existing.detail, "idempotency_key": key}
     return {"duplicate": False, "status": status, "detail": detail, "idempotency_key": key}
 
 
-def verify_signed_request(*, secret: bytes | None, source: str, timestamp: str,
-                          signature: str, raw: bytes,
-                          now_epoch: int | None = None,
-                          max_skew: int = MAX_SKEW_SEC) -> tuple[int, str]:
+def verify_signed_request(
+    *,
+    secret: bytes | None,
+    source: str,
+    timestamp: str,
+    signature: str,
+    raw: bytes,
+    now_epoch: int | None = None,
+    max_skew: int = MAX_SKEW_SEC,
+) -> tuple[int, str]:
     """Return ``(http_status, error_code)``; ``(200, "")`` means the request is valid."""
     if source != "dedirock":
         return 401, "bad_source"
@@ -200,7 +216,8 @@ def digest_rows(session: Session, digest_date: dt.date) -> list[dict[str, Any]]:
     rows = session.execute(
         select(ApprovedIntake)
         .where(ApprovedIntake.received_at >= start, ApprovedIntake.received_at < end)
-        .order_by(ApprovedIntake.id)).scalars()
+        .order_by(ApprovedIntake.id)
+    ).scalars()
     items: list[dict[str, Any]] = []
     for row in rows:
         payload = row.payload if isinstance(row.payload, dict) else {}
@@ -239,8 +256,9 @@ def digest_markdown(day: dt.date, rows: Sequence[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_digest_body(rows: Sequence[dict[str, Any]], *, digest_date: dt.date,
-                      generated_at: dt.datetime) -> dict[str, Any]:
+def build_digest_body(
+    rows: Sequence[dict[str, Any]], *, digest_date: dt.date, generated_at: dt.datetime
+) -> dict[str, Any]:
     accepted = [row for row in rows if row["status"] == "accepted"]
     rejected = [row for row in rows if row["status"] == "rejected"]
     markdown = digest_markdown(digest_date, rows)
@@ -298,8 +316,7 @@ def write_digest_files(body: dict[str, Any], output_dir: str | os.PathLike[str])
     return sorted(targets)
 
 
-def persist_digest(session: Session, body: dict[str, Any],
-                   *, push_state: str = "shadowed") -> None:
+def persist_digest(session: Session, body: dict[str, Any], *, push_state: str = "shadowed") -> None:
     values = {
         "digest_date": dt.date.fromisoformat(str(body["as_of_day"])),
         "item_count": len(body["items"]),
@@ -311,13 +328,14 @@ def persist_digest(session: Session, body: dict[str, Any],
     }
     stmt = pg_insert(ExecutionDigest).values(**values)
     stmt = stmt.on_conflict_do_update(
-        index_elements=["digest_date"],
-        set_={key: value for key, value in values.items() if key != "digest_date"})
+        index_elements=["digest_date"], set_={key: value for key, value in values.items() if key != "digest_date"}
+    )
     session.execute(stmt)
 
 
-def build_previous_day_digest(session: Session, *, now: dt.datetime | None = None,
-                              output_dir: str | os.PathLike[str] | None = None) -> dict[str, Any]:
+def build_previous_day_digest(
+    session: Session, *, now: dt.datetime | None = None, output_dir: str | os.PathLike[str] | None = None
+) -> dict[str, Any]:
     """Generate the previous calendar day's shadow digest; never POSTs."""
     now = now or dt.datetime.now(CST)
     digest_date = now.astimezone(CST).date() - dt.timedelta(days=1)

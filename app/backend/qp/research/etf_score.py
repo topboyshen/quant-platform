@@ -6,6 +6,7 @@ horizon so one cannot masquerade as the other.  qp only validates, stores and
 displays them; it never trains, orders, notifies or writes
 target_decision/the record chain.  A stale snapshot is shown as stale.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -25,8 +26,7 @@ from qp.signals.universe import TARGETS
 CODES = {target.code for target in TARGETS}
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 UNIVERSE = "fixed_40_current_pool"
-DISCLAIMER = ("研究只读评分：固定当前 ETF 池、离线模型快照；不是交易信号，"
-              "不下单、不通知、不写正式记录链。")
+DISCLAIMER = "研究只读评分：固定当前 ETF 池、离线模型快照；不是交易信号，不下单、不通知、不写正式记录链。"
 
 
 class ScorePayloadError(ValueError):
@@ -54,6 +54,7 @@ def _datetime(value: Any) -> dt.datetime | None:
 
 def _scores_sha256(rows: list[dict[str, Any]]) -> str:
     """Content hash of the score table, independent of payload key order."""
+
     def score_value(value: Any) -> float | None:
         if value is None:
             return None
@@ -61,11 +62,19 @@ def _scores_sha256(rows: list[dict[str, Any]]) -> str:
         return 0.0 if number == 0 else number
 
     canonical = sorted(
-        ({"code": str(row["code"]), "name": str(row["name"]),
-          "score": score_value(row["score"]),
-          "rank": row["rank"], "eligible": bool(row["eligible"]),
-          "reason": str(row["reason"])} for row in rows),
-        key=lambda row: row["code"])
+        (
+            {
+                "code": str(row["code"]),
+                "name": str(row["name"]),
+                "score": score_value(row["score"]),
+                "rank": row["rank"],
+                "eligible": bool(row["eligible"]),
+                "reason": str(row["reason"]),
+            }
+            for row in rows
+        ),
+        key=lambda row: row["code"],
+    )
     text = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -109,8 +118,7 @@ def validate(payload: dict[str, Any]) -> dict[str, Any]:
     if train_end > cutoff:
         raise ScorePayloadError("train_end_after_cutoff")
     horizon = payload.get("label_horizon")
-    if (isinstance(horizon, bool) or not isinstance(horizon, int)
-            or not 1 <= horizon <= 250):
+    if isinstance(horizon, bool) or not isinstance(horizon, int) or not 1 <= horizon <= 250:
         raise ScorePayloadError("bad_label_horizon")
     snapshot = str(payload.get("data_master_snapshot") or "").strip()
     if not snapshot or len(snapshot) > 64:
@@ -151,9 +159,16 @@ def validate(payload: dict[str, Any]) -> dict[str, Any]:
                 raise ScorePayloadError(f"ineligible_rank:{code}")
             if not reason:
                 reason = "not_eligible"
-        clean.append({"code": code, "name": str(item.get("name") or "")[:64],
-                      "score": score, "rank": rank, "eligible": is_eligible,
-                      "reason": reason})
+        clean.append(
+            {
+                "code": code,
+                "name": str(item.get("name") or "")[:64],
+                "score": score,
+                "rank": rank,
+                "eligible": is_eligible,
+                "reason": reason,
+            }
+        )
     missing = sorted(CODES - seen)
     if missing:
         raise ScorePayloadError(f"missing_codes:{len(missing)}")
@@ -181,40 +196,63 @@ def validate(payload: dict[str, Any]) -> dict[str, Any]:
 
 def import_payload(session: Session, payload: dict[str, Any]) -> dict[str, Any]:
     data = validate(payload)
-    existing = session.scalar(select(EtfScoreRun).where(
-        EtfScoreRun.model_version == data["model_version"],
-        EtfScoreRun.data_cutoff == data["data_cutoff"]))
+    existing = session.scalar(
+        select(EtfScoreRun).where(
+            EtfScoreRun.model_version == data["model_version"], EtfScoreRun.data_cutoff == data["data_cutoff"]
+        )
+    )
     if existing is not None:
         # The same identity must carry the same artifact and the same content;
         # a retrain or rescore under an unchanged version is a conflict, not a
         # harmless duplicate.
         if existing.model_sha256 != data["model_sha256"]:
             raise ScorePayloadError("duplicate_model_sha256_mismatch")
-        stored = [{"code": row.code, "name": row.name, "score": row.score,
-                   "rank": row.rank, "eligible": row.eligible, "reason": row.reason}
-                  for row in session.scalars(
-                      select(EtfScore).where(EtfScore.run_id == existing.id))]
+        stored = [
+            {
+                "code": row.code,
+                "name": row.name,
+                "score": row.score,
+                "rank": row.rank,
+                "eligible": row.eligible,
+                "reason": row.reason,
+            }
+            for row in session.scalars(select(EtfScore).where(EtfScore.run_id == existing.id))
+        ]
         if _scores_sha256(stored) != data["scores_sha256"]:
             raise ScorePayloadError("duplicate_content_mismatch")
-        return {"ok": True, "skipped": "duplicate", "run_id": existing.id,
-                "model_version": existing.model_version,
-                "data_cutoff": existing.data_cutoff.isoformat(),
-                "content_sha256": data["scores_sha256"]}
+        return {
+            "ok": True,
+            "skipped": "duplicate",
+            "run_id": existing.id,
+            "model_version": existing.model_version,
+            "data_cutoff": existing.data_cutoff.isoformat(),
+            "content_sha256": data["scores_sha256"],
+        }
     run = EtfScoreRun(
-        model_version=data["model_version"], model_sha256=data["model_sha256"],
-        data_cutoff=data["data_cutoff"], generated_at=data["generated_at"],
-        label_horizon=data["label_horizon"], train_start=data["train_start"],
-        train_end=data["train_end"], data_master_snapshot=data["data_master_snapshot"],
-        metrics=data["metrics"], notes=data["notes"])
+        model_version=data["model_version"],
+        model_sha256=data["model_sha256"],
+        data_cutoff=data["data_cutoff"],
+        generated_at=data["generated_at"],
+        label_horizon=data["label_horizon"],
+        train_start=data["train_start"],
+        train_end=data["train_end"],
+        data_master_snapshot=data["data_master_snapshot"],
+        metrics=data["metrics"],
+        notes=data["notes"],
+    )
     session.add(run)
     session.flush()
     for row in data["scores"]:
         session.add(EtfScore(run_id=run.id, **row))
-    return {"ok": True, "run_id": run.id, "model_version": run.model_version,
-            "data_cutoff": run.data_cutoff.isoformat(),
-            "eligible": sum(1 for row in data["scores"] if row["eligible"]),
-            "scores": len(data["scores"]),
-            "content_sha256": data["scores_sha256"]}
+    return {
+        "ok": True,
+        "run_id": run.id,
+        "model_version": run.model_version,
+        "data_cutoff": run.data_cutoff.isoformat(),
+        "eligible": sum(1 for row in data["scores"] if row["eligible"]),
+        "scores": len(data["scores"]),
+        "content_sha256": data["scores_sha256"],
+    }
 
 
 def expected_session(today: dt.date) -> dt.date:
@@ -232,13 +270,13 @@ def expected_session(today: dt.date) -> dt.date:
 
 def horizons(session: Session) -> list[int]:
     """Label horizons that currently have at least one imported snapshot."""
-    return [int(h) for h in session.scalars(
-        select(EtfScoreRun.label_horizon).distinct()
-        .order_by(EtfScoreRun.label_horizon))]
+    return [
+        int(h)
+        for h in session.scalars(select(EtfScoreRun.label_horizon).distinct().order_by(EtfScoreRun.label_horizon))
+    ]
 
 
-def latest(session: Session, *, run_id: int | None = None,
-           horizon: int | None = None) -> dict[str, Any]:
+def latest(session: Session, *, run_id: int | None = None, horizon: int | None = None) -> dict[str, Any]:
     """Latest snapshot, optionally scoped to one label horizon.
 
     The 5d and 20d shadows are independent model artifacts.  Without a filter
@@ -248,44 +286,87 @@ def latest(session: Session, *, run_id: int | None = None,
     stmt = select(EtfScoreRun)
     if horizon is not None:
         stmt = stmt.where(EtfScoreRun.label_horizon == horizon)
-    run = session.get(EtfScoreRun, run_id) if run_id else session.scalar(
-        stmt.order_by(EtfScoreRun.data_cutoff.desc(), EtfScoreRun.id.desc()).limit(1))
+    run = (
+        session.get(EtfScoreRun, run_id)
+        if run_id
+        else session.scalar(stmt.order_by(EtfScoreRun.data_cutoff.desc(), EtfScoreRun.id.desc()).limit(1))
+    )
     available = horizons(session)
     if run is None:
-        return {"read_only": True, "is_trade_signal": False, "disclaimer": DISCLAIMER,
-                "run": None, "scores": [], "history": [],
-                "horizon": horizon, "horizons": available}
-    rows = list(session.scalars(select(EtfScore).where(EtfScore.run_id == run.id)
-                               .order_by(EtfScore.rank.is_(None), EtfScore.rank,
-                                         EtfScore.score.desc())))
+        return {
+            "read_only": True,
+            "is_trade_signal": False,
+            "disclaimer": DISCLAIMER,
+            "run": None,
+            "scores": [],
+            "history": [],
+            "horizon": horizon,
+            "horizons": available,
+        }
+    rows = list(
+        session.scalars(
+            select(EtfScore)
+            .where(EtfScore.run_id == run.id)
+            .order_by(EtfScore.rank.is_(None), EtfScore.rank, EtfScore.score.desc())
+        )
+    )
     history = []
-    for r in session.scalars(select(EtfScoreRun)
-                             .where(EtfScoreRun.label_horizon == run.label_horizon)
-                             .order_by(EtfScoreRun.data_cutoff.desc(),
-                                       EtfScoreRun.id.desc()).limit(20)):
-        eligible_count = session.scalar(select(func.count()).select_from(EtfScore).where(
-            EtfScore.run_id == r.id, EtfScore.eligible.is_(True))) or 0
-        history.append({"id": r.id, "model_version": r.model_version,
-                        "data_cutoff": r.data_cutoff.isoformat(),
-                        "generated_at": r.generated_at, "eligible_count": int(eligible_count),
-                        "created_at": r.created_at})
+    for r in session.scalars(
+        select(EtfScoreRun)
+        .where(EtfScoreRun.label_horizon == run.label_horizon)
+        .order_by(EtfScoreRun.data_cutoff.desc(), EtfScoreRun.id.desc())
+        .limit(20)
+    ):
+        eligible_count = (
+            session.scalar(
+                select(func.count()).select_from(EtfScore).where(EtfScore.run_id == r.id, EtfScore.eligible.is_(True))
+            )
+            or 0
+        )
+        history.append(
+            {
+                "id": r.id,
+                "model_version": r.model_version,
+                "data_cutoff": r.data_cutoff.isoformat(),
+                "generated_at": r.generated_at,
+                "eligible_count": int(eligible_count),
+                "created_at": r.created_at,
+            }
+        )
     expected = expected_session(now_cst().date())
     return {
-        "read_only": True, "is_trade_signal": False, "disclaimer": DISCLAIMER,
-        "horizon": run.label_horizon, "horizons": available,
-        "run": {"id": run.id, "model_version": run.model_version,
-                "model_sha256": run.model_sha256, "data_cutoff": run.data_cutoff.isoformat(),
-                "generated_at": run.generated_at, "label_horizon": run.label_horizon,
-                "train_start": run.train_start.isoformat() if run.train_start else None,
-                "train_end": run.train_end.isoformat() if run.train_end else None,
-                "data_master_snapshot": run.data_master_snapshot,
-                "stale": run.data_cutoff < expected,
-                "expected_cutoff": expected.isoformat(),
-                "staleness_days": (expected - run.data_cutoff).days,
-                "metrics": run.metrics, "notes": run.notes, "created_at": run.created_at},
-        "scores": [{"code": row.code, "name": row.name,
-                    "score": float(row.score) if row.score is not None else None,
-                    "rank": row.rank, "eligible": row.eligible, "reason": row.reason}
-                   for row in rows],
+        "read_only": True,
+        "is_trade_signal": False,
+        "disclaimer": DISCLAIMER,
+        "horizon": run.label_horizon,
+        "horizons": available,
+        "run": {
+            "id": run.id,
+            "model_version": run.model_version,
+            "model_sha256": run.model_sha256,
+            "data_cutoff": run.data_cutoff.isoformat(),
+            "generated_at": run.generated_at,
+            "label_horizon": run.label_horizon,
+            "train_start": run.train_start.isoformat() if run.train_start else None,
+            "train_end": run.train_end.isoformat() if run.train_end else None,
+            "data_master_snapshot": run.data_master_snapshot,
+            "stale": run.data_cutoff < expected,
+            "expected_cutoff": expected.isoformat(),
+            "staleness_days": (expected - run.data_cutoff).days,
+            "metrics": run.metrics,
+            "notes": run.notes,
+            "created_at": run.created_at,
+        },
+        "scores": [
+            {
+                "code": row.code,
+                "name": row.name,
+                "score": float(row.score) if row.score is not None else None,
+                "rank": row.rank,
+                "eligible": row.eligible,
+                "reason": row.reason,
+            }
+            for row in rows
+        ],
         "history": history,
     }

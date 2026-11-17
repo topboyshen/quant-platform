@@ -5,6 +5,7 @@ The two Hermes cron jobs (`profit` 15:10, `health` 15:35) archive each run under
 original text body.  qp verifies the body sha256 and freezes the text as a report;
 it never runs the legacy job or sends anything.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -69,8 +70,9 @@ def read_body(envelope: dict[str, Any]) -> str:
     return raw.decode("utf-8")
 
 
-def import_hermes_summary(session: Session, envelope: dict[str, Any], *,
-                          body: str | None = None) -> tuple[Report, bool]:
+def import_hermes_summary(
+    session: Session, envelope: dict[str, Any], *, body: str | None = None
+) -> tuple[Report, bool]:
     mode = str(envelope.get("mode") or "")
     kind = KIND_BY_MODE.get(mode)
     if kind is None:
@@ -90,16 +92,19 @@ def import_hermes_summary(session: Session, envelope: dict[str, Any], *,
         "text": text,
     }
     envelope_sha = hashlib.sha256(Path(envelope["_path"]).read_bytes()).hexdigest()
-    source = SourceRef(source="hermes_cron", locator=envelope.get("_path"),
-                       sha256=envelope_sha,
-                       detail={"jobId": envelope.get("jobId"), "mode": mode,
-                               "businessDate": day.isoformat()})
+    source = SourceRef(
+        source="hermes_cron",
+        locator=envelope.get("_path"),
+        sha256=envelope_sha,
+        detail={"jobId": envelope.get("jobId"), "mode": mode, "businessDate": day.isoformat()},
+    )
     # A legacy retry can produce a new body for the same day: bump the version.
     version = 1
     while True:
         try:
-            return freeze_report(session, kind=kind, business_date=day, payload=payload,
-                                 sources=[source], version=version)
+            return freeze_report(
+                session, kind=kind, business_date=day, payload=payload, sources=[source], version=version
+            )
         except ReportConflict:
             version += 1
             if version > 10:

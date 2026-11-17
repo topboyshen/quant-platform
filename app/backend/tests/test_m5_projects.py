@@ -1,4 +1,5 @@
 """M5.5 research project/branch import: structure, revisions, JSON payloads."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -29,32 +30,72 @@ class FakeReader:
 
 def project_tables(revision: int = 3, writes: bool = False) -> dict[str, list[dict]]:
     return {
-        "qd_research_projects": [{
-            "id": 1, "public_id": "proj-1", "user_id": 1, "name": "etf-trend",
-            "subject": '{"market": "cn", "symbol": "510300"}', "goal": "improve",
-            "default_branch_id": 1, "status": "active", "revision": revision,
-            "last_opened_branch_id": 1, "last_opened_module": "backtest",
-            "client_request_id": "req-1", "created_at": NOW, "updated_at": NOW,
-        }],
-        "qd_research_branches": [{
-            "id": 1, "public_id": "branch-1", "project_id": 1, "user_id": 1,
-            "name": "main", "parent_branch_id": None, "head_strategy_id": 3,
-            "revision": 2, "status": "active", "created_at": NOW, "updated_at": NOW,
-        }],
-        "qd_research_admission": [{
-            "id": 1, "writes_enabled": writes, "runs_enabled": False, "revision": 4,
-            "updated_at": NOW, "updated_by": 1,
-        }],
-        "qd_research_admission_audit": [{
-            "id": 7, "changed_at": NOW, "actor_user_id": 1,
-            "before": '{"writes_enabled": true}', "after": '{"writes_enabled": false}',
-            "env_ceiling": "shadow", "reason": "freeze",
-        }],
-        "qd_research_drafts": [{
-            "id": 1, "branch_id": 1, "user_id": 1, "module": "backtest",
-            "payload": '{"params": {"ma": 60}}', "draft_revision": 2,
-            "saved_at": NOW, "saved_from": "ui",
-        }],
+        "qd_research_projects": [
+            {
+                "id": 1,
+                "public_id": "proj-1",
+                "user_id": 1,
+                "name": "etf-trend",
+                "subject": '{"market": "cn", "symbol": "510300"}',
+                "goal": "improve",
+                "default_branch_id": 1,
+                "status": "active",
+                "revision": revision,
+                "last_opened_branch_id": 1,
+                "last_opened_module": "backtest",
+                "client_request_id": "req-1",
+                "created_at": NOW,
+                "updated_at": NOW,
+            }
+        ],
+        "qd_research_branches": [
+            {
+                "id": 1,
+                "public_id": "branch-1",
+                "project_id": 1,
+                "user_id": 1,
+                "name": "main",
+                "parent_branch_id": None,
+                "head_strategy_id": 3,
+                "revision": 2,
+                "status": "active",
+                "created_at": NOW,
+                "updated_at": NOW,
+            }
+        ],
+        "qd_research_admission": [
+            {
+                "id": 1,
+                "writes_enabled": writes,
+                "runs_enabled": False,
+                "revision": 4,
+                "updated_at": NOW,
+                "updated_by": 1,
+            }
+        ],
+        "qd_research_admission_audit": [
+            {
+                "id": 7,
+                "changed_at": NOW,
+                "actor_user_id": 1,
+                "before": '{"writes_enabled": true}',
+                "after": '{"writes_enabled": false}',
+                "env_ceiling": "shadow",
+                "reason": "freeze",
+            }
+        ],
+        "qd_research_drafts": [
+            {
+                "id": 1,
+                "branch_id": 1,
+                "user_id": 1,
+                "module": "backtest",
+                "payload": '{"params": {"ma": 60}}',
+                "draft_revision": 2,
+                "saved_at": NOW,
+                "saved_from": "ui",
+            }
+        ],
     }
 
 
@@ -74,8 +115,7 @@ def test_project_import_is_idempotent_and_mirrors_revision(engine):
     cleanup(engine)
     try:
         first = import_projects(engine, FakeReader(project_tables()))
-        assert first == {"project": 1, "branch": 1, "admission": 1,
-                         "admission_audit": 1, "draft": 1}
+        assert first == {"project": 1, "branch": 1, "admission": 1, "admission_audit": 1, "draft": 1}
         second = import_projects(engine, FakeReader(project_tables(revision=4, writes=True)))
         assert second == first
         assert count(engine, Project) == 1 and count(engine, Branch) == 1

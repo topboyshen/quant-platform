@@ -1,4 +1,5 @@
 """Inbound approved-signal webhook (M4.5, shadow)."""
+
 from __future__ import annotations
 
 import json
@@ -46,9 +47,22 @@ async def approved_signals(request: Request, db: Session = Depends(get_db)) -> J
     if result["duplicate"]:
         return JSONResponse(status_code=409, content={"ok": True, "duplicate": True, **result})
     if result["status"] != "accepted":
-        return JSONResponse(status_code=422, content={
-            "ok": False, "status": result["status"], "detail": result["detail"],
-            "idempotency_key": result["idempotency_key"]})
-    return JSONResponse(status_code=200, content={
-        "ok": True, "status": "accepted", "detail": result["detail"],
-        "idempotency_key": result["idempotency_key"], "order": "queued_stub"})
+        return JSONResponse(
+            status_code=422,
+            content={
+                "ok": False,
+                "status": result["status"],
+                "detail": result["detail"],
+                "idempotency_key": result["idempotency_key"],
+            },
+        )
+    return JSONResponse(
+        status_code=200,
+        content={
+            "ok": True,
+            "status": "accepted",
+            "detail": result["detail"],
+            "idempotency_key": result["idempotency_key"],
+            "order": "queued_stub",
+        },
+    )

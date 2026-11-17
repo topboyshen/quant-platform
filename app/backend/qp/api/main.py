@@ -1,4 +1,5 @@
 """qp-api (FastAPI). Served on 127.0.0.1:18800; nginx maps /next/api/ -> /api/."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -44,6 +45,7 @@ def get_db():
 
 def client_ip(req: Request) -> str | None:
     import ipaddress
+
     cand = req.headers.get("x-real-ip") or (req.client.host if req.client else None)
     try:
         return str(ipaddress.ip_address(cand)) if cand else None
@@ -73,10 +75,12 @@ def require_auth(req: Request, db: Session = Depends(get_db)) -> Principal:
 
 def require_scope(scope: str):
     """Service tokens are limited to their scopes; interactive user sessions are not."""
+
     def dep(p: Principal = Depends(require_auth)) -> Principal:
         if p.kind == "user" or scope in (p.scopes or []):
             return p
         raise HTTPException(status_code=403, detail=f"missing scope {scope}")
+
     return dep
 
 
@@ -117,9 +121,16 @@ def login(body: LoginIn, req: Request, resp: Response, db: Session = Depends(get
     st = get_settings()
     ip = client_ip(req)
     since = utcnow() - LOGIN_WINDOW
-    failures = db.execute(select(func.count()).select_from(AuditEvent).where(
-        AuditEvent.action == "login", AuditEvent.ok.is_(False), AuditEvent.at >= since,
-        AuditEvent.actor == body.username)).scalar_one()
+    failures = db.execute(
+        select(func.count())
+        .select_from(AuditEvent)
+        .where(
+            AuditEvent.action == "login",
+            AuditEvent.ok.is_(False),
+            AuditEvent.at >= since,
+            AuditEvent.actor == body.username,
+        )
+    ).scalar_one()
     if failures >= LOGIN_MAX_FAILURES:
         db.add(AuditEvent(actor=body.username, action="login", ok=False, ip=ip, detail={"reason": "locked"}))
         raise HTTPException(status_code=429, detail="too many failed attempts, try later")
@@ -139,8 +150,15 @@ def login(body: LoginIn, req: Request, resp: Response, db: Session = Depends(get
     # get_db commits during teardown, after the response is sent; commit here so a
     # client that calls /api/auth/me immediately after login cannot race the session row.
     db.commit()
-    resp.set_cookie(st.cookie_name, token, max_age=st.session_ttl_hours * 3600, path=st.cookie_path,
-                    secure=st.cookie_secure, httponly=True, samesite="lax")
+    resp.set_cookie(
+        st.cookie_name,
+        token,
+        max_age=st.session_ttl_hours * 3600,
+        path=st.cookie_path,
+        secure=st.cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
     return {"username": user.username, "role": user.role}
 
 
@@ -164,41 +182,73 @@ def ops_jobs(p: Principal = Depends(require_auth), db: Session = Depends(get_db)
     for d in db.execute(select(JobDef).order_by(JobDef.name)).scalars():
         # skipped_locked is a no-op attempt while another run holds the lock; it must not
         # mask the real outcome of the job.
-        last = db.execute(select(JobRun).where(JobRun.job_name == d.name,
-                                               JobRun.status != "skipped_locked")
-                          .order_by(JobRun.id.desc()).limit(1)).scalar_one_or_none()
-        out.append({"name": d.name, "description": d.description, "schedule_hint": d.schedule_hint,
-                    "enabled": d.enabled, "last_status": last.status if last else None,
-                    "last_started_at": last.started_at if last else None})
+        last = db.execute(
+            select(JobRun)
+            .where(JobRun.job_name == d.name, JobRun.status != "skipped_locked")
+            .order_by(JobRun.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        out.append(
+            {
+                "name": d.name,
+                "description": d.description,
+                "schedule_hint": d.schedule_hint,
+                "enabled": d.enabled,
+                "last_status": last.status if last else None,
+                "last_started_at": last.started_at if last else None,
+            }
+        )
     return out
 
 
 @app.get("/api/ops/job-runs", dependencies=[Depends(require_scope("ops:read"))])
-def ops_job_runs(limit: int = 50, job: str | None = None, p: Principal = Depends(require_auth),
-                 db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+def ops_job_runs(
+    limit: int = 50, job: str | None = None, p: Principal = Depends(require_auth), db: Session = Depends(get_db)
+) -> list[dict[str, Any]]:
     q = select(JobRun).order_by(JobRun.id.desc()).limit(max(1, min(limit, 500)))
     if job:
         q = q.where(JobRun.job_name == job)
-    return [{"id": r.id, "job_name": r.job_name, "status": r.status, "trigger": r.trigger,
-             "dedup_key": r.dedup_key, "started_at": r.started_at, "finished_at": r.finished_at,
-             "duration_s": r.duration_s, "result": r.result, "error": (r.error or "")[:500] or None}
-            for r in db.execute(q).scalars()]
+    return [
+        {
+            "id": r.id,
+            "job_name": r.job_name,
+            "status": r.status,
+            "trigger": r.trigger,
+            "dedup_key": r.dedup_key,
+            "started_at": r.started_at,
+            "finished_at": r.finished_at,
+            "duration_s": r.duration_s,
+            "result": r.result,
+            "error": (r.error or "")[:500] or None,
+        }
+        for r in db.execute(q).scalars()
+    ]
 
 
 @app.get("/api/ops/health", dependencies=[Depends(require_scope("ops:read"))])
 def ops_health(p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
     # healthcheck and inventory write different checks in alternating runs; show the
     # latest observation per check instead of only the most recent run's rows.
-    checks = [{"check": h.check, "ok": h.ok, "value": h.value, "at": h.at, "detail": h.detail}
-              for h in db.execute(select(HealthCheck).distinct(HealthCheck.check)
-                                  .order_by(HealthCheck.check, HealthCheck.at.desc())).scalars()]
+    checks = [
+        {"check": h.check, "ok": h.ok, "value": h.value, "at": h.at, "detail": h.detail}
+        for h in db.execute(
+            select(HealthCheck).distinct(HealthCheck.check).order_by(HealthCheck.check, HealthCheck.at.desc())
+        ).scalars()
+    ]
     counts = dict(db.execute(select(Outbox.status, func.count()).group_by(Outbox.status)).all())
     st = get_settings()
-    return {"checks": checks,
-            "outbox": {"pending": counts.get("pending", 0), "shadowed": counts.get("shadowed", 0),
-                       "sent": counts.get("sent", 0), "failed": counts.get("failed", 0),
-                       "mode": st.notify_mode, "signals_mode": st.signals_notify_mode,
-                       "kill_switch": st.notify_kill_switch}}
+    return {
+        "checks": checks,
+        "outbox": {
+            "pending": counts.get("pending", 0),
+            "shadowed": counts.get("shadowed", 0),
+            "sent": counts.get("sent", 0),
+            "failed": counts.get("failed", 0),
+            "mode": st.notify_mode,
+            "signals_mode": st.signals_notify_mode,
+            "kill_switch": st.notify_kill_switch,
+        },
+    }
 
 
 from qp.api.ops_m2 import router as _m2_router  # noqa: E402

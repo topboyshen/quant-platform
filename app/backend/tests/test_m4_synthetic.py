@@ -5,6 +5,7 @@
 hand-write an expected decision: they replay the same synthetic input through qp and
 compare field by field with that artifact.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -49,24 +50,36 @@ def test_risk_gate_matrix_matches_legacy(legacy):
 def test_volume_breakout_matches_legacy(legacy):
     case = legacy["volume_breakout"]
     assert case["daily_breakout_enabled"] is True
-    bars = [DailyBar(date=dt.date.fromisoformat(row["date"]),
-                     open=row["open"], high=row["high"], low=row["low"],
-                     close=row["close"], volume=row["volume"]) for row in case["bars"]]
+    bars = [
+        DailyBar(
+            date=dt.date.fromisoformat(row["date"]),
+            open=row["open"],
+            high=row["high"],
+            low=row["low"],
+            close=row["close"],
+            volume=row["volume"],
+        )
+        for row in case["bars"]
+    ]
     decision_date = bars[-1].date
 
     class Fetcher:
         def get(self, code, *, required_date=None, previous_session=None):
-            return SimpleNamespace(bars=bars, attempts=[], source="synthetic",
-                                   publication_lag=False)
+            return SimpleNamespace(bars=bars, attempts=[], source="synthetic", publication_lag=False)
 
     target = Target(case["code"], case["name"], "宽基")
-    evaluation = evaluate_target(target, Fetcher(), decision_date=decision_date,
-                                 daily_breakout_enabled=True)
+    evaluation = evaluate_target(target, Fetcher(), decision_date=decision_date, daily_breakout_enabled=True)
     assert evaluation.data_ok is True
     actual = [
-        {"code": s.code, "name": s.name, "signal_type": s.signal_type,
-         "period": s.period, "title": s.title, "detail": s.detail,
-         "confidence": s.confidence}
+        {
+            "code": s.code,
+            "name": s.name,
+            "signal_type": s.signal_type,
+            "period": s.period,
+            "title": s.title,
+            "detail": s.detail,
+            "confidence": s.confidence,
+        }
         for s in evaluation.signals
     ]
     assert actual == case["expected_signals"]

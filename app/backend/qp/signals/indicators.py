@@ -6,6 +6,7 @@
 - weekly MACD golden cross == previous DIF <= DEA and current DIF > DEA
 - volume breakout == close crosses above MA(long) with volume > ratio * prior-window average
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -85,14 +86,16 @@ def weekly_bars(bars: Sequence[Bar]) -> list[Bar]:
         highs = [b.high for b in chunk if b.high is not None]
         lows = [b.low for b in chunk if b.low is not None]
         volumes = [b.volume for b in chunk if b.volume is not None]
-        out.append(Bar(
-            date=label,
-            close=closes[-1],
-            open=opens[0] if opens else None,
-            high=max(highs) if highs else None,
-            low=min(lows) if lows else None,
-            volume=sum(volumes) if volumes else None,
-        ))
+        out.append(
+            Bar(
+                date=label,
+                close=closes[-1],
+                open=opens[0] if opens else None,
+                high=max(highs) if highs else None,
+                low=min(lows) if lows else None,
+                volume=sum(volumes) if volumes else None,
+            )
+        )
     return out
 
 
@@ -101,8 +104,12 @@ def weekly_golden_cross(bars: Sequence[Bar]) -> tuple[bool, dict[str, float | No
     weekly = weekly_bars(bars)
     diag: dict[str, float | None] = {
         "completed_bars": float(len(weekly)),
-        "dif": None, "dea": None, "previous_dif": None, "previous_dea": None,
-        "weekly_close": None, "data_date": None,
+        "dif": None,
+        "dea": None,
+        "previous_dif": None,
+        "previous_dea": None,
+        "weekly_close": None,
+        "data_date": None,
     }
     if len(weekly) < MIN_WEEKLY_BARS:
         return False, diag
@@ -110,29 +117,41 @@ def weekly_golden_cross(bars: Sequence[Bar]) -> tuple[bool, dict[str, float | No
     dif, dea = macd(closes)
     if not all(math.isfinite(v) for v in (dif[-1], dea[-1], dif[-2], dea[-2])):
         return False, diag
-    diag.update({
-        "dif": dif[-1], "dea": dea[-1], "previous_dif": dif[-2], "previous_dea": dea[-2],
-        "weekly_close": closes[-1], "data_date": weekly[-1].date.isoformat(),
-    })
+    diag.update(
+        {
+            "dif": dif[-1],
+            "dea": dea[-1],
+            "previous_dif": dif[-2],
+            "previous_dea": dea[-2],
+            "weekly_close": closes[-1],
+            "data_date": weekly[-1].date.isoformat(),
+        }
+    )
     return is_golden_cross(dif, dea), diag
 
 
-def volume_breakout(bars: Sequence[Bar], ma_long: int = MA_LONG, volume_window: int = VOLUME_WINDOW,
-                    ratio: float = VOLUME_RATIO) -> tuple[bool, dict[str, float | None]]:
+def volume_breakout(
+    bars: Sequence[Bar], ma_long: int = MA_LONG, volume_window: int = VOLUME_WINDOW, ratio: float = VOLUME_RATIO
+) -> tuple[bool, dict[str, float | None]]:
     """Daily close crossing above MA(long) on volume > ratio * prior average."""
     diag: dict[str, float | None] = {
-        "ma": None, "previous_ma": None, "close": None, "previous_close": None,
-        "volume": None, "avg_volume": None, "volume_ratio": None,
+        "ma": None,
+        "previous_ma": None,
+        "close": None,
+        "previous_close": None,
+        "volume": None,
+        "avg_volume": None,
+        "volume_ratio": None,
     }
     if len(bars) < ma_long + 5:
         return False, diag
     closes = [b.close for b in bars]
     ma = sum(closes[-ma_long:]) / ma_long
-    previous_ma = sum(closes[-ma_long - 1:-1]) / ma_long
+    previous_ma = sum(closes[-ma_long - 1 : -1]) / ma_long
     if not (math.isfinite(ma) and math.isfinite(previous_ma)):
         return False, diag
     volume = bars[-1].volume
-    prior = [b.volume for b in bars[-(volume_window + 1):-1]]
+    prior = [b.volume for b in bars[-(volume_window + 1) : -1]]
     if volume is None or any(v is None for v in prior):
         return False, diag
     avg_volume = sum(prior) / len(prior)  # type: ignore[arg-type]
@@ -141,9 +160,16 @@ def volume_breakout(bars: Sequence[Bar], ma_long: int = MA_LONG, volume_window: 
     # Legacy rounds the ratio to two decimals before comparing with ``>=``; mirror it
     # so a shadow comparison cannot diverge on the 1.495-1.4999 boundary.
     volume_ratio = round(volume / avg_volume, 2)
-    diag.update({
-        "ma": ma, "previous_ma": previous_ma, "close": closes[-1], "previous_close": closes[-2],
-        "volume": volume, "avg_volume": avg_volume, "volume_ratio": volume_ratio,
-    })
+    diag.update(
+        {
+            "ma": ma,
+            "previous_ma": previous_ma,
+            "close": closes[-1],
+            "previous_close": closes[-2],
+            "volume": volume,
+            "avg_volume": avg_volume,
+            "volume_ratio": volume_ratio,
+        }
+    )
     triggered = closes[-2] <= previous_ma and closes[-1] > ma and volume_ratio >= ratio
     return triggered, diag

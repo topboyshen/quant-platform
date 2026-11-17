@@ -1,4 +1,5 @@
 """M4.6 fixed legacy fixtures: manifest integrity and branch coverage metadata."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -13,16 +14,25 @@ from qp.signals.eod import Signal, TargetEvaluation, apply_risk_gate, target_dec
 from qp.signals.universe import TARGETS
 
 FIXTURES = Path(__file__).parent / "fixtures/m4"
-DATES = ("2026-08-21", "2026-08-27", "2026-09-24", "2026-10-23", "2026-10-27",
-         "2026-11-03", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12")
+DATES = (
+    "2026-08-21",
+    "2026-08-27",
+    "2026-09-24",
+    "2026-10-23",
+    "2026-10-27",
+    "2026-11-03",
+    "2026-11-09",
+    "2026-11-10",
+    "2026-11-11",
+    "2026-11-12",
+)
 SENSITIVE_KEYS = ("token", "chat_id", "secret", "password", "authorization")
 
 
 def _load(day: str) -> tuple[dict, dict]:
     target = FIXTURES / day
     manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
-    files = {name: json.loads((target / name).read_text(encoding="utf-8"))
-             for name in manifest["files"]}
+    files = {name: json.loads((target / name).read_text(encoding="utf-8")) for name in manifest["files"]}
     return manifest, files
 
 
@@ -32,9 +42,17 @@ def test_all_contract_dates_present_with_valid_manifests():
         manifest, files = _load(day)
         assert manifest["ok"] is True and manifest["decision_date"] == day
         assert set(manifest["files"]) == {
-            "eod_run.json", "target_decisions.json", "risk_snapshot.json",
-            "trend_signals.json", "outcomes.json", "macro_slice.json",
-            "notifications.json", "risk_state.json", "intake.json", "digest.json"}
+            "eod_run.json",
+            "target_decisions.json",
+            "risk_snapshot.json",
+            "trend_signals.json",
+            "outcomes.json",
+            "macro_slice.json",
+            "notifications.json",
+            "risk_state.json",
+            "intake.json",
+            "digest.json",
+        }
         for name, meta in manifest["files"].items():
             raw = (FIXTURES / day / name).read_bytes()
             assert hashlib.sha256(raw).hexdigest() == meta["sha256"], (day, name)
@@ -47,21 +65,21 @@ def test_branch_metadata_matches_legacy_history():
     assert emitted["latest_run"]["decision_outcome"] == "emitted"
     breakout = json.loads((FIXTURES / "2026-08-27/fixture.json").read_text())
     assert breakout["latest_run"]["status"] == "partial"
-    assert json.loads((FIXTURES / "2026-08-27/macro_slice.json").read_text())[
-        "total_amount"] is None
+    assert json.loads((FIXTURES / "2026-08-27/macro_slice.json").read_text())["total_amount"] is None
     retry = json.loads((FIXTURES / "2026-09-24/fixture.json").read_text())
     assert retry["attempts"] == 2
     assert retry["first_run"]["status"] == "failed"
     assert retry["latest_run"]["status"] == "success"
     partial = json.loads((FIXTURES / "2026-10-23/fixture.json").read_text())
     assert (partial["latest_run"]["status"], partial["latest_run"]["decision_outcome"]) == (
-        "partial", "data_unavailable")
+        "partial",
+        "data_unavailable",
+    )
     assert partial["notifications"] == 2
     three = json.loads((FIXTURES / "2026-10-27/fixture.json").read_text())
     assert three["attempts"] == 3
     calm = json.loads((FIXTURES / "2026-11-03/fixture.json").read_text())
-    assert (calm["latest_run"]["status"], calm["latest_run"]["decision_outcome"]) == (
-        "success", "no_signal")
+    assert (calm["latest_run"]["status"], calm["latest_run"]["decision_outcome"]) == ("success", "no_signal")
     assert calm["target_decisions"] == 40
 
 
@@ -83,29 +101,49 @@ def test_legacy_decisions_replay_through_qp_eod():
     for day in DATES:
         _, files = _load(day)
         latest = files["eod_run.json"][-1]
-        snapshot = next(row for row in files["risk_snapshot.json"]
-                        if row["run_id"] == latest["run_id"])
+        snapshot = next(row for row in files["risk_snapshot.json"] if row["run_id"] == latest["run_id"])
         level = snapshot["level"]
         evaluations = []
         for decision in files["target_decisions.json"]:
             signals = [
-                Signal(decision["code"], decision["name"], row["signal_type"],
-                       row["period"], row["title"], row["detail"], row["confidence"])
+                Signal(
+                    decision["code"],
+                    decision["name"],
+                    row["signal_type"],
+                    row["period"],
+                    row["title"],
+                    row["detail"],
+                    row["confidence"],
+                )
                 for row in decision["raw_signals"]
             ]
-            evaluations.append(TargetEvaluation(
-                by_code[decision["code"]], decision["data_status"] == "ok",
-                dt.date.fromisoformat(decision["data_date"]) if decision["data_date"] else None,
-                decision["reference_close"], "", "", signals))
+            evaluations.append(
+                TargetEvaluation(
+                    by_code[decision["code"]],
+                    decision["data_status"] == "ok",
+                    dt.date.fromisoformat(decision["data_date"]) if decision["data_date"] else None,
+                    decision["reference_close"],
+                    "",
+                    "",
+                    signals,
+                )
+            )
         blocked = apply_risk_gate(evaluations, level)
         replay = {row["code"]: row for row in target_decisions(evaluations, blocked, level)}
         for expected in files["target_decisions.json"]:
             actual = replay[expected["code"]]
-            for field in ("data_status", "decision_state", "risk_action", "reason_code",
-                          "risk_level", "raw_trigger_count"):
+            for field in (
+                "data_status",
+                "decision_state",
+                "risk_action",
+                "reason_code",
+                "risk_level",
+                "raw_trigger_count",
+            ):
                 assert actual[field] == expected[field], (day, expected["code"], field)
             assert {row["signal_type"] for row in actual["raw_signals"]} == {
-                row["signal_type"] for row in expected["raw_signals"]}
+                row["signal_type"] for row in expected["raw_signals"]
+            }
             if expected["raw_signals"]:
                 seen.add(expected["decision_state"])
     assert seen == {"allowed", "blocked"}

@@ -1,4 +1,5 @@
 """M5.6 research comparator: R1-R10 pass/fail/blocked behaviour."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -59,14 +60,13 @@ def source_tables() -> dict[str, list[dict]]:
     return {
         "forecast_protocol": [{"protocol_id": str(uuid.uuid4()), "status": "ACTIVE"}],
         "forecast_batch": [{"batch_id": BATCH, "batch_status": "SEALED"}],
-        "forecast": [{"forecast_id": FORECAST, "batch_id": BATCH, "status": "SEALED",
-                      "target_key": "600104.SH"}],
-        "outcome_observation": [{"outcome_id": str(uuid.uuid4()), "forecast_id": FORECAST,
-                                 "outcome_status": "APPROVED"}],
+        "forecast": [{"forecast_id": FORECAST, "batch_id": BATCH, "status": "SEALED", "target_key": "600104.SH"}],
+        "outcome_observation": [
+            {"outcome_id": str(uuid.uuid4()), "forecast_id": FORECAST, "outcome_status": "APPROVED"}
+        ],
         "source_record": [{"source_id": str(uuid.uuid4()), "source_type": "FILING"}],
         "audit_event": [{"audit_id": 1, "action": "SEAL"}],
-        "calibration_snapshot": [{"calibration_snapshot_id": str(uuid.uuid4()),
-                                  "metric_type": "BINARY"}],
+        "calibration_snapshot": [{"calibration_snapshot_id": str(uuid.uuid4()), "metric_type": "BINARY"}],
         "model_artifact": [{"model_artifact_id": str(uuid.uuid4()), "source_system": "astock"}],
         "import_ledger": [{"import_id": str(uuid.uuid4()), "target_object_type": "forecast"}],
         "batch": [{"batch_id": "b1", "status": "SEALED"}],
@@ -86,8 +86,9 @@ def source_tables() -> dict[str, list[dict]]:
         "qd_profit_pick_observations": [{"id": 1, "pick_id": 1, "net_return": 0.01}],
         "qd_profit_research_run_attempts": [{"execution_id": str(uuid.uuid4()), "run_id": 1}],
         "qd_analysis_tasks": [{"id": 1, "result_json": '{"a": 1}'}],
-        "qd_analysis_memory": [{"id": 1, "reasons": '[]', "scores": "{}",
-                                "indicators_snapshot": "{}", "raw_result": "{}"}],
+        "qd_analysis_memory": [
+            {"id": 1, "reasons": "[]", "scores": "{}", "indicators_snapshot": "{}", "raw_result": "{}"}
+        ],
         "ai_chat_sessions": [{"id": "s1"}],
         "ai_chat_messages": [{"id": 1, "session_id": "s1"}],
         "qd_research_projects": [{"id": 1, "revision": 2, "subject": "{}"}],
@@ -163,8 +164,9 @@ def test_compare_fails_on_live_notification(engine):
         reader = StubReader(source_tables())
         seed(engine, reader)
         with Session(engine) as session:
-            session.add(Outbox(channel="telegram", recipient="ops", dedup_key="x-1",
-                               body="x", mode="live", status="pending"))
+            session.add(
+                Outbox(channel="telegram", recipient="ops", dedup_key="x-1", body="x", mode="live", status="pending")
+            )
             session.commit()
             result = compare_research(session, ledger=reader, phase2=reader, qd=reader)
         r10 = next(c for c in result["checks"] if c["id"] == "R10")
@@ -179,8 +181,7 @@ def test_compare_fails_on_non_refused_live_llm_call(engine):
         reader = StubReader(source_tables())
         seed(engine, reader)
         with Session(engine) as session:
-            session.add(LlmCall(request_sha256="0" * 64, mode="live", shadow=False,
-                                status="sent"))
+            session.add(LlmCall(request_sha256="0" * 64, mode="live", shadow=False, status="sent"))
             session.commit()
             result = compare_research(session, ledger=reader, phase2=reader, qd=reader)
         r7 = next(c for c in result["checks"] if c["id"] == "R7")

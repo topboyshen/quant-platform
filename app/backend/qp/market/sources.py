@@ -1,12 +1,13 @@
 """Data-source adapters mirroring the endpoints the legacy code uses (read-only public GET/POST).
-  - Dolt (chenditc/investment_data on DoltHub SQL API): trading calendar, latest EOD date  [qlib_dolt_incremental]
-  - Tencent fqkline + Sina KLine: index closes                                            [index_close_backend_probe]
-  - Tencent quote: instrument names (Eastmoney push2 clist is the fallback)              [akshare stock_zh_a_spot_em]
-  - akshare tool_trade_date_hist_sina: sina klc_td_sh.txt (reachability only)             [update_trading_calendar]
-  - CNINFO hisAnnouncement/query: announcement counts (direct, legacy uses no proxy)       [precollect_cninfo]
-  - GitHub releases (chenditc/investment_data): Qlib release-fallback tag                 [release_fallback]
-  - baostock: TCP reachability only (raw socket protocol, no HTTP proxy support)
+- Dolt (chenditc/investment_data on DoltHub SQL API): trading calendar, latest EOD date  [qlib_dolt_incremental]
+- Tencent fqkline + Sina KLine: index closes                                            [index_close_backend_probe]
+- Tencent quote: instrument names (Eastmoney push2 clist is the fallback)              [akshare stock_zh_a_spot_em]
+- akshare tool_trade_date_hist_sina: sina klc_td_sh.txt (reachability only)             [update_trading_calendar]
+- CNINFO hisAnnouncement/query: announcement counts (direct, legacy uses no proxy)       [precollect_cninfo]
+- GitHub releases (chenditc/investment_data): Qlib release-fallback tag                 [release_fallback]
+- baostock: TCP reachability only (raw socket protocol, no HTTP proxy support)
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -51,8 +52,10 @@ def dolt_calendar(start: dt.date, end: dt.date) -> list[tuple[dt.date, bool]]:
     cur = start
     while cur <= end:
         nxt = min(end, cur + dt.timedelta(days=365))
-        rows = dolt_sql("SELECT date,is_open FROM ts_trade_day_calendar WHERE exchange='SSE' "
-                        f"AND date>='{cur.isoformat()}' AND date<='{nxt.isoformat()}' ORDER BY date")
+        rows = dolt_sql(
+            "SELECT date,is_open FROM ts_trade_day_calendar WHERE exchange='SSE' "
+            f"AND date>='{cur.isoformat()}' AND date<='{nxt.isoformat()}' ORDER BY date"
+        )
         for r in rows:
             d = str(r.get("date") or "")[:10]
             if _DATE.match(d):
@@ -68,13 +71,17 @@ def dolt_latest_eod() -> str | None:
 
 
 def tencent_index(symbol: str, count: int = 10) -> list[tuple[str, float]]:
-    r = fetch(TENCENT_KLINE, params={"param": f"{symbol},day,,,{count},qfq"}, headers={"Referer": "https://gu.qq.com/"},
-              timeout=15)
+    r = fetch(
+        TENCENT_KLINE,
+        params={"param": f"{symbol},day,,,{count},qfq"},
+        headers={"Referer": "https://gu.qq.com/"},
+        timeout=15,
+    )
     try:
         d = r.json()
     except ValueError:
         raise FetchError("tencent_not_json") from None
-    node = ((d.get("data") or {}).get(symbol) or {})
+    node = (d.get("data") or {}).get(symbol) or {}
     rows = node.get("qfqday") or node.get("day") or []
     out = []
     for row in rows:
@@ -86,13 +93,21 @@ def tencent_index(symbol: str, count: int = 10) -> list[tuple[str, float]]:
 
 
 def sina_index(symbol: str, count: int = 10) -> list[tuple[str, float]]:
-    r = fetch(SINA_KLINE, params={"symbol": symbol, "scale": 240, "ma": "no", "datalen": count},
-              headers={"Referer": "https://finance.sina.com.cn/"}, timeout=15)
+    r = fetch(
+        SINA_KLINE,
+        params={"symbol": symbol, "scale": 240, "ma": "no", "datalen": count},
+        headers={"Referer": "https://finance.sina.com.cn/"},
+        timeout=15,
+    )
     try:
         rows = json.loads(r.text())
     except ValueError:
         raise FetchError("sina_not_json") from None
-    out = [(x["day"][:10], float(x["close"])) for x in rows or [] if isinstance(x, dict) and _DATE.match(str(x.get("day", ""))[:10])]
+    out = [
+        (x["day"][:10], float(x["close"]))
+        for x in rows or []
+        if isinstance(x, dict) and _DATE.match(str(x.get("day", ""))[:10])
+    ]
     if not out:
         raise FetchError("sina_empty")
     return out
@@ -103,9 +118,22 @@ def eastmoney_names(page_size: int = 100, max_pages: int = 80) -> dict[str, str]
     names: dict[str, str] = {}
     fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81+s:2048"
     for pn in range(1, max_pages + 1):
-        r = fetch(EM_CLIST, params={"pn": pn, "pz": page_size, "po": 1, "np": 1, "fltt": 2, "invt": 2, "fid": "f12",
-                                    "fs": fs, "fields": "f12,f13,f14"}, headers={"Referer": "https://quote.eastmoney.com/"},
-                  timeout=15)
+        r = fetch(
+            EM_CLIST,
+            params={
+                "pn": pn,
+                "pz": page_size,
+                "po": 1,
+                "np": 1,
+                "fltt": 2,
+                "invt": 2,
+                "fid": "f12",
+                "fs": fs,
+                "fields": "f12,f13,f14",
+            },
+            headers={"Referer": "https://quote.eastmoney.com/"},
+            timeout=15,
+        )
         try:
             d = (r.json() or {}).get("data") or {}
         except ValueError:
@@ -139,7 +167,7 @@ def tencent_names(symbols: list[str], batch_size: int = 200, min_ratio: float = 
     wanted = list(dict.fromkeys(s.upper() for s in symbols if _TX_SYMBOL.match(s.upper())))
     names: dict[str, str] = {}
     for i in range(0, len(wanted), batch_size):
-        batch = wanted[i:i + batch_size]
+        batch = wanted[i : i + batch_size]
         q = ",".join(s.lower() for s in batch)
         for attempt in (1, 2):
             try:
@@ -162,11 +190,32 @@ def tencent_names(symbols: list[str], batch_size: int = 200, min_ratio: float = 
 
 def cninfo_count(day: dt.date) -> int:
     """Total announcements for one day across SZSE+SSE (legacy collector is direct, no proxy)."""
-    r = fetch(CNINFO_QUERY, data={"pageNum": 1, "pageSize": 1, "column": "szse", "tabName": "fulltext", "plate": "",
-                                  "stock": "", "searchkey": "", "secid": "", "category": "", "trade": "",
-                                  "seDate": f"{day}~{day}", "sortName": "", "sortType": "", "isHLtitle": "true"},
-              headers={"Referer": "https://www.cninfo.com.cn/new/disclosure", "Origin": "https://www.cninfo.com.cn",
-                       "X-Requested-With": "XMLHttpRequest"}, proxy=False, timeout=20)
+    r = fetch(
+        CNINFO_QUERY,
+        data={
+            "pageNum": 1,
+            "pageSize": 1,
+            "column": "szse",
+            "tabName": "fulltext",
+            "plate": "",
+            "stock": "",
+            "searchkey": "",
+            "secid": "",
+            "category": "",
+            "trade": "",
+            "seDate": f"{day}~{day}",
+            "sortName": "",
+            "sortType": "",
+            "isHLtitle": "true",
+        },
+        headers={
+            "Referer": "https://www.cninfo.com.cn/new/disclosure",
+            "Origin": "https://www.cninfo.com.cn",
+            "X-Requested-With": "XMLHttpRequest",
+        },
+        proxy=False,
+        timeout=20,
+    )
     try:
         d = r.json()
     except ValueError:
@@ -185,8 +234,14 @@ def github_release_tag() -> str | None:
 def _retryable_dolt_error(e: FetchError) -> bool:
     """Only retry transport/5xx failures; a rejected query should fail immediately."""
     code = str(e)
-    return code in {"TimeoutError", "URLError", "ConnectionError", "OSError", "ConnectionResetError",
-                    "RemoteDisconnected"} or code.startswith("http_5")
+    return code in {
+        "TimeoutError",
+        "URLError",
+        "ConnectionError",
+        "OSError",
+        "ConnectionResetError",
+        "RemoteDisconnected",
+    } or code.startswith("http_5")
 
 
 def probe_dolt() -> dict[str, Any]:
@@ -212,24 +267,74 @@ def probe_all() -> list[dict[str, Any]]:
         t0 = time.monotonic()
         try:
             detail = f() or {}
-            out.append({"source": name, "ok": True, "via_proxy": proxy, "ms": round((time.monotonic() - t0) * 1000, 1),
-                        "detail": detail})
+            out.append(
+                {
+                    "source": name,
+                    "ok": True,
+                    "via_proxy": proxy,
+                    "ms": round((time.monotonic() - t0) * 1000, 1),
+                    "detail": detail,
+                }
+            )
         except FetchError as e:
-            out.append({"source": name, "ok": False, "via_proxy": proxy, "ms": round((time.monotonic() - t0) * 1000, 1),
-                        "detail": {"error": str(e)}})
+            out.append(
+                {
+                    "source": name,
+                    "ok": False,
+                    "via_proxy": proxy,
+                    "ms": round((time.monotonic() - t0) * 1000, 1),
+                    "detail": {"error": str(e)},
+                }
+            )
         except Exception as e:  # noqa: BLE001 - classify only
-            out.append({"source": name, "ok": False, "via_proxy": proxy, "ms": round((time.monotonic() - t0) * 1000, 1),
-                        "detail": {"error": type(e).__name__}})
+            out.append(
+                {
+                    "source": name,
+                    "ok": False,
+                    "via_proxy": proxy,
+                    "ms": round((time.monotonic() - t0) * 1000, 1),
+                    "detail": {"error": type(e).__name__},
+                }
+            )
 
     # The names check keeps the Tencent primary path (and its Eastmoney fallback claim) honest.
-    run("tencent", True, lambda: {"last": tencent_index("sh000001", 2)[-1][0],
-                                  "names": len(tencent_names(["SH600000", "SZ000001", "BJ430017"]))})
+    run(
+        "tencent",
+        True,
+        lambda: {
+            "last": tencent_index("sh000001", 2)[-1][0],
+            "names": len(tencent_names(["SH600000", "SZ000001", "BJ430017"])),
+        },
+    )
     run("sina", True, lambda: {"last": sina_index("sh000001", 2)[-1][0]})
     run("akshare_sina_calendar", True, lambda: {"bytes": len(fetch(SINA_CAL, timeout=15).body)})
-    run("eastmoney", True, lambda: {"total": (fetch(EM_CLIST, params={"pn": 1, "pz": 1, "po": 1, "np": 1, "fltt": 2, "invt": 2,
-                                                                     "fid": "f12", "fs": "m:1+t:2", "fields": "f12"},
-                                                    headers={"Referer": "https://quote.eastmoney.com/"},
-                                                    timeout=15).json().get("data") or {}).get("total")})
+    run(
+        "eastmoney",
+        True,
+        lambda: {
+            "total": (
+                fetch(
+                    EM_CLIST,
+                    params={
+                        "pn": 1,
+                        "pz": 1,
+                        "po": 1,
+                        "np": 1,
+                        "fltt": 2,
+                        "invt": 2,
+                        "fid": "f12",
+                        "fs": "m:1+t:2",
+                        "fields": "f12",
+                    },
+                    headers={"Referer": "https://quote.eastmoney.com/"},
+                    timeout=15,
+                )
+                .json()
+                .get("data")
+                or {}
+            ).get("total")
+        },
+    )
     run("cninfo", False, lambda: {"today_total": cninfo_count(dt.date.today())})
     run("dolt", True, probe_dolt)
     run("github_release", True, lambda: {"tag": github_release_tag()})
@@ -239,5 +344,6 @@ def probe_all() -> list[dict[str, Any]]:
         if not ok:
             raise FetchError(err or "tcp_failed")
         return {"tcp": True}
+
     run("baostock", False, bao)
     return out
