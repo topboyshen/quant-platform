@@ -1,7 +1,7 @@
 """M8.4 chain classification: expected atoms vs legacy alert atoms."""
 from __future__ import annotations
 
-from qp.morning.classify import classify_chain, expected_atoms, legacy_atoms
+from qp.morning.classify import classify_chain, expected_atoms
 
 DAY = "2026-11-13"
 

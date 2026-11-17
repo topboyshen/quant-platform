@@ -7,8 +7,8 @@ The rotation shadow is validation-only: its portfolio, trades and NAV live in
 dedicated ``signals.rotation_shadow_*`` tables and never feed target_decision,
 the record chain or notifications.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = '0016'

@@ -7,8 +7,9 @@ import socket
 import time
 import traceback
 import zlib
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
@@ -21,7 +22,7 @@ from qp.models.ops import JobDef, JobRun
 @dataclass
 class JobSpec:
     name: str
-    func: Callable[["JobContext"], dict[str, Any]]
+    func: Callable[[JobContext], dict[str, Any]]
     description: str
     schedule_hint: str | None
     dedup: Callable[[], str | None] | None
@@ -76,7 +77,8 @@ def run_job(engine: Engine, name: str, trigger: str = "manual", dedup_key: str |
                              host=socket.gethostname(), pid=os.getpid(), result={})
                 if not got:
                     run.status, run.finished_at, run.duration_s = "skipped_locked", utcnow(), 0.0
-                    s.add(run); s.commit()
+                    s.add(run)
+                    s.commit()
                     return run
                 if dedup_key is not None:
                     dup = s.execute(select(JobRun.id).where(JobRun.job_name == name, JobRun.dedup_key == dedup_key,
@@ -84,9 +86,11 @@ def run_job(engine: Engine, name: str, trigger: str = "manual", dedup_key: str |
                     if dup:
                         run.status, run.finished_at, run.duration_s = "skipped_dup", utcnow(), 0.0
                         run.result = {"duplicate_of": dup[0]}
-                        s.add(run); s.commit()
+                        s.add(run)
+                        s.commit()
                         return run
-                s.add(run); s.commit()
+                s.add(run)
+                s.commit()
                 run_id = run.id
             t0 = time.monotonic()
             status, result, error = "succeeded", {}, None

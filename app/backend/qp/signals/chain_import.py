@@ -15,9 +15,18 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from qp.models.chain import (ChainAttempt, ChainBatch, ChainDecision, ChainEligibility,
-                             ChainImportRegister, ChainOutcome, ChainPolicy, ChainState,
-                             ChainUniverse, ChainUniverseMember)
+from qp.models.chain import (
+    ChainAttempt,
+    ChainBatch,
+    ChainDecision,
+    ChainEligibility,
+    ChainImportRegister,
+    ChainOutcome,
+    ChainPolicy,
+    ChainState,
+    ChainUniverse,
+    ChainUniverseMember,
+)
 from qp.models.signals import DecisionOutcome, EodRun, TargetDecision
 from qp.signals import chain
 
@@ -100,7 +109,7 @@ def _outcome_row(outcome: DecisionOutcome, decision_uid: str, expected: dt.date 
 
 def import_history(session: Session, *, apply: bool, since: dt.date | None = None,
                    now: dt.datetime | None = None) -> dict[str, Any]:
-    now = now or dt.datetime.now(dt.timezone.utc)
+    now = now or dt.datetime.now(dt.UTC)
     stmt = (select(TargetDecision, EodRun)
             .join(EodRun, EodRun.run_id == TargetDecision.run_id)
             .order_by(TargetDecision.decision_date, TargetDecision.code))
@@ -214,7 +223,7 @@ def _write_states(session: Session, decision: TargetDecision, uid: str,
              ("signal", "triggered" if int(decision.raw_trigger_count or 0) > 0
               else "not_triggered"),
              ("risk", "blocked" if blocked else "allowed"))
-    for seq, (aspect, state) in enumerate(pairs, start=1):
+    for _seq, (aspect, state) in enumerate(pairs, start=1):
         session.execute(pg_insert(ChainState).values(
             state_id=chain._uid("st_", {"decision_uid": uid, "aspect": aspect, "seq": 1}),
             decision_uid=uid, source_attempt_id=None, aspect=aspect, state=state,

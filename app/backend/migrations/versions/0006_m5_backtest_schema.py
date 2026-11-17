@@ -7,8 +7,8 @@ Mirror of the QuantDinger backtest history (runs / equity / trades / orders / fi
 account points).  Historical results are imported, never re-run.  QD timestamps are
 ``timestamp without time zone``; they are kept naive rather than re-labelled.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = '0006'

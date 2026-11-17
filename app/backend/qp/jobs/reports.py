@@ -9,18 +9,25 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from qp.models.notify import Outbox
+from qp.jobs.registry import JobContext, job
 from qp.models.reports import Report
 from qp.models.signals import ExecutionDigest
-from qp.jobs.registry import JobContext, job
-from qp.reports.daily import import_daily_summary
-from qp.reports.digests import (import_execution_digest, import_research_digest,
-                                load_research_digest)
-from qp.reports.delivery import shadow_deliver
-from qp.reports.hermes import find_envelope, import_hermes_summary
 from qp.reports.compare import compare_reports, write_report
+from qp.reports.daily import import_daily_summary
+from qp.reports.delivery import shadow_deliver
+from qp.reports.digests import (
+    import_execution_digest,
+    import_research_digest,
+    load_research_digest,
+)
+from qp.reports.hermes import find_envelope, import_hermes_summary
+from qp.reports.legacy import (
+    file_sha256,
+    is_readable_daily,
+    legacy_daily_path,
+    load_legacy_daily,
+)
 from qp.reports.receipts import attach_receipts, load_delivered
-from qp.reports.legacy import file_sha256, is_readable_daily, legacy_daily_path, load_legacy_daily
 
 CST = ZoneInfo("Asia/Shanghai")
 DEFAULT_LEGACY_DAILY_DIR = "/home/ubuntu/trading-radar/data/daily-research-summary/1"

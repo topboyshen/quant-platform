@@ -8,8 +8,13 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from qp.models.reports import Report
-from qp.morning.artifacts import (read_alert, read_generation, read_precollect, read_relay,
-                                  read_seal)
+from qp.morning.artifacts import (
+    read_alert,
+    read_generation,
+    read_precollect,
+    read_relay,
+    read_seal,
+)
 from qp.morning.classify import classify_chain
 from qp.reports.archive import ReportConflict, SourceRef, freeze_report
 
@@ -39,7 +44,7 @@ def import_morning_chain(session: Session, *, day: dt.date, astock_root: str | P
                          locator=(stage or {}).get("file"),
                          detail={"present": stage is not None})
                for key, stage in zip(("precollect", "generation", "seal", "relay", "alerts"),
-                                     stages)
+                                     stages, strict=False)
                if stage is not None]
     version = 1
     while True:

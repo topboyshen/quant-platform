@@ -11,10 +11,27 @@ from sqlalchemy.orm import Session
 
 from qp.market.kline import DailyBar, KlineResult
 from qp.models.market import TradingDay
-from qp.models.signals import EodRun, MacroSlice, RiskSnapshot, RiskState, TargetDecision, TrendSignal
-from qp.signals.eod import (Signal, TargetEvaluation, apply_risk_gate, evaluate_target, load_risk_override,
-                            load_risk_state, plan_storage, record_skipped_run, run_eod,
-                            target_decisions, trading_day_status)
+from qp.models.signals import (
+    EodRun,
+    MacroSlice,
+    RiskSnapshot,
+    RiskState,
+    TargetDecision,
+    TrendSignal,
+)
+from qp.signals.eod import (
+    Signal,
+    TargetEvaluation,
+    apply_risk_gate,
+    evaluate_target,
+    load_risk_override,
+    load_risk_state,
+    plan_storage,
+    record_skipped_run,
+    run_eod,
+    target_decisions,
+    trading_day_status,
+)
 from qp.signals.universe import TARGETS, Target
 
 DAY = dt.date(2026, 9, 11)  # Friday
@@ -344,7 +361,7 @@ def test_notified_other_date_signal_is_not_recounted(engine):
         session.add(TrendSignal(decision_date=day - dt.timedelta(days=7), code="510300",
                                 name="沪深300ETF", signal_type="weekly_macd_golden_cross", period="W",
                                 data_date=day, title="old", detail={"data_date": key_date},
-                                confidence=0.6, notified_at=dt.datetime.now(dt.timezone.utc)))
+                                confidence=0.6, notified_at=dt.datetime.now(dt.UTC)))
         session.commit()
     with Session(engine) as session:
         out = run_eod(session, decision_date=day, fetcher=FakeFetcher({"510300": result(bars)}),
@@ -420,7 +437,7 @@ def test_load_risk_state_override_wins_without_fetch(engine, tmp_path):
 def test_load_risk_state_reuses_fresh_row(engine):
     now = time.time()
     with Session(engine) as session:
-        session.add(RiskState(observed_at=dt.datetime.fromtimestamp(now - 30, tz=dt.timezone.utc),
+        session.add(RiskState(observed_at=dt.datetime.fromtimestamp(now - 30, tz=dt.UTC),
                               level="ok", values={"vix": 15.0, "us_10y": 4.0, "crude_oil": 70.0},
                               sources={"vix": "cboe"}, override=False, message="SYSTEM_OK",
                               raw={"level": "ok", "message": "SYSTEM_OK", "vix": 15.0, "us_10y": 4.0,
@@ -440,7 +457,7 @@ def test_load_risk_state_reuses_fresh_row(engine):
 def test_load_risk_state_refreshes_when_stale_and_fails_closed(engine, monkeypatch):
     now = time.time() + 10_000  # outlive the fresh row inserted by the previous test
     with Session(engine) as session:
-        session.add(RiskState(observed_at=dt.datetime.fromtimestamp(now - 600, tz=dt.timezone.utc),
+        session.add(RiskState(observed_at=dt.datetime.fromtimestamp(now - 600, tz=dt.UTC),
                               level="ok", values={}, sources={}, override=False, message="old", raw={}))
         session.commit()
 
@@ -458,7 +475,7 @@ def test_load_risk_state_refreshes_when_stale_and_fails_closed(engine, monkeypat
         assert state["level"] == "critical" and state["vix"] == 18.0
         session.commit()
         rows = session.scalar(select(func.count()).select_from(RiskState).where(RiskState.observed_at
-                                                                                 >= dt.datetime.fromtimestamp(now - 1, tz=dt.timezone.utc)))
+                                                                                 >= dt.datetime.fromtimestamp(now - 1, tz=dt.UTC)))
     assert rows == 1
 
     def boom(*a, **k):

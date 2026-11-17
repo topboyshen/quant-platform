@@ -23,9 +23,20 @@ def chain_on(monkeypatch):
 
 
 def _wipe(engine) -> None:
-    from qp.models.chain import (ChainAttempt, ChainBatch, ChainDecision, ChainEligibility,
-                                 ChainImportRegister, ChainOutcome, ChainPolicy, ChainSnapshot,
-                                 ChainSnapshotItem, ChainState, ChainUniverse, ChainUniverseMember)
+    from qp.models.chain import (
+        ChainAttempt,
+        ChainBatch,
+        ChainDecision,
+        ChainEligibility,
+        ChainImportRegister,
+        ChainOutcome,
+        ChainPolicy,
+        ChainSnapshot,
+        ChainSnapshotItem,
+        ChainState,
+        ChainUniverse,
+        ChainUniverseMember,
+    )
     with Session(engine) as session:
         for model in (ChainSnapshotItem, ChainSnapshot, ChainImportRegister, ChainOutcome,
                       ChainState, ChainEligibility, ChainAttempt, ChainDecision, ChainBatch,
@@ -183,6 +194,7 @@ def test_cli_window_markdown_and_exit_codes(engine, chain_on, capsys):
 
 def test_api_returns_window(engine, chain_on):
     from fastapi.testclient import TestClient
+
     from qp.api.main import app
     from qp.auth.sessions import create_service_token
     _wipe(engine)

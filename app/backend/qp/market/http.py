@@ -65,7 +65,7 @@ def fetch(url: str, *, params: dict | None = None, data: dict | None = None, hea
                         {k.lower(): v for k, v in r.headers.items()})
     except urllib.error.HTTPError as e:
         raise FetchError(f"http_{e.code}") from None
-    except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, OSError) as e:
+    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
         raise FetchError(type(getattr(e, "reason", e)).__name__) from None
     finally:
         _last[host] = time.monotonic()

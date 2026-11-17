@@ -185,12 +185,12 @@ def test_evaluate_risk_reuses_fresh_observations_only():
 
 def test_fetch_cboe_and_fred_values():
     ts = 1_700_000_000.0
-    stamp = dt.datetime.fromtimestamp(ts, tz=dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    stamp = dt.datetime.fromtimestamp(ts, tz=dt.UTC).strftime("%Y-%m-%d %H:%M:%S")
     cboe = FakeResp({"timestamp": stamp, "data": {"current_price": 18.2}})
     value, meta = macro.fetch_cboe_vix(lambda url, **kw: cboe, now=ts + 60)
     assert value == 18.2 and meta["source"] == "cboe_vix_delayed"
 
-    day = dt.datetime.fromtimestamp(ts - 86400, tz=dt.timezone.utc).date().isoformat()
+    day = dt.datetime.fromtimestamp(ts - 86400, tz=dt.UTC).date().isoformat()
     csv_text = f"observation_date,VIXCLS\n{day},15.4\n"
     value, meta = macro.fetch_fred_value("VIXCLS", lambda url, **kw: FakeResp(text=csv_text), now=ts)
     assert value == 15.4 and meta["source"] == "fred_vixcls_daily"

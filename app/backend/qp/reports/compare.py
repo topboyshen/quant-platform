@@ -8,8 +8,9 @@ from __future__ import annotations
 import datetime as dt
 import json
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -17,11 +18,16 @@ from sqlalchemy.orm import Session
 from qp.models.notify import DeliveryAttempt, Outbox
 from qp.models.reports import Report, ReportDelivery, ReportReceipt, ReportSource
 from qp.models.signals import ExecutionDigest
-from qp.reports.legacy import (digest, file_sha256, legacy_daily_path, load_legacy_daily,
-                               validate_legacy_daily)
 from qp.reports.hermes import find_envelope, read_body
+from qp.reports.legacy import (
+    digest,
+    file_sha256,
+    legacy_daily_path,
+    load_legacy_daily,
+    validate_legacy_daily,
+)
 
-UTC = dt.timezone.utc
+UTC = dt.UTC
 STATUS_ORDER = {"PASS": 0, "WARN": 1, "BLOCKED": 2, "FAIL": 3}
 HERMES_JOBS = {"profit_summary": "ec6c86fd856c", "profit_radar_health": "026a1083d9e0"}
 SECTION_KEYS = ("index_closes", "index_close_cache", "macro", "strategies")

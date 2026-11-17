@@ -11,10 +11,16 @@ from qp.models.base import Base
 from qp.models.notify import DeliveryAttempt, Outbox
 from qp.models.research import Forecast, LlmCall
 from qp.research.compare import compare_research
-from qp.research.importer import (import_ai, import_backtests, import_ledger, import_phase2,
-                                  import_profit, import_projects)
+from qp.research.importer import (
+    import_ai,
+    import_backtests,
+    import_ledger,
+    import_phase2,
+    import_profit,
+    import_projects,
+)
 
-NOW = dt.datetime(2026, 11, 13, 9, 0, tzinfo=dt.timezone.utc)
+NOW = dt.datetime(2026, 11, 13, 9, 0, tzinfo=dt.UTC)
 BATCH = str(uuid.uuid4())
 FORECAST = str(uuid.uuid4())
 

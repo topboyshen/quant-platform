@@ -9,8 +9,15 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from qp.api.main import Principal, get_db, require_auth, require_scope
-from qp.models.chain import (ChainAttempt, ChainDecision, ChainEligibility, ChainEvidenceLink,
-                             ChainOutcome, ChainSnapshot, ChainState)
+from qp.models.chain import (
+    ChainAttempt,
+    ChainDecision,
+    ChainEligibility,
+    ChainEvidenceLink,
+    ChainOutcome,
+    ChainSnapshot,
+    ChainState,
+)
 from qp.models.signals import TargetDecision, TrendSignal
 
 router = APIRouter(prefix="/api/signals",

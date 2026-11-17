@@ -21,3 +21,5 @@ venv/
 .pytest_cache/
 # accidental file named "!" imported from a legacy snapshot
 \!
+
+.coverage

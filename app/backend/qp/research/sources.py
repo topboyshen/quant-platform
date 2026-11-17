@@ -13,7 +13,8 @@ without either source.
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine

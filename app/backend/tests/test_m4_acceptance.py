@@ -4,13 +4,18 @@ from __future__ import annotations
 import datetime as dt
 import json
 
-import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from qp.models.market import IndexClose, TradingDay
 from qp.models.notify import DeliveryAttempt, Outbox
-from qp.models.signals import DecisionOutcome, EodRun, RiskSnapshot, TargetDecision, TrendSignal
+from qp.models.signals import (
+    DecisionOutcome,
+    EodRun,
+    RiskSnapshot,
+    TargetDecision,
+    TrendSignal,
+)
 from qp.signals.acceptance import evaluate, latest_decision_date
 from qp.signals.universe import TARGETS
 

@@ -3,11 +3,12 @@
 Revision ID: 0001
 Revises: 
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
+from sqlalchemy.dialects import postgresql
 
 SCHEMAS = ('core', 'market', 'research', 'signals', 'execution', 'reports', 'ops', 'notify', 'archive')
-from sqlalchemy.dialects import postgresql
+
 revision = '0001'
 down_revision = None
 branch_labels = None

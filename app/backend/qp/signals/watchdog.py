@@ -35,8 +35,15 @@ from sqlalchemy.orm import Session
 
 from qp.config import get_settings
 from qp.models.market import IndexClose
-from qp.models.signals import (DecisionOutcome, EodRun, MacroSlice, RiskSnapshot, RiskState,
-                               TargetDecision, TrendSignal)
+from qp.models.signals import (
+    DecisionOutcome,
+    EodRun,
+    MacroSlice,
+    RiskSnapshot,
+    RiskState,
+    TargetDecision,
+    TrendSignal,
+)
 from qp.signals.eod import CST, now_cst, trading_day_status
 
 RETRY_ALERT_CUTOFF = dt.time(15, 48)

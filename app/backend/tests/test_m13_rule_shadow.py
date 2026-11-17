@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from qp.jobs.registry import JOBS
@@ -164,6 +164,7 @@ def test_collect_outcomes_and_idempotent(engine):
 
 def test_api_returns_rule_samples(engine):
     from fastapi.testclient import TestClient
+
     from qp.api.main import app
     from qp.auth.sessions import create_service_token
     cleanup(engine)

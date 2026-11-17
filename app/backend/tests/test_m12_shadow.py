@@ -89,7 +89,7 @@ def seed(engine) -> int:
             ("no_trigger", "510300", 0, "signal_not_triggered"),
             ("data_failed", "518880", 1, "trend_data_unavailable"),
         ]
-        for i, (state, code, triggers, reason) in enumerate(rows):
+        for _i, (state, code, triggers, reason) in enumerate(rows):
             session.add(TargetDecision(
                 run_id=run.run_id, decision_date=DAY, code=code, name=code, sector="宽基",
                 data_status="failed" if state == "data_failed" else "ok",
@@ -173,9 +173,10 @@ def test_collect_benchmark_failure_reports_attempts(engine):
 
 
 def test_api_returns_samples_with_outcomes(engine):
-    from qp.auth.sessions import create_service_token
     from fastapi.testclient import TestClient
+
     from qp.api.main import app
+    from qp.auth.sessions import create_service_token
     cleanup(engine)
     try:
         seed(engine)

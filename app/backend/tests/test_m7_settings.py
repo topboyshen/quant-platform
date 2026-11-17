@@ -15,6 +15,7 @@ def cleanup(engine) -> None:
 
 def test_settings_by_service_token(engine, client):
     import uuid
+
     from qp.auth.sessions import create_service_token
     cleanup(engine)
     try:

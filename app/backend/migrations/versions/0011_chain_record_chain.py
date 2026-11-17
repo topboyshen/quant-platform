@@ -8,8 +8,8 @@ qp signals schema.  Facts stay append-only: state/outcome/eligibility rows are
 revisions, a snapshot is the only place numbers are assembled.  The new tables
 coexist with target_decision/decision_outcome; nothing here changes them.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = '0011'

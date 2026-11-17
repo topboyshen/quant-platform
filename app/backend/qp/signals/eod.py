@@ -11,9 +11,10 @@ import datetime as dt
 import json
 import os
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, select
@@ -23,17 +24,37 @@ from sqlalchemy.orm import Session
 from qp.market.http import fetch as http_fetch
 from qp.market.kline import DailyBar, KlineFetcher
 from qp.models.market import TradingDay
-from qp.models.signals import (EodRun, MacroSlice, RiskSnapshot, RiskState, TargetDecision, TrendSignal)
+from qp.models.signals import (
+    EodRun,
+    MacroSlice,
+    RiskSnapshot,
+    RiskState,
+    TargetDecision,
+    TrendSignal,
+)
 from qp.signals.audit import audit_result
 from qp.signals.indicators import Bar, volume_breakout, weekly_golden_cross
-from qp.signals.macro import (RISK_STATE_MAX_AGE_SEC, collect_macro_slice, evaluate_risk,
-                              fetch_risk_values, merge_risk_metadata, risk_state_is_fresh)
+from qp.signals.macro import (
+    RISK_STATE_MAX_AGE_SEC,
+    collect_macro_slice,
+    evaluate_risk,
+    fetch_risk_values,
+    merge_risk_metadata,
+    risk_state_is_fresh,
+)
 from qp.signals.risk import gate_action
-from qp.signals.universe import (DAILY_BREAKOUT_ENABLED, MA_LONG, TARGETS, VOLUME_RATIO, VOLUME_WINDOW,
-                                 WEEKLY_MACD_ENABLED, Target)
+from qp.signals.universe import (
+    DAILY_BREAKOUT_ENABLED,
+    MA_LONG,
+    TARGETS,
+    VOLUME_RATIO,
+    VOLUME_WINDOW,
+    WEEKLY_MACD_ENABLED,
+    Target,
+)
 
 CST = ZoneInfo("Asia/Shanghai")
-UTC = dt.timezone.utc
+UTC = dt.UTC
 DEFAULT_OVERRIDE_FILE = "/var/lib/qp/radar_risk_override.json"
 FACTORS = ("vix", "us_10y", "crude_oil")
 

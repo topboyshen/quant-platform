@@ -47,6 +47,7 @@ def seed(engine) -> None:
 
 def _token(engine) -> str:
     import uuid
+
     from qp.auth.sessions import create_service_token
     with Session(engine) as s:
         tok = create_service_token(s, f"m7-signals-{uuid.uuid4().hex[:8]}", ["signals:read"])

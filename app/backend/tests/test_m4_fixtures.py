@@ -127,11 +127,11 @@ def test_fixtures_have_no_secret_values():
             text = (FIXTURES / day / name).read_text(encoding="utf-8")
             blob = json.loads(text)
 
-            def walk(value):
+            def walk(value, _day=day, _name=name):
                 if isinstance(value, dict):
                     for key, item in value.items():
                         if any(part in str(key).lower() for part in SENSITIVE_KEYS):
-                            assert item in ("[redacted]", None, ""), (day, name, key)
+                            assert item in ("[redacted]", None, ""), (_day, _name, key)
                         walk(item)
                 elif isinstance(value, list):
                     for item in value:

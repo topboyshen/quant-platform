@@ -9,7 +9,13 @@ from sqlalchemy.orm import Session
 
 from qp.jobs.registry import JOBS
 from qp.models.notify import DeliveryAttempt, Outbox
-from qp.models.signals import (EodRun, MacroSlice, RiskSnapshot, TargetDecision, TrendSignal)
+from qp.models.signals import (
+    EodRun,
+    MacroSlice,
+    RiskSnapshot,
+    TargetDecision,
+    TrendSignal,
+)
 from qp.signals.eod import CST
 from qp.signals.watchdog import build_daily_report, run_watchdog, summarize_attempts
 

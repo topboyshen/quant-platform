@@ -11,20 +11,37 @@ from __future__ import annotations
 import datetime as dt
 import json
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from qp.models.notify import DeliveryAttempt, Outbox
-from qp.models.research import (AiMessage, AiSession, BacktestEquity, BacktestTrade, Forecast,
-                                ForecastOutcome, ImportRun, LlmCall, ProfitObservation, ProfitPick,
-                                ProfitRun, Project)
-from qp.research.importer import (AI_SPECS, LEDGER_SPECS, PHASE2_SPECS, PROFIT_SPECS,
-                                  PROJECT_SPECS, QD_SPECS, TableSpec)
+from qp.models.research import (
+    AiMessage,
+    BacktestEquity,
+    BacktestTrade,
+    Forecast,
+    ForecastOutcome,
+    ImportRun,
+    LlmCall,
+    ProfitObservation,
+    ProfitPick,
+    Project,
+)
+from qp.research.importer import (
+    AI_SPECS,
+    LEDGER_SPECS,
+    PHASE2_SPECS,
+    PROFIT_SPECS,
+    PROJECT_SPECS,
+    QD_SPECS,
+    TableSpec,
+)
 
-UTC = dt.timezone.utc
+UTC = dt.UTC
 STATUS_ORDER = {"PASS": 0, "WARN": 1, "BLOCKED": 2, "FAIL": 3}
 
 

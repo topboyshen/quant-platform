@@ -8,12 +8,20 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from qp.collect.signals import canonical_payload_sha256, write_export
-from qp.models.signals import (ApprovedIntake, DecisionOutcome, EodRun, ExecutionDigest,
-                               MacroSlice, RiskSnapshot, TargetDecision, TrendSignal)
+from qp.models.signals import (
+    ApprovedIntake,
+    DecisionOutcome,
+    EodRun,
+    ExecutionDigest,
+    MacroSlice,
+    RiskSnapshot,
+    TargetDecision,
+    TrendSignal,
+)
 from qp.shadow.compare import compare_day, render_markdown, write_report
 from qp.signals.approved import body_sha256
 
-UTC = dt.timezone.utc
+UTC = dt.UTC
 DAY = "2027-05-04"
 
 

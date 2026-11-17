@@ -22,7 +22,6 @@ def db_url():
     assert main(["db", "upgrade"]) == 0
     yield url
     get_engine.cache_clear()
-    from sqlalchemy import create_engine
     srv.psql(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='{name}';")
     srv.psql(f"DROP DATABASE IF EXISTS {name};")
 
@@ -36,5 +35,6 @@ def engine(db_url):
 @pytest.fixture()
 def client(engine):
     from fastapi.testclient import TestClient
+
     from qp.api.main import app
     return TestClient(app, base_url="https://testserver")

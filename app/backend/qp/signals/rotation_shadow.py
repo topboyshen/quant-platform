@@ -19,8 +19,9 @@ import json
 import math
 import statistics
 import zlib
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -29,8 +30,12 @@ from sqlalchemy.orm import Session
 from qp.market.http import FetchError, fetch
 from qp.market.kline import DailyBar, exchange_prefixed_code
 from qp.models.market import TradingDay
-from qp.models.signals import (RotationShadowAccount, RotationShadowBar,
-                               RotationShadowDay, RotationShadowRun)
+from qp.models.signals import (
+    RotationShadowAccount,
+    RotationShadowBar,
+    RotationShadowDay,
+    RotationShadowRun,
+)
 from qp.signals.eod import now_cst
 from qp.signals.universe import TARGETS
 
@@ -106,7 +111,7 @@ def repair_bars(bars: Sequence[DailyBar]) -> list[DailyBar]:
         return []
     out = [ordered[0]]
     factor = 1.0
-    for previous, bar in zip(ordered, ordered[1:]):
+    for previous, bar in zip(ordered, ordered[1:], strict=False):
         change = bar.close / previous.close - 1
         if change < -0.25 or change > 0.40:
             factor *= previous.close / bar.close
@@ -154,7 +159,7 @@ def seed_bars(session: Session, payload: Any, *, source: str = "tencent_day_seed
             values = (bar.open, bar.high, bar.low, bar.close, bar.volume)
             previous = existing.get(bar.date)
             if previous is not None:
-                if any(abs(a - b) > 0.00011 for a, b in zip(values, previous)):
+                if any(abs(a - b) > 0.00011 for a, b in zip(values, previous, strict=False)):
                     raise DataIssue(f"raw_history_revision:{code}:{bar.date}")
                 continue
             if frozen_through is not None and bar.date <= frozen_through:
@@ -660,7 +665,7 @@ def _metrics(navs: Sequence[float], dates: Sequence[dt.date]) -> dict[str, Any]:
     for value in navs:
         peak = max(peak, value)
         mdd = max(mdd, 1 - value / peak)
-    rets = [b / a - 1 for a, b in zip(navs, navs[1:])]
+    rets = [b / a - 1 for a, b in zip(navs, navs[1:], strict=False)]
     vol = statistics.pstdev(rets) * math.sqrt(252) if len(rets) > 1 else None
     elapsed = (dates[-1] - dates[0]).days
     cagr = (navs[-1] / navs[0]) ** (365.25 / elapsed) - 1 if elapsed >= 365 else None
@@ -741,5 +746,5 @@ def summary(session: Session, rule_version: str = RULE, *, phase: str = "forward
               "quality": account.quality}
     if series:
         result["series"] = [{"date": str(d), "nav": n, "benchmark_nav": b, "ew_nav": e}
-                             for d, n, b, e in zip(dates, navs, bench, ew)]
+                             for d, n, b, e in zip(dates, navs, bench, ew, strict=False)]
     return result

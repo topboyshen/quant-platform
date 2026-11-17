@@ -17,13 +17,19 @@ from qp.config import get_settings
 from qp.jobs.registry import JobContext, job
 from qp.models.signals import RotationShadowDay, RotationShadowRun
 from qp.research import etf_score
+from qp.research.compare import compare_research, write_report
+from qp.research.importer import (
+    import_ai,
+    import_backtests,
+    import_ledger,
+    import_phase2,
+    import_profit,
+    import_projects,
+)
+from qp.research.sources import LedgerReader, Phase2Reader, QDReader
 from qp.signals.eod import now_cst
 from qp.signals.universe import TARGETS
 from qp.signals.watchdog import build_daily_report, run_watchdog
-from qp.research.compare import compare_research, write_report
-from qp.research.importer import (import_ai, import_backtests, import_ledger, import_phase2,
-                                  import_profit, import_projects)
-from qp.research.sources import LedgerReader, Phase2Reader, QDReader
 
 DEFAULT_PHASE2_DB = "/var/lib/research-system-phase2/phase2.db"
 DEFAULT_REPORT_DIR = "/var/lib/qp/research-reports"

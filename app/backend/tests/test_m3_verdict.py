@@ -7,8 +7,15 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from qp.models.base import utcnow
-from qp.models.market import (CompareResult, HealthResult, IndexClose, MarketSummary, QlibStatus, SourceStatus,
-                              TradingDay)
+from qp.models.market import (
+    CompareResult,
+    HealthResult,
+    IndexClose,
+    MarketSummary,
+    QlibStatus,
+    SourceStatus,
+    TradingDay,
+)
 from qp.models.ops import Alert, Inventory, JobRun
 
 CST = dt.timezone(dt.timedelta(hours=8))
@@ -31,7 +38,7 @@ def _wipe(s: Session) -> None:
 def _compare_run(s: Session, statuses: dict[str, str], *, at: dt.datetime | None = None,
                  job_status: str = "succeeded") -> dt.datetime:
     """Insert one succeeded compare run plus its results at a fixed timestamp."""
-    at = at or (NOW.astimezone(dt.timezone.utc) - dt.timedelta(minutes=5))
+    at = at or (NOW.astimezone(dt.UTC) - dt.timedelta(minutes=5))
     jr = JobRun(job_name="market.compare", status=job_status, trigger="test", started_at=at,
                 finished_at=at + dt.timedelta(seconds=10), result={})
     s.add(jr)
@@ -280,7 +287,7 @@ def test_compare_latest_stale_run_is_unknown(engine):
     with Session(engine) as s:
         _wipe(s)
         _compare_run(s, {item: "match" for item in ALL_COMPARE_ITEMS},
-                     at=NOW.astimezone(dt.timezone.utc) - dt.timedelta(hours=27))
+                     at=NOW.astimezone(dt.UTC) - dt.timedelta(hours=27))
         st, summary, detail = _by_check(health(s, now=NOW))["compare.latest"]
         assert st == "unknown", (st, summary, detail)
         assert detail["reason"] == "stale" and detail["age_hours"] > 26
@@ -353,7 +360,7 @@ def test_apply_alerts_resolves_only_explicit_recovery_keys(engine):
 # 5. Calendar/source fallbacks and qp-owned health checks
 # ---------------------------------------------------------------------------
 def _source_rows(s: Session, failed: set[str], at: dt.datetime | None = None) -> None:
-    at = at or (NOW.astimezone(dt.timezone.utc) - dt.timedelta(hours=1))
+    at = at or (NOW.astimezone(dt.UTC) - dt.timedelta(hours=1))
     for name in ("tencent", "sina", "akshare_sina_calendar", "eastmoney", "cninfo", "dolt",
                  "github_release", "baostock"):
         s.add(SourceStatus(source=name, ok=name not in failed, via_proxy=name != "cninfo", ms=1.0,
@@ -362,8 +369,8 @@ def _source_rows(s: Session, failed: set[str], at: dt.datetime | None = None) ->
 
 def test_calendar_falls_back_to_mirrored_calendar(engine, monkeypatch):
     """A Dolt outage must leave a usable, labelled qp calendar instead of an empty one."""
-    from qp.jobs import run_job
     from qp.jobs import market as m
+    from qp.jobs import run_job
     from qp.market.http import FetchError
 
     with Session(engine) as s:
@@ -398,9 +405,9 @@ def test_snapshot_qp_current_uses_qp_summary(engine):
         _wipe(s)
         _open_days(s, "qp", [dt.date(2026, 11, d) for d in (2, 3, 4, 5, 6, 9, 10, 11, 12)])
         s.add(MarketSummary(origin="qp", trade_date=dt.date(2026, 11, 10), data={"coverage": {"ratio": 1.0}},
-                            generated_at=NOW.astimezone(dt.timezone.utc)))
+                            generated_at=NOW.astimezone(dt.UTC)))
         s.add(MarketSummary(origin="legacy", trade_date=dt.date(2026, 11, 4), data={},
-                            generated_at=NOW.astimezone(dt.timezone.utc)))
+                            generated_at=NOW.astimezone(dt.UTC)))
         s.commit()
         rows = _by_check(health(s, now=NOW))
         st, summary, detail = rows["snapshot.qp_current"]
@@ -417,10 +424,10 @@ def test_qlib_source_falls_back_to_release_tag(engine, monkeypatch):
     with Session(engine) as s:
         _wipe(s)
         _open_days(s, "qp", [dt.date(2026, 11, d) for d in (2, 3, 4, 5, 6, 9, 10, 11, 12)])
-        s.add(QlibStatus(kind="source", at=NOW.astimezone(dt.timezone.utc) - dt.timedelta(hours=1),
+        s.add(QlibStatus(kind="source", at=NOW.astimezone(dt.UTC) - dt.timedelta(hours=1),
                          data={"dolt_error": "http_504", "github_release_tag": "2026-11-10"}))
         s.commit()
-        monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.timezone.utc))
+        monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.UTC))
         st, summary, detail = _by_check(m.health(s, now=NOW))["qlib.source_dolt"]
         assert st == "ok", (st, summary, detail)
         assert detail["eod_source"] == "github_release"
@@ -435,10 +442,10 @@ def test_qlib_source_stale_check_is_unknown(engine, monkeypatch):
     with Session(engine) as s:
         _wipe(s)
         _open_days(s, "qp", [dt.date(2026, 11, d) for d in (2, 3, 4, 5, 6, 9, 10, 11, 12)])
-        s.add(QlibStatus(kind="source", at=NOW.astimezone(dt.timezone.utc) - dt.timedelta(hours=27),
+        s.add(QlibStatus(kind="source", at=NOW.astimezone(dt.UTC) - dt.timedelta(hours=27),
                          data={"github_release_tag": "2026-11-10"}))
         s.commit()
-        monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.timezone.utc))
+        monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.UTC))
         st, summary, detail = _by_check(m.health(s, now=NOW))["qlib.source_dolt"]
         assert st == "unknown", (st, summary, detail)
         assert "超过 26h" in summary and detail["age_hours"] > 26
@@ -448,7 +455,7 @@ def test_sources_reachable_uses_peer_fallback(engine, monkeypatch):
     """Tencent/Dolt failures are degraded, not blocking, when their peer is reachable."""
     from qp.jobs import market as m
 
-    monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.timezone.utc))
+    monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.UTC))
     health = m.health
     with Session(engine) as s:
         _wipe(s)
@@ -465,7 +472,7 @@ def test_sources_reachable_marks_display_roles(engine, monkeypatch):
     """The dashboard needs to know which raw failure is on the active vs fallback path."""
     from qp.jobs import market as m
 
-    monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.timezone.utc))
+    monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.UTC))
     health = m.health
     with Session(engine) as s:
         _wipe(s)
@@ -487,7 +494,7 @@ def test_sources_reachable_both_peers_fail_is_warning(engine, monkeypatch):
     """If neither path of a source pair is reachable, the check must stay warning."""
     from qp.jobs import market as m
 
-    monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.timezone.utc))
+    monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.UTC))
     health = m.health
     with Session(engine) as s:
         _wipe(s)

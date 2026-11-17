@@ -48,18 +48,21 @@ def legacy(tmp_path):
     c = sqlite3.connect(core)
     c.execute("create table core_market(date text primary key, schema text, payload text, payload_sha256 text)")
     import hashlib
+
     from qp.collect.market import qlib_summary
     summ = qlib_summary(root, CAL, [list(x) for x in insts], "2026-11-10")
     payload = json.dumps({"generatedAt": "2026-11-10T22:30:02+08:00", "qlib": {k: summ[k] for k in
                           ("date", "coverage", "breadth", "topGainers", "topLosers", "topAmount")}})
     c.execute("insert into core_market values (?,?,?,?)", ("2026-11-10", "research.core-market.v1", payload,
                                                            hashlib.sha256(payload.encode()).hexdigest()))
-    c.commit(); c.close()
+    c.commit()
+    c.close()
     snapdb = tmp_path / "snapshot.db"
     c = sqlite3.connect(snapdb)
     c.execute("create table snapshot(date text, generated_at text, payload text)")
     c.execute("insert into snapshot values ('2026-09-29','2026-09-29T22:30:00+08:00', ?)", (json.dumps({"akshare": 1, "qlib": {}}),))
-    c.commit(); c.close()
+    c.commit()
+    c.close()
     health = tmp_path / "health.json"
     health.write_text(json.dumps({"status": "critical", "businessMode": "FROZEN", "effectiveTradeDate": "2026-10-08",
                                   "generatedAt": "2026-11-10T22:45:00+08:00", "issues": [{"code": "x", "severity": "warning"}]}))
@@ -119,8 +122,8 @@ def market_env(engine, legacy, tmp_path, monkeypatch):
 def test_import_compare_health(engine, market_env):
     from qp.jobs import run_job
     from qp.models.market import CompareResult, HealthResult, ImportLog, Instrument
-    from qp.models.ops import Alert
     from qp.models.notify import Outbox
+    from qp.models.ops import Alert
     for name in ("market.calendar", "market.index_close", "market.instruments", "market.sources", "market.cninfo",
                  "market.qlib_check", "market.ingest_legacy"):
         r = run_job(engine, name, trigger="test")
@@ -181,6 +184,7 @@ def test_low_memory_aborts(engine, monkeypatch, market_env):
 
 def test_market_api(engine, market_env, monkeypatch):
     from fastapi.testclient import TestClient
+
     from qp.api.main import app
     from qp.cli import main
     from qp.jobs import run_job

@@ -6,9 +6,19 @@ import datetime as dt
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from qp.models.research import (AiMessage, AiSession, AiTask, BacktestEquity, BacktestRun,
-                                BacktestTrade, Branch, ProfitPick, ProfitRun, ProfitRunAttempt,
-                                Project)
+from qp.models.research import (
+    AiMessage,
+    AiSession,
+    AiTask,
+    BacktestEquity,
+    BacktestRun,
+    BacktestTrade,
+    Branch,
+    ProfitPick,
+    ProfitRun,
+    ProfitRunAttempt,
+    Project,
+)
 
 NOW = dt.datetime(2026, 11, 12, 15, 30)
 

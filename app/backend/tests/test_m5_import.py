@@ -8,10 +8,22 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from qp.models.research import (Forecast, ForecastBatch, ForecastProtocol, ImportRun, Phase2Audit,
-                                Phase2Protocol)
-from qp.research.importer import (LEDGER_SPECS, PHASE2_SPECS, TableSpec, import_ledger,
-                                  import_phase2, upsert_rows)
+from qp.models.research import (
+    Forecast,
+    ForecastBatch,
+    ForecastProtocol,
+    ImportRun,
+    Phase2Audit,
+    Phase2Protocol,
+)
+from qp.research.importer import (
+    LEDGER_SPECS,
+    PHASE2_SPECS,
+    TableSpec,
+    import_ledger,
+    import_phase2,
+    upsert_rows,
+)
 
 BATCH = str(uuid.uuid4())
 FORECAST = str(uuid.uuid4())
@@ -33,7 +45,7 @@ def ledger_tables(status: str = "SEALED") -> dict[str, list[dict]]:
         "forecast_protocol": [{
             "protocol_id": str(uuid.uuid4()), "protocol_version": "v1",
             "protocol_hash": "p" * 64, "status": "ACTIVE",
-            "created_at": dt.datetime(2026, 8, 1, tzinfo=dt.timezone.utc),
+            "created_at": dt.datetime(2026, 8, 1, tzinfo=dt.UTC),
         }],
         "forecast_batch": [{
             "batch_id": BATCH, "target_session": dt.date(2026, 8, 14),
@@ -45,7 +57,7 @@ def ledger_tables(status: str = "SEALED") -> dict[str, list[dict]]:
             "forecast_type": "BINARY_EVENT", "target_key": "600104.SH",
             "target_session": dt.date(2026, 8, 14), "probability": 0.61,
             "source_hashes": ["a" * 64], "prospective_eligible": True,
-            "created_at": dt.datetime(2026, 8, 13, tzinfo=dt.timezone.utc),
+            "created_at": dt.datetime(2026, 8, 13, tzinfo=dt.UTC),
         }],
     }
 

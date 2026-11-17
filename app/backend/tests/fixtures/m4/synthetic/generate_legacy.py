@@ -25,8 +25,8 @@ from types import SimpleNamespace
 logging.disable(logging.CRITICAL)
 sys.path.insert(0, "/home/ubuntu/trading-radar")
 
-from radar.swing.trend_strategy import TrendConfirmStrategy  # noqa: E402
 import radar_swing_eod  # noqa: E402
+from radar.swing.trend_strategy import TrendConfirmStrategy  # noqa: E402
 
 
 def _sha256(path: str) -> str:

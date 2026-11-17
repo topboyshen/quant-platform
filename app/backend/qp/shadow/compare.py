@@ -21,18 +21,27 @@ import hmac
 import json
 import os
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from qp.collect.signals import FILE_NAMES, EXPORTER
+from qp.collect.signals import EXPORTER, FILE_NAMES
 from qp.models.notify import DeliveryAttempt, Outbox
-from qp.models.signals import (ApprovedIntake, DecisionOutcome, EodRun, ExecutionDigest,
-                               MacroSlice, RiskSnapshot, TargetDecision, TrendSignal)
+from qp.models.signals import (
+    ApprovedIntake,
+    DecisionOutcome,
+    EodRun,
+    ExecutionDigest,
+    MacroSlice,
+    RiskSnapshot,
+    TargetDecision,
+    TrendSignal,
+)
 
-UTC = dt.timezone.utc
+UTC = dt.UTC
 STATUS_ORDER = {"PASS": 0, "WARN": 1, "BLOCKED": 2, "FAIL": 3}
 CST = dt.timezone(dt.timedelta(hours=8))
 
@@ -449,7 +458,7 @@ def _compare_notifications(session: Session, day: dt.date, export: dict[str, Any
             _cmp_exact(f"{kind}.terminal_ok", legacy_payload.get("terminal_ok"),
                        qp_payload.get("terminal_ok"), diffs)
         elif kind == "failure":
-            inferred = not ("终态检查失败" in text) if text else None
+            inferred = "终态检查失败" not in text if text else None
             if inferred is not None and bool(qp_payload.get("terminal_ok")) != inferred:
                 diffs.append(f"{kind}.terminal_ok: inferred_legacy={inferred} "
                              f"qp={qp_payload.get('terminal_ok')!r}")
@@ -551,7 +560,6 @@ def _compare_digest(session: Session, day: dt.date, legacy: dict[str, Any] | Non
         diffs.append(f"items: legacy={sorted(legacy_keys)} qp={sorted(qp_keys)}")
     _cmp_exact("item_count", len(legacy_items), qp_row.item_count, diffs)
     legacy_summary = legacy.get("summary") if isinstance(legacy.get("summary"), dict) else {}
-    qp_summary = qp_body.get("summary") if isinstance(qp_body.get("summary"), dict) else {}
     _cmp_exact("accepted", legacy_summary.get("accepted"), qp_row.accepted, diffs)
     _cmp_exact("rejected", legacy_summary.get("rejected"), qp_row.rejected, diffs)
     legacy_norm = _normalized_digest(legacy)
@@ -673,7 +681,7 @@ def render_markdown(result: dict[str, Any]) -> str:
              f"- Overall: **{result['overall']}**",
              f"- Gate ok: {result['gate_ok']}",
              f"- Legacy: `{result['legacy_dir']}`",
-             f"- Checks: " + ", ".join(f"{key}={value}"
+             "- Checks: " + ", ".join(f"{key}={value}"
                                        for key, value in result["counts"].items()), ""]
     for check in result["checks"]:
         lines.append(f"## {check['id']} {check['status']} — {check['summary']}")

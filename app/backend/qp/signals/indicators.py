@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 MA_LONG = 60
 VOLUME_WINDOW = 20
@@ -47,7 +47,7 @@ def macd(closes: Sequence[float], fast: int = 12, slow: int = 26, signal: int = 
         return [], []
     fast_ema = ema(closes, fast)
     slow_ema = ema(closes, slow)
-    dif = [a - b for a, b in zip(fast_ema, slow_ema)]
+    dif = [a - b for a, b in zip(fast_ema, slow_ema, strict=False)]
     dea = ema(dif, signal)
     return dif, dea
 

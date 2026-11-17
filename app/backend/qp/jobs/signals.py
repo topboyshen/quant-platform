@@ -9,9 +9,14 @@ from sqlalchemy.orm import Session
 
 from qp.jobs.registry import JobContext, job
 from qp.models.market import TradingDay
-from qp.signals.eod import (now_cst, previous_open_day, record_skipped_run, run_eod,
-                            trading_day_status)
 from qp.signals.approved import build_previous_day_digest
+from qp.signals.eod import (
+    now_cst,
+    previous_open_day,
+    record_skipped_run,
+    run_eod,
+    trading_day_status,
+)
 from qp.signals.outcomes import evaluate_pending
 from qp.signals.repair import run_repair
 from qp.signals.watchdog import latest_retryable_run, run_watchdog

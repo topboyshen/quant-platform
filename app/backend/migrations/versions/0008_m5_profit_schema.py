@@ -6,8 +6,8 @@ Revises: 0007
 Mirror of the QuantDinger profit-research history: runs, picks, daily observations and
 run attempts.  Imported read-only; the legacy worker keeps running untouched.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = '0008'
