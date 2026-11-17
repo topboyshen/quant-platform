@@ -50,7 +50,7 @@ class JobRun(Base):
     dedup_key: Mapped[str | None] = mapped_column(String(256))
     status: Mapped[str] = mapped_column(
         String(32), nullable=False
-    )  # running|succeeded|failed|skipped_locked|skipped_dup
+    )  # running|succeeded|failed|blocked|skipped_locked|skipped_dup
     trigger: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")  # timer|manual|api
     host: Mapped[str | None] = mapped_column(String(128))
     pid: Mapped[int | None] = mapped_column(Integer)

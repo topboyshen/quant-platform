@@ -1,0 +1,93 @@
+"""P1 same-day upstream job gates."""
+
+from __future__ import annotations
+
+import datetime as dt
+
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
+
+from qp.jobs import JOBS, run_job
+from qp.jobs.gates import require_job_success
+from qp.models.ops import JobRun
+
+
+def _run(engine, *, status="succeeded", finished=None, name="test.gate.upstream"):
+    now = dt.datetime.now(dt.UTC)
+    with Session(engine) as s:
+        s.add(
+            JobRun(
+                job_name=name,
+                status=status,
+                trigger="test",
+                started_at=finished or now,
+                finished_at=finished or now,
+                result={},
+            )
+        )
+        s.commit()
+
+
+def _clean(engine, name="test.gate.upstream"):
+    with Session(engine) as s:
+        s.execute(delete(JobRun).where(JobRun.job_name == name))
+        s.commit()
+
+
+def test_gate_disabled_by_default(engine):
+    out = require_job_success(engine, "test.gate.upstream")
+    assert out["ok"] is True and out["gate"] == "disabled"
+
+
+def test_gate_blocks_missing_failed_stale_and_future(engine, monkeypatch):
+    monkeypatch.setenv("QP_JOB_GATES", "1")
+    _clean(engine)
+    try:
+        missing = require_job_success(engine, "test.gate.upstream")
+        assert missing["ok"] is False and missing["reason"] == "upstream_missing"
+        _run(engine, status="failed")
+        failed = require_job_success(engine, "test.gate.upstream")
+        assert failed["ok"] is False and failed["reason"] == "upstream_missing"
+        _clean(engine)
+        old = dt.datetime.now(dt.UTC) - dt.timedelta(hours=2)
+        _run(engine, finished=old)
+        stale = require_job_success(engine, "test.gate.upstream", max_age_hours=1)
+        assert stale["ok"] is False and stale["reason"] == "upstream_stale"
+        _clean(engine)
+        future = dt.datetime.now(dt.UTC) + dt.timedelta(minutes=10)
+        _run(engine, finished=future)
+        ahead = require_job_success(engine, "test.gate.upstream")
+        assert ahead["ok"] is False and ahead["reason"] == "upstream_in_future"
+    finally:
+        _clean(engine)
+
+
+def test_gate_accepts_today_success(engine, monkeypatch):
+    monkeypatch.setenv("QP_JOB_GATES", "1")
+    _clean(engine)
+    try:
+        _run(engine)
+        out = require_job_success(engine, "test.gate.upstream")
+        assert out["ok"] is True and out["upstream_run_id"] > 0
+    finally:
+        _clean(engine)
+
+
+def test_blocked_result_gets_blocked_status(engine, monkeypatch):
+    monkeypatch.setenv("QP_JOB_GATES", "1")
+
+    def blocked(_ctx):
+        return {"ok": False, "blocked": "upstream_gate", "gate": {"reason": "test"}}
+
+    from qp.jobs.registry import JobSpec
+
+    JOBS["test.gate.blocked"] = JobSpec("test.gate.blocked", blocked, "test", None, None)
+    try:
+        row = run_job(engine, "test.gate.blocked", trigger="test")
+        assert row.status == "blocked"
+        assert row.result["blocked"] == "upstream_gate"
+    finally:
+        JOBS.pop("test.gate.blocked", None)
+        with Session(engine) as s:
+            s.execute(delete(JobRun).where(JobRun.job_name == "test.gate.blocked"))
+            s.commit()
