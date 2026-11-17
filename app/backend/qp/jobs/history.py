@@ -1,4 +1,5 @@
 """One-off jobs for importing legacy history into qp signals."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -15,9 +16,11 @@ CST = ZoneInfo("Asia/Shanghai")
 DEFAULT_SWING_DB = "/home/ubuntu/trading-radar/data/swing_macro.db"
 
 
-@job("signals.import_legacy_history", "Import legacy swing decisions for past dates "
-                                      "(read-only SQLite; skips dates qp already has)",
-     schedule_hint="manual one-off")
+@job(
+    "signals.import_legacy_history",
+    "Import legacy swing decisions for past dates (read-only SQLite; skips dates qp already has)",
+    schedule_hint="manual one-off",
+)
 def import_legacy_history_job(ctx: JobContext) -> dict:
     path = os.getenv("QP_LEGACY_SWING_DB", DEFAULT_SWING_DB).strip()
     if not Path(path).is_file():

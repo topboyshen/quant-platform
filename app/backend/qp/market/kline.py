@@ -5,6 +5,7 @@ ascending unique dates (last wins), positive closes, and an exact ``required_dat
 check for EOD. A source that only has the previous session is treated as a
 publication lag and may trigger one bounded wait per decision date.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -82,8 +83,9 @@ def _num(text, *, positive: bool = False) -> float:
 
 
 def _bar(date: str, o, h, low, c, v) -> DailyBar:
-    return DailyBar(date=_date(date), open=_num(o), high=_num(h), low=_num(low),
-                    close=_num(c, positive=True), volume=_num(v))
+    return DailyBar(
+        date=_date(date), open=_num(o), high=_num(h), low=_num(low), close=_num(c, positive=True), volume=_num(v)
+    )
 
 
 def parse_eastmoney_klines(klines: list[str]) -> list[DailyBar]:
@@ -124,13 +126,13 @@ def fetch_eastmoney_bars(code: str, days: int = DEFAULT_HISTORY_DAYS) -> list[Da
         "secid": resolve_secid(code),
         "fields1": "f1,f2,f3,f4,f5,f6",
         "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
-        "klt": "101", "fqt": "1",
+        "klt": "101",
+        "fqt": "1",
         "end": dt.date.today().strftime("%Y%m%d"),
         "lmt": str(days + 30),
     }
     try:
-        payload = http.fetch(EASTMONEY_URL, params=params, headers=EASTMONEY_HEADERS,
-                             proxy=False, timeout=30).json()
+        payload = http.fetch(EASTMONEY_URL, params=params, headers=EASTMONEY_HEADERS, proxy=False, timeout=30).json()
     except (FetchError, ValueError, json.JSONDecodeError) as exc:
         raise FetchError(f"eastmoney_kline:{type(exc).__name__}") from None
     klines = (payload.get("data") or {}).get("klines") or []
@@ -149,7 +151,7 @@ def fetch_tencent_bars(code: str, days: int = DEFAULT_HISTORY_DAYS) -> list[Dail
         raise FetchError(f"tencent_kline:{type(exc).__name__}") from None
     if payload.get("code") != 0:
         raise FetchError("tencent_kline:bad_code")
-    entry = ((payload.get("data") or {}).get(tencent_code) or {})
+    entry = (payload.get("data") or {}).get(tencent_code) or {}
     items = entry.get("qfqday") or entry.get("day") or []
     try:
         return parse_tencent_klines(items)
@@ -172,27 +174,37 @@ DEFAULT_SOURCES: list[tuple[str, Callable[[str, int], list[DailyBar]]]] = [
 class KlineFetcher:
     """Sequential source fallback with one bounded publication-lag wait per date."""
 
-    def __init__(self, days: int = DEFAULT_HISTORY_DAYS, *, wait_seconds: int | None = None,
-                 sleep: Callable[[float], None] = time.sleep,
-                 sources: list[tuple[str, Callable[[str, int], list[DailyBar]]]] | None = None):
+    def __init__(
+        self,
+        days: int = DEFAULT_HISTORY_DAYS,
+        *,
+        wait_seconds: int | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        sources: list[tuple[str, Callable[[str, int], list[DailyBar]]]] | None = None,
+    ):
         self.days = days
         self.wait_seconds = int(os.getenv("QP_EOD_STALE_RETRY_SECONDS", "45")) if wait_seconds is None else wait_seconds
         self.sleep = sleep
         self.sources = sources if sources is not None else DEFAULT_SOURCES
         self._waited: set[dt.date] = set()
 
-    def get(self, code: str, *, required_date: dt.date | None = None,
-            previous_session: dt.date | None = None) -> KlineResult:
+    def get(
+        self, code: str, *, required_date: dt.date | None = None, previous_session: dt.date | None = None
+    ) -> KlineResult:
         result = self._attempt(code, required_date, previous_session)
-        if (result.bars or not result.publication_lag or required_date is None
-                or self.wait_seconds <= 0 or required_date in self._waited):
+        if (
+            result.bars
+            or not result.publication_lag
+            or required_date is None
+            or self.wait_seconds <= 0
+            or required_date in self._waited
+        ):
             return result
         self._waited.add(required_date)
         self.sleep(self.wait_seconds)
         return self._attempt(code, required_date, previous_session)
 
-    def _attempt(self, code: str, required_date: dt.date | None,
-                 previous_session: dt.date | None) -> KlineResult:
+    def _attempt(self, code: str, required_date: dt.date | None, previous_session: dt.date | None) -> KlineResult:
         out = KlineResult()
         for name, fetch in self.sources:
             attempt = {"source": name, "rows": 0, "latest_date": None, "error": ""}

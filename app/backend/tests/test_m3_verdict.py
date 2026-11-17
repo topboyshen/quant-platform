@@ -1,4 +1,5 @@
 """Counterexamples for M3 health/compare verdict bugs (must fail on a5d5bb1, then pass after the fix)."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -22,8 +23,13 @@ CST = dt.timezone(dt.timedelta(hours=8))
 NOW = dt.datetime(2026, 11, 11, 17, 0, tzinfo=CST)  # Wed, after 16:30 cutoff
 DAY = dt.date(2026, 11, 4)  # stale calendar / quote day
 INDEXES = ("sh000001", "sh000300", "sz399001", "sz399006")
-ALL_COMPARE_ITEMS = ("calendar.legacy_vs_qp", "calendar.qlib_vs_qp", "index_close.legacy_vs_qp",
-                     "snapshot.core_vs_qp", "instruments.qlib_active_vs_names")
+ALL_COMPARE_ITEMS = (
+    "calendar.legacy_vs_qp",
+    "calendar.qlib_vs_qp",
+    "index_close.legacy_vs_qp",
+    "snapshot.core_vs_qp",
+    "instruments.qlib_active_vs_names",
+)
 
 
 def _wipe(s: Session) -> None:
@@ -35,12 +41,19 @@ def _wipe(s: Session) -> None:
     s.commit()
 
 
-def _compare_run(s: Session, statuses: dict[str, str], *, at: dt.datetime | None = None,
-                 job_status: str = "succeeded") -> dt.datetime:
+def _compare_run(
+    s: Session, statuses: dict[str, str], *, at: dt.datetime | None = None, job_status: str = "succeeded"
+) -> dt.datetime:
     """Insert one succeeded compare run plus its results at a fixed timestamp."""
     at = at or (NOW.astimezone(dt.UTC) - dt.timedelta(minutes=5))
-    jr = JobRun(job_name="market.compare", status=job_status, trigger="test", started_at=at,
-                finished_at=at + dt.timedelta(seconds=10), result={})
+    jr = JobRun(
+        job_name="market.compare",
+        status=job_status,
+        trigger="test",
+        started_at=at,
+        finished_at=at + dt.timedelta(seconds=10),
+        result={},
+    )
     s.add(jr)
     s.flush()
     run_at = at + dt.timedelta(seconds=1)
@@ -93,9 +106,15 @@ def test_unknown_health_does_not_resolve_open_alert(engine):
     assert r.status == "succeeded", r.error
     with Session(engine) as s:
         a = s.execute(select(Alert).where(Alert.key == "market:health:sources.reachable")).scalar_one()
-        hs = {h.check: h.status for h in s.execute(select(HealthResult).where(
-            HealthResult.run_at == s.scalar(select(HealthResult.run_at).order_by(HealthResult.run_at.desc()).limit(1))
-        )).scalars()}
+        hs = {
+            h.check: h.status
+            for h in s.execute(
+                select(HealthResult).where(
+                    HealthResult.run_at
+                    == s.scalar(select(HealthResult.run_at).order_by(HealthResult.run_at.desc()).limit(1))
+                )
+            ).scalars()
+        }
         assert hs.get("sources.reachable") == "unknown"
         assert a.state == "firing" and a.resolved_at is None, (a.state, a.resolved_at, hs)
 
@@ -170,7 +189,7 @@ def test_stale_qp_does_not_hide_behind_empty_legacy(engine):
         _closes(s, "qp", DAY)
         s.commit()
         raw = calendar_for_expectation(s)
-        days, meta = (raw if isinstance(raw, tuple) else (raw, {}))
+        days, meta = raw if isinstance(raw, tuple) else (raw, {})
         want = expected_trade_date(days or [], NOW, dt.time(16, 30)) if days else None
         assert want is None, (want, days, meta)
         st, _, detail = _by_check(health(s, now=NOW))["index_close.qp_current"]
@@ -183,12 +202,24 @@ def test_valid_legacy_calendar_used_when_qp_is_stale(engine):
 
     with Session(engine) as s:
         _wipe(s)
-        _open_days(s, "qp", [dt.date(2026, 11, 2), dt.date(2026, 11, 3), dt.date(2026, 11, 4)],
-                   also_closed_until=dt.date(2026, 11, 4))
+        _open_days(
+            s,
+            "qp",
+            [dt.date(2026, 11, 2), dt.date(2026, 11, 3), dt.date(2026, 11, 4)],
+            also_closed_until=dt.date(2026, 11, 4),
+        )
         # legacy open-days-only calendar that includes today and the next day
-        legacy_opens = [dt.date(2026, 11, 2), dt.date(2026, 11, 3), dt.date(2026, 11, 4),
-                        dt.date(2026, 11, 5), dt.date(2026, 11, 6), dt.date(2026, 11, 9),
-                        dt.date(2026, 11, 10), dt.date(2026, 11, 11), dt.date(2026, 11, 12)]
+        legacy_opens = [
+            dt.date(2026, 11, 2),
+            dt.date(2026, 11, 3),
+            dt.date(2026, 11, 4),
+            dt.date(2026, 11, 5),
+            dt.date(2026, 11, 6),
+            dt.date(2026, 11, 9),
+            dt.date(2026, 11, 10),
+            dt.date(2026, 11, 11),
+            dt.date(2026, 11, 12),
+        ]
         _open_days(s, "legacy", legacy_opens)
         _closes(s, "qp", DAY)
         s.commit()
@@ -223,11 +254,16 @@ def test_compare_latest_insufficient_when_required_skipped(engine):
 
     with Session(engine) as s:
         _wipe(s)
-        _compare_run(s, {"calendar.legacy_vs_qp": "skipped",
-                         "calendar.qlib_vs_qp": "skipped",
-                         "index_close.legacy_vs_qp": "skipped",
-                         "snapshot.core_vs_qp": "match",
-                         "instruments.qlib_active_vs_names": "skipped"})
+        _compare_run(
+            s,
+            {
+                "calendar.legacy_vs_qp": "skipped",
+                "calendar.qlib_vs_qp": "skipped",
+                "index_close.legacy_vs_qp": "skipped",
+                "snapshot.core_vs_qp": "match",
+                "instruments.qlib_active_vs_names": "skipped",
+            },
+        )
         st, summary, detail = _by_check(health(s, now=NOW))["compare.latest"]
         assert st != "ok", (st, summary, detail)
         assert st == "unknown", (st, summary, detail)
@@ -272,8 +308,7 @@ def test_compare_latest_mismatch_is_warning(engine):
 
     with Session(engine) as s:
         _wipe(s)
-        _compare_run(s, {**{item: "match" for item in ALL_COMPARE_ITEMS},
-                         "index_close.legacy_vs_qp": "mismatch"})
+        _compare_run(s, {**{item: "match" for item in ALL_COMPARE_ITEMS}, "index_close.legacy_vs_qp": "mismatch"})
         st, summary, detail = _by_check(health(s, now=NOW))["compare.latest"]
         assert st == "warning", (st, summary, detail)
         assert detail["compared"] == 5 and detail["missing"] == 0 and detail["diffs"] == 1
@@ -286,8 +321,9 @@ def test_compare_latest_stale_run_is_unknown(engine):
 
     with Session(engine) as s:
         _wipe(s)
-        _compare_run(s, {item: "match" for item in ALL_COMPARE_ITEMS},
-                     at=NOW.astimezone(dt.UTC) - dt.timedelta(hours=27))
+        _compare_run(
+            s, {item: "match" for item in ALL_COMPARE_ITEMS}, at=NOW.astimezone(dt.UTC) - dt.timedelta(hours=27)
+        )
         st, summary, detail = _by_check(health(s, now=NOW))["compare.latest"]
         assert st == "unknown", (st, summary, detail)
         assert detail["reason"] == "stale" and detail["age_hours"] > 26
@@ -361,10 +397,17 @@ def test_apply_alerts_resolves_only_explicit_recovery_keys(engine):
 # ---------------------------------------------------------------------------
 def _source_rows(s: Session, failed: set[str], at: dt.datetime | None = None) -> None:
     at = at or (NOW.astimezone(dt.UTC) - dt.timedelta(hours=1))
-    for name in ("tencent", "sina", "akshare_sina_calendar", "eastmoney", "cninfo", "dolt",
-                 "github_release", "baostock"):
-        s.add(SourceStatus(source=name, ok=name not in failed, via_proxy=name != "cninfo", ms=1.0,
-                           at=at, detail={}))
+    for name in (
+        "tencent",
+        "sina",
+        "akshare_sina_calendar",
+        "eastmoney",
+        "cninfo",
+        "dolt",
+        "github_release",
+        "baostock",
+    ):
+        s.add(SourceStatus(source=name, ok=name not in failed, via_proxy=name != "cninfo", ms=1.0, at=at, detail={}))
 
 
 def test_calendar_falls_back_to_mirrored_calendar(engine, monkeypatch):
@@ -377,8 +420,7 @@ def test_calendar_falls_back_to_mirrored_calendar(engine, monkeypatch):
         _wipe(s)
         _open_days(s, "legacy", [dt.date(2026, 11, d) for d in (2, 3, 4, 5, 6, 9, 10, 11, 12)])
         s.commit()
-    monkeypatch.setattr(m.src, "dolt_calendar",
-                        lambda a, b: (_ for _ in ()).throw(FetchError("http_504")))
+    monkeypatch.setattr(m.src, "dolt_calendar", lambda a, b: (_ for _ in ()).throw(FetchError("http_504")))
     r = run_job(engine, "market.calendar", trigger="test")
     assert r.status == "succeeded", (r.error, r.result)
     assert r.result["source"] == "fallback" and r.result["dolt_error"] == "http_504"
@@ -387,8 +429,9 @@ def test_calendar_falls_back_to_mirrored_calendar(engine, monkeypatch):
         assert {x.date for x in rows} == {dt.date(2026, 11, d) for d in (2, 3, 4, 5, 6, 9, 10, 11, 12)}
         assert {x.source for x in rows} == {"fallback:legacy"}
     # A later Dolt success replaces the fallback rows; the source is then Dolt.
-    monkeypatch.setattr(m.src, "dolt_calendar",
-                        lambda a, b: [(dt.date(2026, 11, 10), True), (dt.date(2026, 11, 11), True)])
+    monkeypatch.setattr(
+        m.src, "dolt_calendar", lambda a, b: [(dt.date(2026, 11, 10), True), (dt.date(2026, 11, 11), True)]
+    )
     r2 = run_job(engine, "market.calendar", trigger="test")
     assert r2.status == "succeeded", (r2.error, r2.result)
     with Session(engine) as s:
@@ -404,10 +447,19 @@ def test_snapshot_qp_current_uses_qp_summary(engine):
     with Session(engine) as s:
         _wipe(s)
         _open_days(s, "qp", [dt.date(2026, 11, d) for d in (2, 3, 4, 5, 6, 9, 10, 11, 12)])
-        s.add(MarketSummary(origin="qp", trade_date=dt.date(2026, 11, 10), data={"coverage": {"ratio": 1.0}},
-                            generated_at=NOW.astimezone(dt.UTC)))
-        s.add(MarketSummary(origin="legacy", trade_date=dt.date(2026, 11, 4), data={},
-                            generated_at=NOW.astimezone(dt.UTC)))
+        s.add(
+            MarketSummary(
+                origin="qp",
+                trade_date=dt.date(2026, 11, 10),
+                data={"coverage": {"ratio": 1.0}},
+                generated_at=NOW.astimezone(dt.UTC),
+            )
+        )
+        s.add(
+            MarketSummary(
+                origin="legacy", trade_date=dt.date(2026, 11, 4), data={}, generated_at=NOW.astimezone(dt.UTC)
+            )
+        )
         s.commit()
         rows = _by_check(health(s, now=NOW))
         st, summary, detail = rows["snapshot.qp_current"]
@@ -424,8 +476,13 @@ def test_qlib_source_falls_back_to_release_tag(engine, monkeypatch):
     with Session(engine) as s:
         _wipe(s)
         _open_days(s, "qp", [dt.date(2026, 11, d) for d in (2, 3, 4, 5, 6, 9, 10, 11, 12)])
-        s.add(QlibStatus(kind="source", at=NOW.astimezone(dt.UTC) - dt.timedelta(hours=1),
-                         data={"dolt_error": "http_504", "github_release_tag": "2026-11-10"}))
+        s.add(
+            QlibStatus(
+                kind="source",
+                at=NOW.astimezone(dt.UTC) - dt.timedelta(hours=1),
+                data={"dolt_error": "http_504", "github_release_tag": "2026-11-10"},
+            )
+        )
         s.commit()
         monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.UTC))
         st, summary, detail = _by_check(m.health(s, now=NOW))["qlib.source_dolt"]
@@ -442,8 +499,13 @@ def test_qlib_source_stale_check_is_unknown(engine, monkeypatch):
     with Session(engine) as s:
         _wipe(s)
         _open_days(s, "qp", [dt.date(2026, 11, d) for d in (2, 3, 4, 5, 6, 9, 10, 11, 12)])
-        s.add(QlibStatus(kind="source", at=NOW.astimezone(dt.UTC) - dt.timedelta(hours=27),
-                         data={"github_release_tag": "2026-11-10"}))
+        s.add(
+            QlibStatus(
+                kind="source",
+                at=NOW.astimezone(dt.UTC) - dt.timedelta(hours=27),
+                data={"github_release_tag": "2026-11-10"},
+            )
+        )
         s.commit()
         monkeypatch.setattr(m, "utcnow", lambda: NOW.astimezone(dt.UTC))
         st, summary, detail = _by_check(m.health(s, now=NOW))["qlib.source_dolt"]

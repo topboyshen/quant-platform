@@ -1,4 +1,5 @@
 """M15 read-only ETF research score shadow: import contract, isolation and API."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -16,15 +17,20 @@ from qp.signals.universe import TARGETS
 CODES = [t.code for t in TARGETS]
 
 
-def payload(*, horizon: int = 20, version: str = "qp-etf-test-v1",
-            cutoff: dt.date | None = None) -> dict:
+def payload(*, horizon: int = 20, version: str = "qp-etf-test-v1", cutoff: dt.date | None = None) -> dict:
     scores = []
     for i, code in enumerate(CODES):
         eligible = i < 8
-        scores.append({"code": code, "name": f"ETF-{code}",
-                       "score": 0.01 - i * 0.001 if eligible else None,
-                       "rank": i + 1 if eligible else None,
-                       "eligible": eligible, "reason": "" if eligible else "not_eligible"})
+        scores.append(
+            {
+                "code": code,
+                "name": f"ETF-{code}",
+                "score": 0.01 - i * 0.001 if eligible else None,
+                "rank": i + 1 if eligible else None,
+                "eligible": eligible,
+                "reason": "" if eligible else "not_eligible",
+            }
+        )
     return {
         "model_version": version,
         "model_sha256": "a" * 64,
@@ -51,8 +57,9 @@ def cleanup(engine) -> None:
 
 def test_tables_and_empty(engine):
     with engine.connect() as c:
-        names = set(c.execute(text("select table_name from information_schema.tables "
-                                   "where table_schema='research'")).scalars())
+        names = set(
+            c.execute(text("select table_name from information_schema.tables where table_schema='research'")).scalars()
+        )
     assert {"etf_score_run", "etf_score"} <= names
     with Session(engine) as s:
         out = etf_score.latest(s)
@@ -160,14 +167,12 @@ def test_duplicate_identity_conflicts_on_new_content(engine):
             s.commit()
             changed_model = payload()
             changed_model["model_sha256"] = "c" * 64
-            with pytest.raises(etf_score.ScorePayloadError,
-                               match="duplicate_model_sha256_mismatch"):
+            with pytest.raises(etf_score.ScorePayloadError, match="duplicate_model_sha256_mismatch"):
                 etf_score.import_payload(s, changed_model)
             s.rollback()
             changed_scores = payload()
             changed_scores["scores"][0]["score"] = 0.5
-            with pytest.raises(etf_score.ScorePayloadError,
-                               match="duplicate_content_mismatch"):
+            with pytest.raises(etf_score.ScorePayloadError, match="duplicate_content_mismatch"):
                 etf_score.import_payload(s, changed_scores)
             s.rollback()
             assert s.scalar(select(func.count()).select_from(EtfScoreRun)) == 1
@@ -233,18 +238,15 @@ def test_horizons_coexist_and_history_is_scoped(engine):
 def test_job_imports_both_horizons(tmp_path, engine, monkeypatch):
     cleanup(engine)
     try:
-        (tmp_path / "latest.json").write_text(json.dumps(
-            payload(version="qp-etf-job-20", horizon=20)))
-        (tmp_path / "latest-5d.json").write_text(json.dumps(
-            payload(version="qp-etf-job-5", horizon=5)))
+        (tmp_path / "latest.json").write_text(json.dumps(payload(version="qp-etf-job-20", horizon=20)))
+        (tmp_path / "latest-5d.json").write_text(json.dumps(payload(version="qp-etf-job-5", horizon=5)))
         monkeypatch.setenv("QP_ETF_SCORE_INBOX", str(tmp_path / "latest.json"))
         from qp.jobs.registry import JobContext
         from qp.jobs.research import import_etf_score_job
-        out = import_etf_score_job(JobContext(engine=engine, run_id=0,
-                                              name="research.etf_score_import"))
+
+        out = import_etf_score_job(JobContext(engine=engine, run_id=0, name="research.etf_score_import"))
         assert out["ok"] is True
-        assert [row["model_version"] for row in out["imports"]] == [
-            "qp-etf-job-20", "qp-etf-job-5"]
+        assert [row["model_version"] for row in out["imports"]] == ["qp-etf-job-20", "qp-etf-job-5"]
         with Session(engine) as s:
             assert etf_score.latest(s, horizon=20)["run"]["model_version"] == "qp-etf-job-20"
             assert etf_score.latest(s, horizon=5)["run"]["model_version"] == "qp-etf-job-5"
@@ -255,16 +257,15 @@ def test_job_imports_both_horizons(tmp_path, engine, monkeypatch):
 def test_job_bad_5d_keeps_20d_and_reports_failure(tmp_path, engine, monkeypatch):
     cleanup(engine)
     try:
-        (tmp_path / "latest.json").write_text(json.dumps(
-            payload(version="qp-etf-job-good-20", horizon=20)))
+        (tmp_path / "latest.json").write_text(json.dumps(payload(version="qp-etf-job-good-20", horizon=20)))
         bad = payload(version="qp-etf-job-bad-5", horizon=5)
         bad["scores"].pop()
         (tmp_path / "latest-5d.json").write_text(json.dumps(bad))
         monkeypatch.setenv("QP_ETF_SCORE_INBOX", str(tmp_path / "latest.json"))
         from qp.jobs.registry import JobContext
         from qp.jobs.research import import_etf_score_job
-        out = import_etf_score_job(JobContext(engine=engine, run_id=0,
-                                              name="research.etf_score_import"))
+
+        out = import_etf_score_job(JobContext(engine=engine, run_id=0, name="research.etf_score_import"))
         assert out["ok"] is False and out["failed"] == ["5d"]
         by_feed = {row["feed"]: row for row in out["imports"]}
         assert by_feed["20d"]["ok"] is True
@@ -284,13 +285,12 @@ def test_job_bad_20d_keeps_5d(tmp_path, engine, monkeypatch):
         bad = payload(version="qp-etf-job-bad-20", horizon=20)
         bad["scores"].pop()
         (tmp_path / "latest.json").write_text(json.dumps(bad))
-        (tmp_path / "latest-5d.json").write_text(json.dumps(
-            payload(version="qp-etf-job-good-5", horizon=5)))
+        (tmp_path / "latest-5d.json").write_text(json.dumps(payload(version="qp-etf-job-good-5", horizon=5)))
         monkeypatch.setenv("QP_ETF_SCORE_INBOX", str(tmp_path / "latest.json"))
         from qp.jobs.registry import JobContext
         from qp.jobs.research import import_etf_score_job
-        out = import_etf_score_job(JobContext(engine=engine, run_id=0,
-                                              name="research.etf_score_import"))
+
+        out = import_etf_score_job(JobContext(engine=engine, run_id=0, name="research.etf_score_import"))
         assert out["ok"] is False and out["failed"] == ["20d"]
         with Session(engine) as s:
             assert etf_score.latest(s, horizon=20)["run"] is None
@@ -304,6 +304,7 @@ def test_api_auth_scope_and_payload(engine):
 
     from qp.api.main import app
     from qp.auth.sessions import create_service_token
+
     cleanup(engine)
     try:
         with Session(engine) as s:
@@ -314,10 +315,8 @@ def test_api_auth_scope_and_payload(engine):
             s.commit()
         client = TestClient(app, base_url="https://testserver")
         assert client.get("/api/research/etf-score").status_code == 401
-        assert client.get("/api/research/etf-score",
-                          headers={"authorization": f"Bearer {other}"}).status_code == 403
-        response = client.get("/api/research/etf-score",
-                              headers={"authorization": f"Bearer {token}"})
+        assert client.get("/api/research/etf-score", headers={"authorization": f"Bearer {other}"}).status_code == 403
+        response = client.get("/api/research/etf-score", headers={"authorization": f"Bearer {token}"})
         assert response.status_code == 200
         body = response.json()
         assert body["read_only"] is True and body["is_trade_signal"] is False
@@ -325,24 +324,27 @@ def test_api_auth_scope_and_payload(engine):
         assert body["horizon"] == 20
         assert len(body["scores"]) == len(CODES) and body["scores"][0]["rank"] == 1
         assert body["history"][0]["eligible_count"] == 8
-        five = client.get("/api/research/etf-score?horizon=5",
-                          headers={"authorization": f"Bearer {token}"})
+        five = client.get("/api/research/etf-score?horizon=5", headers={"authorization": f"Bearer {token}"})
         assert five.status_code == 200
         assert five.json()["run"]["model_version"] == "qp-etf-test-5d"
         assert five.json()["horizon"] == 5
-        assert client.get("/api/research/etf-score?horizon=0",
-                          headers={"authorization": f"Bearer {token}"}).status_code == 422
+        assert (
+            client.get("/api/research/etf-score?horizon=0", headers={"authorization": f"Bearer {token}"}).status_code
+            == 422
+        )
     finally:
         cleanup(engine)
 
 
 def test_job_registered():
     from qp.jobs.registry import JOBS
+
     assert JOBS["research.etf_score_import"].schedule_hint.startswith("Mon-Fri 16:55")
 
 
 def test_cli_help_contains_import():
     from qp.cli import main
+
     with pytest.raises(SystemExit) as out:
         main(["research", "etf-score", "--help"])
     assert out.value.code == 0

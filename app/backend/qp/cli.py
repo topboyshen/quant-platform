@@ -1,4 +1,5 @@
 """`qp` command line: qp job run <name> | qp job list | qp db upgrade | qp user import-legacy --stdin"""
+
 from __future__ import annotations
 
 import argparse
@@ -10,6 +11,7 @@ from pathlib import Path
 
 def _alembic_cfg():
     from alembic.config import Config
+
     # alembic.ini + migrations/ live in the app dir (QP_APP_DIR, else CWD, else the source checkout)
     cands = [os.getenv("QP_APP_DIR"), os.getcwd(), str(Path(__file__).resolve().parent.parent)]
     here = next(Path(c) for c in cands if c and (Path(c) / "alembic.ini").is_file())
@@ -20,6 +22,7 @@ def _alembic_cfg():
 
 def cmd_db_upgrade(_a) -> int:
     from alembic import command
+
     command.upgrade(_alembic_cfg(), "head")
     print("db upgraded to head")
     return 0
@@ -27,6 +30,7 @@ def cmd_db_upgrade(_a) -> int:
 
 def cmd_job_list(_a) -> int:
     from qp.jobs import JOBS
+
     for n, s in sorted(JOBS.items()):
         print(f"{n}\t{s.schedule_hint or '-'}\t{s.description}")
     return 0
@@ -35,9 +39,21 @@ def cmd_job_list(_a) -> int:
 def cmd_job_run(a) -> int:
     from qp.db import get_engine
     from qp.jobs import run_job
+
     run = run_job(get_engine(), a.name, trigger=a.trigger, dedup_key=a.dedup_key)
-    print(json.dumps({"id": run.id, "job": run.job_name, "status": run.status, "duration_s": run.duration_s,
-                      "result": run.result}, default=str, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "id": run.id,
+                "job": run.job_name,
+                "status": run.status,
+                "duration_s": run.duration_s,
+                "result": run.result,
+            },
+            default=str,
+            ensure_ascii=False,
+        )
+    )
     return 0 if run.status in ("succeeded", "skipped_dup", "skipped_locked") else 1
 
 
@@ -59,11 +75,14 @@ def cmd_shadow_compare(a) -> int:
     with Session(get_engine()) as session:
         result = compare_day(session, day, a.legacy, hmac_secret=secret)
     files = write_report(result, a.out) if a.out else []
-    summary = {"date": result["date"], "overall": result["overall"],
-               "gate_ok": result["gate_ok"], "counts": result["counts"],
-               "checks": [{"id": c["id"], "status": c["status"], "summary": c["summary"]}
-                          for c in result["checks"]],
-               "files": files}
+    summary = {
+        "date": result["date"],
+        "overall": result["overall"],
+        "gate_ok": result["gate_ok"],
+        "counts": result["counts"],
+        "checks": [{"id": c["id"], "status": c["status"], "summary": c["summary"]} for c in result["checks"]],
+        "files": files,
+    }
     print(json.dumps(summary, ensure_ascii=False))
     if result["overall"] == "FAIL":
         return 1
@@ -86,15 +105,23 @@ def cmd_reports_compare(a) -> int:
         print(json.dumps({"ok": False, "error": "bad_date"}))
         return 2
     with Session(get_engine()) as session:
-        result = compare_reports(session, day=day, daily_dir=a.daily_dir,
-                                 digest_path=a.digest_json,
-                                 hermes_originals=a.hermes_originals)
+        result = compare_reports(
+            session, day=day, daily_dir=a.daily_dir, digest_path=a.digest_json, hermes_originals=a.hermes_originals
+        )
     files = write_report(result, a.out) if a.out else []
-    print(json.dumps({"date": result["date"], "overall": result["overall"],
-                      "gate_ok": result["gate_ok"], "counts": result["counts"],
-                      "checks": [{"id": c["id"], "status": c["status"], "summary": c["summary"]}
-                                 for c in result["checks"]],
-                      "files": files}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "date": result["date"],
+                "overall": result["overall"],
+                "gate_ok": result["gate_ok"],
+                "counts": result["counts"],
+                "checks": [{"id": c["id"], "status": c["status"], "summary": c["summary"]} for c in result["checks"]],
+                "files": files,
+            },
+            ensure_ascii=False,
+        )
+    )
     if result["overall"] == "FAIL":
         return 1
     if result["overall"] == "BLOCKED":
@@ -106,6 +133,7 @@ def cmd_research_etf_score(a) -> int:
     """Import an offline ETF research score snapshot (read-only shadow)."""
     from qp.db import session_scope
     from qp.research import etf_score
+
     payload = json.loads(Path(a.import_path).read_text())
     with session_scope() as s:
         out = etf_score.import_payload(s, payload)
@@ -131,11 +159,18 @@ def cmd_research_compare(a) -> int:
             if reader is not None:
                 reader.close()
     files = write_report(result, a.out) if a.out else []
-    print(json.dumps({"overall": result["overall"], "gate_ok": result["gate_ok"],
-                      "counts": result["counts"],
-                      "checks": [{"id": c["id"], "status": c["status"], "summary": c["summary"]}
-                                 for c in result["checks"]],
-                      "files": files}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "overall": result["overall"],
+                "gate_ok": result["gate_ok"],
+                "counts": result["counts"],
+                "checks": [{"id": c["id"], "status": c["status"], "summary": c["summary"]} for c in result["checks"]],
+                "files": files,
+            },
+            ensure_ascii=False,
+        )
+    )
     if result["overall"] == "FAIL":
         return 1
     if result["overall"] == "BLOCKED":
@@ -153,9 +188,14 @@ def cmd_decommission_inventory(a) -> int:
     text = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
     if a.out:
         from pathlib import Path
+
         Path(a.out).write_text(text, encoding="utf-8")
-        print(json.dumps({"ok": True, "out": a.out, "sha256": manifest["sha256"],
-                          "totals": manifest["totals"]}, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"ok": True, "out": a.out, "sha256": manifest["sha256"], "totals": manifest["totals"]},
+                ensure_ascii=False,
+            )
+        )
     else:
         print(text, end="")
     return 0
@@ -169,6 +209,7 @@ def cmd_user_import_legacy(a) -> int:
     from qp.auth.passwords import scheme_of
     from qp.db import session_scope
     from qp.models.core import AuditEvent, User
+
     line = sys.stdin.readline().rstrip("\n")
     if "\t" not in line:
         print("expected '<username>\\t<hash>' on stdin", file=sys.stderr)
@@ -192,7 +233,9 @@ def cmd_user_import_legacy(a) -> int:
         else:
             u.password_hash, u.hash_scheme, u.source = ph, scheme, a.source
             action = "updated"
-        s.add(AuditEvent(actor="cli", action="user.import_legacy", ok=True, detail={"scheme": scheme, "result": action}))
+        s.add(
+            AuditEvent(actor="cli", action="user.import_legacy", ok=True, detail={"scheme": scheme, "result": action})
+        )
     print(f"user {action}; scheme={scheme}")
     return 0
 
@@ -203,6 +246,7 @@ def cmd_chain_import_history(a) -> int:
 
     from qp.db import session_scope
     from qp.signals import chain, chain_import
+
     if a.apply and not chain.enabled():
         print("refusing: QP_RECORD_CHAIN is not enabled", file=sys.stderr)
         return 3
@@ -219,12 +263,12 @@ def cmd_chain_window(a) -> int:
 
     from qp.db import session_scope
     from qp.signals import chain_window
+
     end = dt.date.fromisoformat(a.end) if a.end else None
     start = dt.date.fromisoformat(a.start) if a.start else None
     with session_scope() as s:
         out = chain_window.report(s, end=end, sessions=a.sessions, start=start)
-    text = (chain_window.markdown(out) if a.markdown
-            else json.dumps(out, ensure_ascii=False, indent=2, default=str))
+    text = chain_window.markdown(out) if a.markdown else json.dumps(out, ensure_ascii=False, indent=2, default=str)
     if a.out:
         Path(a.out).write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
     print(text)
@@ -237,6 +281,7 @@ def cmd_chain_compare(a) -> int:
 
     from qp.db import session_scope
     from qp.signals import chain_compare
+
     day = dt.date.fromisoformat(a.date)
     with session_scope() as s:
         out = chain_compare.compare(s, day)
@@ -251,14 +296,16 @@ def cmd_signals_rule_shadow(a) -> int:
     from qp.db import session_scope
     from qp.signals import rule_shadow
     from qp.signals.eod import now_cst
+
     with session_scope() as s:
         if a.outcomes:
             as_of = dt.date.fromisoformat(a.until) if a.until else None
             out = rule_shadow.collect(s, as_of=as_of)
             s.commit()
         elif a.since:
-            out = rule_shadow.backfill(s, since=dt.date.fromisoformat(a.since),
-                                       until=dt.date.fromisoformat(a.until) if a.until else None)
+            out = rule_shadow.backfill(
+                s, since=dt.date.fromisoformat(a.since), until=dt.date.fromisoformat(a.until) if a.until else None
+            )
             s.commit()
         else:
             day = dt.date.fromisoformat(a.date) if a.date else now_cst().date()
@@ -274,6 +321,7 @@ def cmd_signals_rotation_shadow(a) -> int:
 
     from qp.db import session_scope
     from qp.signals import rotation_shadow
+
     with session_scope() as s:
         out: dict = {}
         if a.seed_bars:
@@ -281,15 +329,14 @@ def cmd_signals_rotation_shadow(a) -> int:
             out["seed"] = rotation_shadow.seed_bars(s, payload)
         if a.initialize:
             out["initialize"] = rotation_shadow.initialize(
-                s, start_date=dt.date.fromisoformat(a.initialize), phase=a.phase)
+                s, start_date=dt.date.fromisoformat(a.initialize), phase=a.phase
+            )
         if a.step:
             if a.phase != "forward":
                 raise ValueError("--step is forward-only")
-            out["step"] = rotation_shadow.step(
-                s, as_of=dt.date.fromisoformat(a.date) if a.date else None)
+            out["step"] = rotation_shadow.step(s, as_of=dt.date.fromisoformat(a.date) if a.date else None)
         elif a.until:
-            out["advance"] = rotation_shadow.replay(
-                s, until=dt.date.fromisoformat(a.until), phase=a.phase)
+            out["advance"] = rotation_shadow.replay(s, until=dt.date.fromisoformat(a.until), phase=a.phase)
         if a.summary or not out:
             out["summary"] = rotation_shadow.summary(s, phase=a.phase, series=False)
         s.commit()
@@ -303,6 +350,7 @@ def cmd_signals_shadow_record(a) -> int:
 
     from qp.db import session_scope
     from qp.signals import shadow
+
     since = dt.date.fromisoformat(a.since) if a.since else None
     day = dt.date.fromisoformat(a.date) if a.date else None
     with session_scope() as s:
@@ -317,6 +365,7 @@ def cmd_signals_shadow_outcomes(a) -> int:
 
     from qp.db import session_scope
     from qp.signals import shadow
+
     as_of = dt.date.fromisoformat(a.as_of) if a.as_of else None
     with session_scope() as s:
         out = shadow.collect(s, as_of=as_of)
@@ -331,6 +380,7 @@ def cmd_signals_acceptance(a) -> int:
 
     from qp.db import session_scope
     from qp.signals import acceptance
+
     today = dt.date.fromisoformat(a.today) if a.today else dt.date.today()
     with session_scope() as s:
         if a.date:

@@ -1,4 +1,5 @@
 """M7 API: read-only settings/account view."""
+
 from __future__ import annotations
 
 from typing import Any

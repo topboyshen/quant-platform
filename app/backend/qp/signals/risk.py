@@ -1,4 +1,5 @@
 """Macro-risk gate for bullish swing entries; fail-closed on unknown/missing state."""
+
 from __future__ import annotations
 
 GROWTH_RISK_SECTORS = {"成长", "硬科技", "港股科技"}

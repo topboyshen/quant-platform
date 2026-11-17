@@ -7,10 +7,11 @@ The digest is a stable pipe-joined string of the decision inputs, so the same
 value can be recomputed in SQL from target_decision.  chain_decision is
 append-only, so the repair pauses its trigger once.
 """
+
 from alembic import op
 
-revision = '0014'
-down_revision = '0013'
+revision = "0014"
+down_revision = "0013"
 branch_labels = None
 depends_on = None
 

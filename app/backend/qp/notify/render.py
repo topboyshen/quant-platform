@@ -3,6 +3,7 @@
 Shadow rows keep their machine-readable JSON body for C7/C10 comparison.  Live delivery
 renders the stable fields a person needs; unknown payloads fall back to subject + body.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,7 @@ def _clip(text: str) -> str:
     text = text.strip()
     if len(text) <= MAX_TEXT:
         return text
-    return text[:MAX_TEXT - 1] + "…"
+    return text[: MAX_TEXT - 1] + "…"
 
 
 def _daily(payload: dict, subject: str | None) -> str:
@@ -33,8 +34,7 @@ def _daily(payload: dict, subject: str | None) -> str:
         lines.append(str(reading["market_data"]))
     macro_text = payload.get("macro_text") or reading.get("macro")
     if macro_text:
-        lines.append(str(macro_text) if str(macro_text).startswith("宏观")
-                     else "宏观：" + str(macro_text))
+        lines.append(str(macro_text) if str(macro_text).startswith("宏观") else "宏观：" + str(macro_text))
     risk_text = payload.get("risk_text") or reading.get("risk")
     if risk_text:
         lines.append(str(risk_text))
@@ -103,13 +103,17 @@ def _shadow_lines(payload: dict) -> list[str]:
             lines.append("20日模型：今天没有快照")
     rotation = payload.get("rotation") or {}
     if rotation:
-        lines.append("纸面轮动：今天 " + _pct(rotation.get("nav_return"))
-                     + "；沪深300 " + _pct(rotation.get("benchmark_return"))
-                     + "；40只等权 " + _pct(rotation.get("ew_return")))
+        lines.append(
+            "纸面轮动：今天 "
+            + _pct(rotation.get("nav_return"))
+            + "；沪深300 "
+            + _pct(rotation.get("benchmark_return"))
+            + "；40只等权 "
+            + _pct(rotation.get("ew_return"))
+        )
         positions = rotation.get("positions") or []
         if positions:
-            lines.append("持有：" + "、".join(
-                str(item.get("name") or item.get("code")) for item in positions))
+            lines.append("持有：" + "、".join(str(item.get("name") or item.get("code")) for item in positions))
     quality = payload.get("data_quality") or {}
     if quality.get("missing") or quality.get("stale"):
         lines.append("数据：" + "；".join((quality.get("missing") or []) + (quality.get("stale") or [])))

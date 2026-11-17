@@ -4,6 +4,7 @@ SHADOW only: rows are imported read-only from `research_ledger` and the phase2 S
 database; qp never writes back to either source.  UUID columns are stored as text and
 timestamps are kept as the source values (no local re-interpretation).
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -72,8 +73,11 @@ class ForecastBatch(Base):
 
 class Forecast(Base):
     __tablename__ = "forecast"
-    __table_args__ = (Index("ix_forecast_batch_id", "batch_id"),
-                      Index("ix_forecast_target_session", "target_session"), S)
+    __table_args__ = (
+        Index("ix_forecast_batch_id", "batch_id"),
+        Index("ix_forecast_target_session", "target_session"),
+        S,
+    )
     forecast_id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     case_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
     batch_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
@@ -96,7 +100,8 @@ class Forecast(Base):
     model_version: Mapped[str | None] = mapped_column(Text)
     feature_snapshot_hash: Mapped[str | None] = mapped_column(Text)
     source_hashes: Mapped[list[Any]] = mapped_column(
-        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list)
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
     data_cutoff: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     sealed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
@@ -137,8 +142,9 @@ class SourceRecord(Base):
     content_hash: Mapped[str | None] = mapped_column(Text)
     captured_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     captured_by: Mapped[str | None] = mapped_column(Text)
-    meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False,
-                                                 server_default=text("'{}'::jsonb"), default=dict)
+    meta: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict
+    )
 
 
 class LedgerAudit(Base):
@@ -153,8 +159,9 @@ class LedgerAudit(Base):
     input_hash: Mapped[str | None] = mapped_column(Text)
     result_hash: Mapped[str | None] = mapped_column(Text)
     correlation_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
-    meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False,
-                                                 server_default=text("'{}'::jsonb"), default=dict)
+    meta: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict
+    )
 
 
 class CalibrationSnapshot(Base):
@@ -198,8 +205,11 @@ class ModelArtifact(Base):
 
 class ImportLineage(Base):
     __tablename__ = "import_lineage"
-    __table_args__ = (Index("ix_import_lineage_source_record_id", "source_record_id"),
-                      Index("ix_import_lineage_target_object_id", "target_object_id"), S)
+    __table_args__ = (
+        Index("ix_import_lineage_source_record_id", "source_record_id"),
+        Index("ix_import_lineage_target_object_id", "target_object_id"),
+        S,
+    )
     import_id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     source_system: Mapped[str | None] = mapped_column(Text)
     source_database_hash: Mapped[str | None] = mapped_column(Text)
@@ -294,8 +304,7 @@ class ImportRun(Base):
     __table_args__ = (Index("ix_import_run_source_started_at", "source", "started_at"), S)
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     source: Mapped[str] = mapped_column(Text, nullable=False)
-    started_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True),
-                                                    server_default=func.now(), nullable=False)
+    started_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(Text, nullable=False)
     counts: Mapped[dict[str, Any]] = _json_col()
@@ -462,8 +471,7 @@ class AiMemory(Base):
     confidence: Mapped[int | None] = mapped_column(Integer)
     price_at_analysis: Mapped[float | None] = mapped_column(Numeric)
     summary: Mapped[str | None] = mapped_column(Text)
-    reasons: Mapped[list[Any]] = mapped_column(JSONB, nullable=False,
-                                               server_default=text("'[]'::jsonb"), default=list)
+    reasons: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list)
     scores: Mapped[dict[str, Any]] = _json_col()
     indicators_snapshot: Mapped[dict[str, Any]] = _json_col()
     raw_result: Mapped[dict[str, Any]] = _json_col()
@@ -507,8 +515,11 @@ class AiMessage(Base):
 
 class LlmCall(Base):
     __tablename__ = "llm_call"
-    __table_args__ = (Index("ix_llm_call_request_sha256", "request_sha256"),
-                      Index("ix_llm_call_created_at", "created_at"), S)
+    __table_args__ = (
+        Index("ix_llm_call_request_sha256", "request_sha256"),
+        Index("ix_llm_call_created_at", "created_at"),
+        S,
+    )
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     provider: Mapped[str | None] = mapped_column(String(64))
@@ -520,15 +531,13 @@ class LlmCall(Base):
     usage: Mapped[dict[str, Any]] = _json_col()
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True),
-                                                    server_default=func.now(), nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 # --------------------------------------------------------------------------- profit research
 class ProfitRun(Base):
     __tablename__ = "profit_run"
-    __table_args__ = (Index("ix_profit_run_run_key", "run_key"),
-                      Index("ix_profit_run_signal_date", "signal_date"), S)
+    __table_args__ = (Index("ix_profit_run_run_key", "run_key"), Index("ix_profit_run_signal_date", "signal_date"), S)
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     run_key: Mapped[str | None] = mapped_column(String(128))
     user_id: Mapped[int | None] = mapped_column(Integer)
@@ -554,9 +563,12 @@ class ProfitRun(Base):
 
 class ProfitPick(Base):
     __tablename__ = "profit_pick"
-    __table_args__ = (Index("ix_profit_pick_pick_key", "pick_key"),
-                      Index("ix_profit_pick_run_id", "run_id"),
-                      Index("ix_profit_pick_signal_date", "signal_date"), S)
+    __table_args__ = (
+        Index("ix_profit_pick_pick_key", "pick_key"),
+        Index("ix_profit_pick_run_id", "run_id"),
+        Index("ix_profit_pick_signal_date", "signal_date"),
+        S,
+    )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     pick_key: Mapped[str | None] = mapped_column(String(128))
     source_sha256: Mapped[str | None] = mapped_column(String(128))
@@ -673,8 +685,7 @@ class Project(Base):
 
 class Branch(Base):
     __tablename__ = "branch"
-    __table_args__ = (Index("ix_branch_project_id", "project_id"),
-                      Index("ix_branch_public_id", "public_id"), S)
+    __table_args__ = (Index("ix_branch_project_id", "project_id"), Index("ix_branch_public_id", "public_id"), S)
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     public_id: Mapped[str | None] = mapped_column(Text)
     project_id: Mapped[int | None] = mapped_column(BigInteger)
@@ -736,6 +747,7 @@ class Draft(Base):
 
 class EtfScoreRun(Base):
     """Imported research score snapshot; read-only, never an order signal."""
+
     __tablename__ = "etf_score_run"
     __table_args__ = (
         UniqueConstraint("model_version", "data_cutoff", name="uq_etf_score_run_version_cutoff"),
@@ -753,8 +765,7 @@ class EtfScoreRun(Base):
     data_master_snapshot: Mapped[str | None] = mapped_column(String(64))
     metrics: Mapped[dict[str, Any]] = _json_col()
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
-                                                    nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class EtfScore(Base):
@@ -766,7 +777,8 @@ class EtfScore(Base):
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     run_id: Mapped[int] = mapped_column(
-        ForeignKey("research.etf_score_run.id", ondelete="CASCADE"), nullable=False, index=True)
+        ForeignKey("research.etf_score_run.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     code: Mapped[str] = mapped_column(String(16), nullable=False)
     name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     score: Mapped[float | None] = mapped_column(Numeric(18, 8))

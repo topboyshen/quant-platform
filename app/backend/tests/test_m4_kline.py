@@ -1,4 +1,5 @@
 """K-line source adapters: parsing, normalisation, fallback and publication lag."""
+
 import datetime as dt
 
 import pytest
@@ -96,10 +97,10 @@ def test_fetcher_falls_back_to_second_source():
 def test_fetcher_treats_previous_session_as_publication_lag_and_waits_once():
     previous = business_days(2)[0]
     stale = lambda code, days: parse_tencent_klines(  # noqa: E731
-        tencent_rows(business_days(30, previous)))
+        tencent_rows(business_days(30, previous))
+    )
     sleeps: list[float] = []
-    fetcher = KlineFetcher(wait_seconds=7, sleep=sleeps.append,
-                           sources=[("tencent", stale)])
+    fetcher = KlineFetcher(wait_seconds=7, sleep=sleeps.append, sources=[("tencent", stale)])
     result = fetcher.get("510300", required_date=END, previous_session=previous)
     assert result.bars == [] and result.publication_lag is True
     assert sleeps == [7]
@@ -110,7 +111,8 @@ def test_fetcher_treats_previous_session_as_publication_lag_and_waits_once():
 
 def test_fetcher_rejects_wrong_date_without_previous_session():
     stale = lambda code, days: parse_tencent_klines(  # noqa: E731
-        tencent_rows(business_days(30, business_days(2)[0])))
+        tencent_rows(business_days(30, business_days(2)[0]))
+    )
     fetcher = KlineFetcher(wait_seconds=0, sources=[("tencent", stale)])
     result = fetcher.get("510300", required_date=END)
     assert result.bars == [] and result.publication_lag is False

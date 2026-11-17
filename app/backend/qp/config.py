@@ -1,4 +1,5 @@
 """Runtime configuration from environment (systemd EnvironmentFile=/etc/qp/qp.env)."""
+
 from __future__ import annotations
 
 import os
@@ -49,26 +50,19 @@ def get_settings() -> Settings:
         signals_notify_mode=os.getenv("QP_SIGNALS_NOTIFY_MODE", "shadow"),
         signals_combined_report=os.getenv("QP_SIGNALS_COMBINED_REPORT", "0").strip().lower()
         in {"1", "true", "yes", "on"},
-        notify_kill_switch=os.getenv("QP_NOTIFY_KILL_SWITCH", "0").strip().lower()
-        in {"1", "true", "yes", "on"},
+        notify_kill_switch=os.getenv("QP_NOTIFY_KILL_SWITCH", "0").strip().lower() in {"1", "true", "yes", "on"},
         notify_disabled_file=os.getenv("QP_NOTIFY_DISABLED_FILE", "/etc/qp/notify.disabled"),
         notify_max_attempts=int(os.getenv("QP_NOTIFY_MAX_ATTEMPTS", "5")),
-        telegram_bot_token_file=os.getenv("QP_TELEGRAM_BOT_TOKEN_FILE",
-                                          "/etc/qp/telegram_bot_token"),
-        telegram_chat_id_file=os.getenv("QP_TELEGRAM_CHAT_ID_FILE",
-                                        "/etc/qp/telegram_chat_id"),
+        telegram_bot_token_file=os.getenv("QP_TELEGRAM_BOT_TOKEN_FILE", "/etc/qp/telegram_bot_token"),
+        telegram_chat_id_file=os.getenv("QP_TELEGRAM_CHAT_ID_FILE", "/etc/qp/telegram_chat_id"),
         telegram_api_base=os.getenv("QP_TELEGRAM_API_BASE", "https://api.telegram.org"),
         telegram_proxy=os.getenv("QP_TELEGRAM_PROXY") or None,
         telegram_timeout_sec=float(os.getenv("QP_TELEGRAM_TIMEOUT_SEC", "10")),
-        approved_signals_hmac_file=os.getenv("QP_APPROVED_SIGNALS_HMAC_FILE",
-                                             "/etc/qp/approved_signals_hmac"),
+        approved_signals_hmac_file=os.getenv("QP_APPROVED_SIGNALS_HMAC_FILE", "/etc/qp/approved_signals_hmac"),
         approved_signals_max_skew_sec=int(os.getenv("QP_APPROVED_SIGNALS_MAX_SKEW_SEC", "300")),
-        execution_digest_hmac_file=os.getenv("QP_EXECUTION_DIGEST_HMAC_FILE",
-                                             "/etc/qp/dedirock_digest_hmac"),
-        execution_digest_output_dir=os.getenv("QP_EXECUTION_DIGEST_DIR",
-                                              "/var/lib/qp/signals/digests"),
+        execution_digest_hmac_file=os.getenv("QP_EXECUTION_DIGEST_HMAC_FILE", "/etc/qp/dedirock_digest_hmac"),
+        execution_digest_output_dir=os.getenv("QP_EXECUTION_DIGEST_DIR", "/var/lib/qp/signals/digests"),
         record_chain=os.getenv("QP_RECORD_CHAIN", "0").strip().lower() in {"1", "true", "yes", "on"},
         chain_reads=os.getenv("QP_CHAIN_READS", "0").strip().lower() in {"1", "true", "yes", "on"},
-        chain_reads_fallback=os.getenv("QP_CHAIN_READS_FALLBACK", "1").strip().lower()
-        in {"1", "true", "yes", "on"},
+        chain_reads_fallback=os.getenv("QP_CHAIN_READS_FALLBACK", "1").strip().lower() in {"1", "true", "yes", "on"},
     )

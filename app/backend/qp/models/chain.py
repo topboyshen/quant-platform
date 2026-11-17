@@ -4,6 +4,7 @@ Ported from the 2026-11-10 design freeze.  Facts are append-only; numbers are on
 assembled in ``chain_snapshot``.  These tables coexist with ``target_decision`` and
 ``decision_outcome`` and never change them.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -79,7 +80,8 @@ class ChainUniverseMember(Base):
     __tablename__ = "chain_universe_member"
     __table_args__ = S
     universe_version: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_universe.universe_version"), primary_key=True)
+        Text, ForeignKey("signals.chain_universe.universe_version"), primary_key=True
+    )
     code: Mapped[str] = mapped_column(Text, primary_key=True)
     name: Mapped[str | None] = mapped_column(Text)
     sector: Mapped[str | None] = mapped_column(Text)
@@ -97,7 +99,8 @@ class ChainBatch(Base):
     trade_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
     scheduled_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     universe_version: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_universe.universe_version"), nullable=False)
+        Text, ForeignKey("signals.chain_universe.universe_version"), nullable=False
+    )
     expected_target_count: Mapped[int] = mapped_column(Integer, nullable=False)
     source: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[dt.datetime] = _now()
@@ -106,8 +109,9 @@ class ChainBatch(Base):
 class ChainDecision(Base):
     __tablename__ = "chain_decision"
     __table_args__ = (
-        UniqueConstraint("trade_date", "code", "batch_key", "rule_version", "universe_version",
-                         name="uq_chain_decision_identity"),
+        UniqueConstraint(
+            "trade_date", "code", "batch_key", "rule_version", "universe_version", name="uq_chain_decision_identity"
+        ),
         CheckConstraint("origin IN ('native','migrated_v1')", name="origin"),
         CheckConstraint("attribution_status IN ('confirmed','unknown')", name="attribution"),
         CheckConstraint("length(decision_uid) = 35 AND left(decision_uid, 3) = 'qd_'", name="uid"),
@@ -121,12 +125,11 @@ class ChainDecision(Base):
     trade_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
     code: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str | None] = mapped_column(Text)
-    batch_key: Mapped[str] = mapped_column(Text, ForeignKey("signals.chain_batch.batch_key"),
-                                           nullable=False)
-    rule_version: Mapped[str] = mapped_column(Text, ForeignKey("signals.chain_policy.policy_version"),
-                                              nullable=False)
+    batch_key: Mapped[str] = mapped_column(Text, ForeignKey("signals.chain_batch.batch_key"), nullable=False)
+    rule_version: Mapped[str] = mapped_column(Text, ForeignKey("signals.chain_policy.policy_version"), nullable=False)
     universe_version: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_universe.universe_version"), nullable=False)
+        Text, ForeignKey("signals.chain_universe.universe_version"), nullable=False
+    )
     origin: Mapped[str] = mapped_column(Text, nullable=False)
     attribution_status: Mapped[str] = mapped_column(Text, nullable=False)
     input_evidence_ref: Mapped[str | None] = mapped_column(Text)
@@ -141,13 +144,18 @@ class ChainAttempt(Base):
         UniqueConstraint("run_id", "decision_uid", name="uq_chain_attempt_run_decision"),
         CheckConstraint("length(attempt_id) = 36 AND left(attempt_id, 4) = 'att_'", name="aid"),
         Index("ix_chain_attempt_decision", "decision_uid", "started_at"),
-        Index("uq_chain_attempt_source_decision", "source_decision_id", unique=True,
-              postgresql_where=text("source_decision_id IS NOT NULL")),
+        Index(
+            "uq_chain_attempt_source_decision",
+            "source_decision_id",
+            unique=True,
+            postgresql_where=text("source_decision_id IS NOT NULL"),
+        ),
         S,
     )
     attempt_id: Mapped[str] = mapped_column(Text, primary_key=True)
     decision_uid: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_decision.decision_uid", ondelete="CASCADE"), nullable=False)
+        Text, ForeignKey("signals.chain_decision.decision_uid", ondelete="CASCADE"), nullable=False
+    )
     run_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
@@ -165,15 +173,15 @@ class ChainState(Base):
         CheckConstraint(
             "(aspect = 'data' AND state IN ('complete','missing','stale','collection_failed'))"
             " OR (aspect = 'signal' AND state IN ('not_triggered','triggered'))"
-            " OR (aspect = 'risk' AND state IN ('allowed','blocked'))", name="aspect"),
+            " OR (aspect = 'risk' AND state IN ('allowed','blocked'))",
+            name="aspect",
+        ),
         Index("ix_chain_state_aspect", "aspect", "state"),
         S,
     )
     state_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    decision_uid: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_decision.decision_uid"), nullable=False)
-    source_attempt_id: Mapped[str | None] = mapped_column(
-        Text, ForeignKey("signals.chain_attempt.attempt_id"))
+    decision_uid: Mapped[str] = mapped_column(Text, ForeignKey("signals.chain_decision.decision_uid"), nullable=False)
+    source_attempt_id: Mapped[str | None] = mapped_column(Text, ForeignKey("signals.chain_attempt.attempt_id"))
     aspect: Mapped[str] = mapped_column(Text, nullable=False)
     state: Mapped[str] = mapped_column(Text, nullable=False)
     reason_code: Mapped[str | None] = mapped_column(Text)
@@ -182,8 +190,7 @@ class ChainState(Base):
     protocol_version: Mapped[str] = mapped_column(Text, nullable=False)
     observed_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     state_seq: Mapped[int] = mapped_column(Integer, nullable=False)
-    supersedes_state_id: Mapped[str | None] = mapped_column(
-        Text, ForeignKey("signals.chain_state.state_id"))
+    supersedes_state_id: Mapped[str | None] = mapped_column(Text, ForeignKey("signals.chain_state.state_id"))
     created_at: Mapped[dt.datetime] = _now()
 
 
@@ -194,22 +201,23 @@ class ChainOutcome(Base):
         CheckConstraint("horizon_sessions IN (1,3,5,10,20)", name="horizon"),
         CheckConstraint("revision >= 1", name="revision_no"),
         CheckConstraint("execution_state IN ('unverified','filled','unfilled','expired')", name="execution"),
-        CheckConstraint("result_state IN ('pending_maturity','matured','expired_uncollected','invalid')",
-                        name="result"),
+        CheckConstraint(
+            "result_state IN ('pending_maturity','matured','expired_uncollected','invalid')", name="result"
+        ),
         CheckConstraint(
             "(execution_state IN ('unfilled','expired')"
             " AND result_state IN ('invalid','expired_uncollected'))"
-            " OR execution_state IN ('unverified','filled')", name="axes"),
+            " OR execution_state IN ('unverified','filled')",
+            name="axes",
+        ),
         CheckConstraint("source_kind IN ('native','migrated_v1')", name="source_kind"),
         Index("ix_chain_outcome_due", "expected_maturity_date", "execution_state"),
         Index("ix_chain_outcome_result", "result_state"),
         S,
     )
     outcome_uid: Mapped[str] = mapped_column(Text, primary_key=True)
-    decision_uid: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_decision.decision_uid"), nullable=False)
-    source_attempt_id: Mapped[str | None] = mapped_column(
-        Text, ForeignKey("signals.chain_attempt.attempt_id"))
+    decision_uid: Mapped[str] = mapped_column(Text, ForeignKey("signals.chain_decision.decision_uid"), nullable=False)
+    source_attempt_id: Mapped[str | None] = mapped_column(Text, ForeignKey("signals.chain_attempt.attempt_id"))
     horizon_sessions: Mapped[int] = mapped_column(Integer, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     execution_state: Mapped[str] = mapped_column(Text, nullable=False)
@@ -244,18 +252,15 @@ class ChainOutcome(Base):
 class ChainEligibility(Base):
     __tablename__ = "chain_eligibility"
     __table_args__ = (
-        UniqueConstraint("decision_uid", "policy_version", "evaluation_seq",
-                         name="uq_chain_eligibility_revision"),
+        UniqueConstraint("decision_uid", "policy_version", "evaluation_seq", name="uq_chain_eligibility_revision"),
         CheckConstraint("verdict IN ('eligible','excluded','unknown')", name="verdict"),
         CheckConstraint("evaluation_seq >= 1", name="seq"),
         Index("ix_chain_eligibility_verdict", "policy_version", "verdict", "reason_code"),
         S,
     )
     eligibility_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    decision_uid: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_decision.decision_uid"), nullable=False)
-    policy_version: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_policy.policy_version"), nullable=False)
+    decision_uid: Mapped[str] = mapped_column(Text, ForeignKey("signals.chain_decision.decision_uid"), nullable=False)
+    policy_version: Mapped[str] = mapped_column(Text, ForeignKey("signals.chain_policy.policy_version"), nullable=False)
     verdict: Mapped[str] = mapped_column(Text, nullable=False)
     reason_code: Mapped[str] = mapped_column(Text, nullable=False)
     reason_detail: Mapped[dict[str, Any]] = _json()
@@ -265,15 +270,15 @@ class ChainEligibility(Base):
     evaluated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     evaluation_seq: Mapped[int] = mapped_column(Integer, nullable=False)
     supersedes_eligibility_id: Mapped[str | None] = mapped_column(
-        Text, ForeignKey("signals.chain_eligibility.eligibility_id"))
+        Text, ForeignKey("signals.chain_eligibility.eligibility_id")
+    )
     created_at: Mapped[dt.datetime] = _now()
 
 
 class ChainSnapshot(Base):
     __tablename__ = "chain_snapshot"
     __table_args__ = (
-        UniqueConstraint("business_date", "protocol_version", "cutoff_at", "digest",
-                         name="uq_chain_snapshot_identity"),
+        UniqueConstraint("business_date", "protocol_version", "cutoff_at", "digest", name="uq_chain_snapshot_identity"),
         CheckConstraint("length(digest) = 64", name="digest"),
         CheckConstraint("length(snapshot_id) = 36 AND left(snapshot_id, 4) = 'snp_'", name="id"),
         Index("ix_chain_snapshot_date", "business_date", "generated_at"),
@@ -284,7 +289,8 @@ class ChainSnapshot(Base):
     cutoff_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     protocol_version: Mapped[str] = mapped_column(Text, nullable=False)
     eligibility_policy_version: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_policy.policy_version"), nullable=False)
+        Text, ForeignKey("signals.chain_policy.policy_version"), nullable=False
+    )
     universe_version: Mapped[str | None] = mapped_column(Text)
     batch_keys: Mapped[list[Any]] = _list()
     body: Mapped[dict[str, Any]] = _json()
@@ -299,10 +305,8 @@ class ChainSnapshotSupersede(Base):
         CheckConstraint("snapshot_id <> superseded_by", name="distinct"),
         S,
     )
-    snapshot_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_snapshot.snapshot_id"), primary_key=True)
-    superseded_by: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_snapshot.snapshot_id"), nullable=False)
+    snapshot_id: Mapped[str] = mapped_column(Text, ForeignKey("signals.chain_snapshot.snapshot_id"), primary_key=True)
+    superseded_by: Mapped[str] = mapped_column(Text, ForeignKey("signals.chain_snapshot.snapshot_id"), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     superseded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -314,13 +318,11 @@ class ChainSnapshotItem(Base):
         Index("ix_chain_snapshot_item_bucket", "snapshot_id", "section", "bucket"),
         S,
     )
-    snapshot_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("signals.chain_snapshot.snapshot_id"), primary_key=True)
+    snapshot_id: Mapped[str] = mapped_column(Text, ForeignKey("signals.chain_snapshot.snapshot_id"), primary_key=True)
     section: Mapped[str] = mapped_column(Text, primary_key=True)
     bucket: Mapped[str] = mapped_column(Text, primary_key=True)
     item_key: Mapped[str] = mapped_column(Text, primary_key=True)
-    decision_uid: Mapped[str | None] = mapped_column(
-        Text, ForeignKey("signals.chain_decision.decision_uid"))
+    decision_uid: Mapped[str | None] = mapped_column(Text, ForeignKey("signals.chain_decision.decision_uid"))
     code: Mapped[str | None] = mapped_column(Text)
     batch_key: Mapped[str | None] = mapped_column(Text)
     reason_code: Mapped[str | None] = mapped_column(Text)
@@ -332,8 +334,9 @@ class ChainSnapshotItem(Base):
 class ChainEvidenceLink(Base):
     __tablename__ = "chain_evidence_link"
     __table_args__ = (
-        UniqueConstraint("owner_kind", "owner_id", "sidecar_kind", "sidecar_path", "checked_at",
-                         name="uq_chain_evidence_link_check"),
+        UniqueConstraint(
+            "owner_kind", "owner_id", "sidecar_kind", "sidecar_path", "checked_at", name="uq_chain_evidence_link_check"
+        ),
         CheckConstraint("owner_kind IN ('decision','outcome')", name="owner"),
         CheckConstraint("db_state IN ('present','missing')", name="db"),
         CheckConstraint("sidecar_state IN ('pending','verified','failed')", name="sidecar"),
@@ -365,8 +368,7 @@ class ChainImportRegister(Base):
     import_id: Mapped[str] = mapped_column(Text, primary_key=True)
     source_table: Mapped[str] = mapped_column(Text, nullable=False)
     source_pk: Mapped[str] = mapped_column(Text, nullable=False)
-    decision_uid: Mapped[str | None] = mapped_column(
-        Text, ForeignKey("signals.chain_decision.decision_uid"))
+    decision_uid: Mapped[str | None] = mapped_column(Text, ForeignKey("signals.chain_decision.decision_uid"))
     mapping_status: Mapped[str] = mapped_column(Text, nullable=False)
     original_business_date: Mapped[dt.date | None] = mapped_column(Date)
     original_created_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))

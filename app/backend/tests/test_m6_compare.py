@@ -1,4 +1,5 @@
 """M6.6 S1-S8 report comparator."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -26,14 +27,23 @@ HEALTH_JOB = "026a1083d9e0"
 
 
 def daily_summary(text: str = "daily body") -> dict:
-    details = {"accountId": "1", "checks": {}, "etfCoverage": {}, "notificationCoverage": {},
-               "sources": {"profit": {}, "health": {}}}
+    details = {
+        "accountId": "1",
+        "checks": {},
+        "etfCoverage": {},
+        "notificationCoverage": {},
+        "sources": {"profit": {}, "health": {}},
+    }
     summary = {
-        "accountId": "1", "businessDate": DAY.isoformat(), "details": details,
+        "accountId": "1",
+        "businessDate": DAY.isoformat(),
+        "details": details,
         "generatedAt": "2026-11-12T08:20:01+00:00",
-        "presentationSchema": "quant.daily-readable.v1", "revision": "v1",
+        "presentationSchema": "quant.daily-readable.v1",
+        "revision": "v1",
         "sourceReferences": [{"accountId": "1", "decisionDate": DAY.isoformat()}],
-        "text": text, "textSha256": hashlib.sha256(text.encode()).hexdigest(),
+        "text": text,
+        "textSha256": hashlib.sha256(text.encode()).hexdigest(),
         "version": "daily-research-summary.v1",
     }
     projection = _projection(summary, None)
@@ -47,13 +57,25 @@ def write_envelope(root: Path, job_id: str, mode: str, text: str) -> None:
     body = text.encode()
     dispatch = hashlib.sha256((job_id + mode + text).encode()).hexdigest()[:32]
     (job_dir / f"{dispatch}.raw").write_bytes(body)
-    (job_dir / f"{dispatch}.json").write_text(json.dumps({
-        "schema": "daily-summary-original-envelope.v1", "jobId": job_id, "mode": mode,
-        "businessDate": DAY.isoformat(), "dispatchId": dispatch, "returnCode": 0,
-        "silent": True, "bodyBytes": len(body), "bodySha256": hashlib.sha256(body).hexdigest(),
-        "envelopeBytes": len(body), "envelopeFile": f"{dispatch}.envelope.raw",
-        "originalFile": f"{dispatch}.raw",
-    }), encoding="utf-8")
+    (job_dir / f"{dispatch}.json").write_text(
+        json.dumps(
+            {
+                "schema": "daily-summary-original-envelope.v1",
+                "jobId": job_id,
+                "mode": mode,
+                "businessDate": DAY.isoformat(),
+                "dispatchId": dispatch,
+                "returnCode": 0,
+                "silent": True,
+                "bodyBytes": len(body),
+                "bodySha256": hashlib.sha256(body).hexdigest(),
+                "envelopeBytes": len(body),
+                "envelopeFile": f"{dispatch}.envelope.raw",
+                "originalFile": f"{dispatch}.raw",
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def cleanup(engine) -> None:
@@ -87,15 +109,27 @@ def seed(engine, tmp_path: Path) -> dict:
 
     with Session(engine) as session:
         import_daily_summary(session, summary, source_path=daily_dir / f"{DAY.isoformat()}-v1.json")
-        import_research_digest(session, digest_payload, source_path=digest_path,
-                               source_sha256=hashlib.sha256(digest_path.read_bytes()).hexdigest())
-        row = ExecutionDigest(digest_date=DAY, item_count=0, accepted=0, rejected=0,
-                              body={"items": []}, sha256="e" * 64, push_state="shadowed")
+        import_research_digest(
+            session,
+            digest_payload,
+            source_path=digest_path,
+            source_sha256=hashlib.sha256(digest_path.read_bytes()).hexdigest(),
+        )
+        row = ExecutionDigest(
+            digest_date=DAY,
+            item_count=0,
+            accepted=0,
+            rejected=0,
+            body={"items": []},
+            sha256="e" * 64,
+            push_state="shadowed",
+        )
         session.add(row)
         session.flush()
         import_execution_digest(session, row)
         for kind in ("profit_summary", "profit_radar_health"):
             from qp.reports.hermes import find_envelope
+
             job = PROFIT_JOB if kind == "profit_summary" else HEALTH_JOB
             import_hermes_summary(session, find_envelope(originals, job, DAY))
         session.commit()
@@ -104,10 +138,18 @@ def seed(engine, tmp_path: Path) -> dict:
             shadow_deliver(session, report)
         session.commit()
         session.query(ReportDelivery).first()
-        attach_receipts(session, [{
-            "execution_id": "exec-1", "job_id": PROFIT_JOB, "kind": "profit_summary",
-            "created_at": "2026-11-12T15:10:23+08:00",
-            "finished_at": "2026-11-12T15:10:25+08:00"}])
+        attach_receipts(
+            session,
+            [
+                {
+                    "execution_id": "exec-1",
+                    "job_id": PROFIT_JOB,
+                    "kind": "profit_summary",
+                    "created_at": "2026-11-12T15:10:23+08:00",
+                    "finished_at": "2026-11-12T15:10:25+08:00",
+                }
+            ],
+        )
         session.commit()
     return {"daily_dir": daily_dir, "digest_path": digest_path, "originals": originals}
 
@@ -117,9 +159,13 @@ def test_compare_passes_with_consistent_mirror(engine, tmp_path: Path):
     try:
         paths = seed(engine, tmp_path)
         with Session(engine) as session:
-            result = compare_reports(session, day=DAY, daily_dir=paths["daily_dir"],
-                                     digest_path=paths["digest_path"],
-                                     hermes_originals=paths["originals"])
+            result = compare_reports(
+                session,
+                day=DAY,
+                daily_dir=paths["daily_dir"],
+                digest_path=paths["digest_path"],
+                hermes_originals=paths["originals"],
+            )
         assert result["overall"] == "PASS", result
         assert all(c["status"] == "PASS" for c in result["checks"]), result["checks"]
     finally:
@@ -130,12 +176,15 @@ def test_compare_fails_when_legacy_file_changes(engine, tmp_path: Path):
     cleanup(engine)
     try:
         paths = seed(engine, tmp_path)
-        (paths["daily_dir"] / f"{DAY.isoformat()}-v1.json").write_text(
-            json.dumps({"changed": True}), encoding="utf-8")
+        (paths["daily_dir"] / f"{DAY.isoformat()}-v1.json").write_text(json.dumps({"changed": True}), encoding="utf-8")
         with Session(engine) as session:
-            result = compare_reports(session, day=DAY, daily_dir=paths["daily_dir"],
-                                     digest_path=paths["digest_path"],
-                                     hermes_originals=paths["originals"])
+            result = compare_reports(
+                session,
+                day=DAY,
+                daily_dir=paths["daily_dir"],
+                digest_path=paths["digest_path"],
+                hermes_originals=paths["originals"],
+            )
         s1 = next(c for c in result["checks"] if c["id"] == "S1")
         s8 = next(c for c in result["checks"] if c["id"] == "S8")
         assert s1["status"] == "FAIL" and s8["status"] == "FAIL"
@@ -151,9 +200,13 @@ def test_compare_fails_on_non_shadow_delivery(engine, tmp_path: Path):
             delivery = session.query(ReportDelivery).first()
             delivery.mode = "live"
             session.commit()
-            result = compare_reports(session, day=DAY, daily_dir=paths["daily_dir"],
-                                     digest_path=paths["digest_path"],
-                                     hermes_originals=paths["originals"])
+            result = compare_reports(
+                session,
+                day=DAY,
+                daily_dir=paths["daily_dir"],
+                digest_path=paths["digest_path"],
+                hermes_originals=paths["originals"],
+            )
         s6 = next(c for c in result["checks"] if c["id"] == "S6")
         assert s6["status"] == "FAIL"
     finally:

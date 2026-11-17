@@ -1,4 +1,5 @@
 """M4.5 approved-signal intake (HMAC/risk/idempotency) and shadow execution digest."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -56,12 +57,14 @@ def payload(key: str = "ak-1", **overrides) -> dict:
     return body
 
 
-def signed(raw: bytes, *, ts: str | None = None, secret: bytes = SECRET,
-           source: str = "dedirock") -> dict[str, str]:
+def signed(raw: bytes, *, ts: str | None = None, secret: bytes = SECRET, source: str = "dedirock") -> dict[str, str]:
     timestamp = ts if ts is not None else str(int(time.time()))
-    return {"X-Source": source, "X-Timestamp": timestamp,
-            "X-Signature": expected_signature(secret, timestamp, raw),
-            "Content-Type": "application/json"}
+    return {
+        "X-Source": source,
+        "X-Timestamp": timestamp,
+        "X-Signature": expected_signature(secret, timestamp, raw),
+        "Content-Type": "application/json",
+    }
 
 
 @pytest.fixture()
@@ -72,14 +75,22 @@ def hmaced(tmp_path, monkeypatch):
     return path
 
 
-def seed_intake(engine, *, key: str, status: str, received_at: dt.datetime,
-                detail: str = "ok", body: dict | None = None) -> None:
+def seed_intake(
+    engine, *, key: str, status: str, received_at: dt.datetime, detail: str = "ok", body: dict | None = None
+) -> None:
     with Session(engine) as session:
-        session.add(ApprovedIntake(
-            idempotency_key=key, source="dedirock", received_at=received_at, status=status,
-            detail=detail, risk_check={"passed": status == "accepted", "detail": detail},
-            payload_sha256=hashlib.sha256(key.encode()).hexdigest(),
-            payload=body if body is not None else payload(key)))
+        session.add(
+            ApprovedIntake(
+                idempotency_key=key,
+                source="dedirock",
+                received_at=received_at,
+                status=status,
+                detail=detail,
+                risk_check={"passed": status == "accepted", "detail": detail},
+                payload_sha256=hashlib.sha256(key.encode()).hexdigest(),
+                payload=body if body is not None else payload(key),
+            )
+        )
         session.commit()
 
 
@@ -88,7 +99,8 @@ def test_risk_check_matches_legacy_branches():
     assert risk_check(payload(), now=NOW) == (True, "ok")
     assert risk_check(payload(side=None), now=NOW) == (True, "ok")
     assert risk_check({"decision": "approve"}, now=NOW)[1] == (
-        "missing_fields:idempotency_key,signal_type,symbol,confidence,expires_at,provenance")
+        "missing_fields:idempotency_key,signal_type,symbol,confidence,expires_at,provenance"
+    )
     assert risk_check(payload(decision="reject"), now=NOW) == (False, "decision_not_approve")
     assert risk_check(payload(review_status="pending"), now=NOW) == (False, "still_pending")
     assert risk_check(payload(confidence="high"), now=NOW) == (False, "bad_confidence")
@@ -105,8 +117,7 @@ def test_hmac_secret_is_stripped_and_signature_is_exact():
     raw = b'{"a":1}'
     sig = expected_signature(SECRET, ts, raw)
     assert sig.startswith("sha256=") and len(sig) == 71
-    assert sig == "sha256=" + hmac.new(SECRET, ts.encode() + b"." + raw,
-                                      hashlib.sha256).hexdigest()
+    assert sig == "sha256=" + hmac.new(SECRET, ts.encode() + b"." + raw, hashlib.sha256).hexdigest()
 
 
 # --------------------------------------------------------------------------- intake API
@@ -116,11 +127,15 @@ def test_valid_request_is_accepted_and_persisted(engine, client, hmaced):
     try:
         response = client.post(HOOK, content=raw, headers=signed(raw))
         assert response.status_code == 200, response.text
-        assert response.json() == {"ok": True, "status": "accepted", "detail": "ok",
-                                   "idempotency_key": "ak-1", "order": "queued_stub"}
+        assert response.json() == {
+            "ok": True,
+            "status": "accepted",
+            "detail": "ok",
+            "idempotency_key": "ak-1",
+            "order": "queued_stub",
+        }
         with Session(engine) as session:
-            row = session.execute(select(ApprovedIntake)
-                                  .where(ApprovedIntake.idempotency_key == "ak-1")).scalar_one()
+            row = session.execute(select(ApprovedIntake).where(ApprovedIntake.idempotency_key == "ak-1")).scalar_one()
             assert row.status == "accepted" and row.source == "dedirock"
             assert row.payload_sha256 == canonical_payload_sha256(json.loads(raw))
             assert row.risk_check == {"passed": True, "detail": "ok"}
@@ -162,14 +177,15 @@ def test_duplicate_key_is_409_and_never_overwritten(engine, client, hmaced):
         cleanup(engine)
 
 
-@pytest.mark.parametrize("mutate,expected_status,error", [
-    (lambda raw, headers: {**headers, "X-Source": "other"}, 401, "bad_source"),
-    (lambda raw, headers: {**headers, "X-Timestamp": "not-int"}, 401, "bad_timestamp"),
-    (lambda raw, headers: {**headers, "X-Timestamp": str(int(time.time()) - 301)}, 401,
-     "timestamp_skew"),
-    (lambda raw, headers: {**headers, "X-Signature": "sha256=" + "0" * 64}, 401,
-     "bad_signature"),
-])
+@pytest.mark.parametrize(
+    "mutate,expected_status,error",
+    [
+        (lambda raw, headers: {**headers, "X-Source": "other"}, 401, "bad_source"),
+        (lambda raw, headers: {**headers, "X-Timestamp": "not-int"}, 401, "bad_timestamp"),
+        (lambda raw, headers: {**headers, "X-Timestamp": str(int(time.time()) - 301)}, 401, "timestamp_skew"),
+        (lambda raw, headers: {**headers, "X-Signature": "sha256=" + "0" * 64}, 401, "bad_signature"),
+    ],
+)
 def test_auth_failures_write_nothing(engine, client, hmaced, mutate, expected_status, error):
     cleanup(engine)
     raw = json.dumps(payload()).encode()
@@ -185,8 +201,7 @@ def test_auth_failures_write_nothing(engine, client, hmaced, mutate, expected_st
 
 def test_bad_json_object_and_key_are_400(engine, client, hmaced):
     cleanup(engine)
-    cases = [(b"{", "invalid_json"), (b"[]", "payload_not_object"),
-             (b'{"signal_type":"x"}', "missing_idempotency_key")]
+    cases = [(b"{", "invalid_json"), (b"[]", "payload_not_object"), (b'{"signal_type":"x"}', "missing_idempotency_key")]
     try:
         for raw, error in cases:
             response = client.post(HOOK, content=raw, headers=signed(raw))
@@ -216,14 +231,20 @@ def test_record_intake_signature_and_duplicate_helper(engine):
     raw = json.dumps(payload("ak-helper")).encode()
     try:
         with Session(engine) as session:
-            first = record_intake(session, payload=payload("ak-helper"), raw=raw,
-                                  source="dedirock", received_at=NOW, now=NOW)
+            first = record_intake(
+                session, payload=payload("ak-helper"), raw=raw, source="dedirock", received_at=NOW, now=NOW
+            )
             session.commit()
-        assert first == {"duplicate": False, "status": "accepted", "detail": "ok",
-                         "idempotency_key": "ak-helper"}
+        assert first == {"duplicate": False, "status": "accepted", "detail": "ok", "idempotency_key": "ak-helper"}
         with Session(engine) as session:
-            second = record_intake(session, payload=payload("ak-helper", confidence=0.1),
-                                   raw=raw, source="dedirock", received_at=NOW, now=NOW)
+            second = record_intake(
+                session,
+                payload=payload("ak-helper", confidence=0.1),
+                raw=raw,
+                source="dedirock",
+                received_at=NOW,
+                now=NOW,
+            )
             session.commit()
         assert second["duplicate"] is True and second["status"] == "accepted"
     finally:
@@ -234,24 +255,34 @@ def test_record_intake_signature_and_duplicate_helper(engine):
 def test_digest_body_counts_noise_and_truncates_to_20(engine, tmp_path):
     cleanup(engine)
     try:
-        seed_intake(engine, key="ok-1", status="accepted",
-                    received_at=dt.datetime(2027, 4, 6, 1, 0, tzinfo=UTC))
-        seed_intake(engine, key="bad-1", status="rejected", detail="expired",
-                    received_at=dt.datetime(2027, 4, 6, 2, 0, tzinfo=UTC))
-        seed_intake(engine, key="selftest-noise", status="accepted",
-                    received_at=dt.datetime(2027, 4, 6, 3, 0, tzinfo=UTC))
-        seed_intake(engine, key="outside-before", status="accepted",
-                    received_at=dt.datetime(2027, 4, 5, 23, 59, tzinfo=UTC))
-        seed_intake(engine, key="outside-after", status="accepted",
-                    received_at=dt.datetime(2027, 4, 7, 0, 0, tzinfo=UTC))
+        seed_intake(engine, key="ok-1", status="accepted", received_at=dt.datetime(2027, 4, 6, 1, 0, tzinfo=UTC))
+        seed_intake(
+            engine,
+            key="bad-1",
+            status="rejected",
+            detail="expired",
+            received_at=dt.datetime(2027, 4, 6, 2, 0, tzinfo=UTC),
+        )
+        seed_intake(
+            engine, key="selftest-noise", status="accepted", received_at=dt.datetime(2027, 4, 6, 3, 0, tzinfo=UTC)
+        )
+        seed_intake(
+            engine, key="outside-before", status="accepted", received_at=dt.datetime(2027, 4, 5, 23, 59, tzinfo=UTC)
+        )
+        seed_intake(
+            engine, key="outside-after", status="accepted", received_at=dt.datetime(2027, 4, 7, 0, 0, tzinfo=UTC)
+        )
         for index in range(22):
-            seed_intake(engine, key=f"bulk-{index:02d}", status="accepted",
-                        received_at=dt.datetime(2027, 4, 6, 4, 0, tzinfo=UTC))
+            seed_intake(
+                engine,
+                key=f"bulk-{index:02d}",
+                status="accepted",
+                received_at=dt.datetime(2027, 4, 6, 4, 0, tzinfo=UTC),
+            )
         with Session(engine) as session:
             out = build_previous_day_digest(session, now=DIGEST_NOW, output_dir=tmp_path)
             session.commit()
-        assert (out["digest_date"], out["row_count"], out["item_count"]) == (
-            DIGEST_DAY.isoformat(), 24, 20)
+        assert (out["digest_date"], out["row_count"], out["item_count"]) == (DIGEST_DAY.isoformat(), 24, 20)
         assert (out["accepted"], out["rejected"]) == (23, 1)
         body = json.loads((tmp_path / f"execution_digest_{DIGEST_DAY}.json").read_text())
         assert body["schema_version"] == "0.2" and body["report_type"] == "execution_digest"
@@ -281,8 +312,7 @@ def test_digest_empty_day_still_writes_artifacts(engine, tmp_path):
         with Session(engine) as session:
             out = build_previous_day_digest(session, now=DIGEST_NOW, output_dir=tmp_path)
             session.commit()
-        assert (out["row_count"], out["item_count"], out["accepted"], out["rejected"]) == (
-            0, 0, 0, 0)
+        assert (out["row_count"], out["item_count"], out["accepted"], out["rejected"]) == (0, 0, 0, 0)
         body = json.loads((tmp_path / "latest.json").read_text())
         assert body["items"] == []
         assert "昨日无业务受理/拒绝（已过滤测试探针）。" in body["markdown"]
@@ -295,8 +325,7 @@ def test_digest_empty_day_still_writes_artifacts(engine, tmp_path):
 def test_digest_is_idempotent_and_hmac_verifies(engine, tmp_path):
     cleanup(engine)
     try:
-        seed_intake(engine, key="ok-1", status="accepted",
-                    received_at=dt.datetime(2027, 4, 6, 1, 0, tzinfo=UTC))
+        seed_intake(engine, key="ok-1", status="accepted", received_at=dt.datetime(2027, 4, 6, 1, 0, tzinfo=UTC))
         with Session(engine) as session:
             first = build_previous_day_digest(session, now=DIGEST_NOW, output_dir=tmp_path)
             session.commit()
@@ -310,9 +339,11 @@ def test_digest_is_idempotent_and_hmac_verifies(engine, tmp_path):
             body = rows[0].body
         ts = "1700000000"
         signature = sign_digest(body, b"digest-secret", ts)
-        assert signature == "sha256=" + hmac.new(
-            b"digest-secret", ts.encode() + b"." + canonical_body(body),
-            hashlib.sha256).hexdigest()
+        assert (
+            signature
+            == "sha256="
+            + hmac.new(b"digest-secret", ts.encode() + b"." + canonical_body(body), hashlib.sha256).hexdigest()
+        )
     finally:
         cleanup(engine)
 

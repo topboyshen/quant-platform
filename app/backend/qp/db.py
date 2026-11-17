@@ -13,8 +13,9 @@ from qp.config import get_settings
 
 @lru_cache(maxsize=4)
 def get_engine(url: str | None = None) -> Engine:
-    return create_engine(url or get_settings().database_url, pool_size=3, max_overflow=2,
-                         pool_pre_ping=True, future=True)
+    return create_engine(
+        url or get_settings().database_url, pool_size=3, max_overflow=2, pool_pre_ping=True, future=True
+    )
 
 
 def session_factory(url: str | None = None) -> sessionmaker[Session]:

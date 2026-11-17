@@ -1,4 +1,5 @@
 """Opaque session tokens (cookie) and service tokens; only sha256 of tokens is stored."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -18,8 +19,15 @@ def token_hash(token: str) -> str:
 
 def create_session(db: DbSession, user: User, ttl_hours: int, ip: str | None, ua: str | None) -> str:
     token = secrets.token_urlsafe(32)
-    db.add(Session(user_id=user.id, token_sha256=token_hash(token),
-                   expires_at=utcnow() + dt.timedelta(hours=ttl_hours), ip=ip, user_agent=(ua or "")[:500]))
+    db.add(
+        Session(
+            user_id=user.id,
+            token_sha256=token_hash(token),
+            expires_at=utcnow() + dt.timedelta(hours=ttl_hours),
+            ip=ip,
+            user_agent=(ua or "")[:500],
+        )
+    )
     return token
 
 
@@ -27,9 +35,14 @@ def resolve_session(db: DbSession, token: str | None) -> User | None:
     if not token:
         return None
     row = db.execute(
-        select(Session, User).join(User, User.id == Session.user_id).where(
-            Session.token_sha256 == token_hash(token), Session.revoked_at.is_(None),
-            Session.expires_at > utcnow(), User.is_active.is_(True))
+        select(Session, User)
+        .join(User, User.id == Session.user_id)
+        .where(
+            Session.token_sha256 == token_hash(token),
+            Session.revoked_at.is_(None),
+            Session.expires_at > utcnow(),
+            User.is_active.is_(True),
+        )
     ).first()
     if not row:
         return None
@@ -40,8 +53,11 @@ def resolve_session(db: DbSession, token: str | None) -> User | None:
 
 def revoke_session(db: DbSession, token: str | None) -> None:
     if token:
-        db.execute(update(Session).where(Session.token_sha256 == token_hash(token), Session.revoked_at.is_(None))
-                   .values(revoked_at=utcnow()))
+        db.execute(
+            update(Session)
+            .where(Session.token_sha256 == token_hash(token), Session.revoked_at.is_(None))
+            .values(revoked_at=utcnow())
+        )
 
 
 def create_service_token(db: DbSession, name: str, scopes: list[str]) -> str:
@@ -53,8 +69,9 @@ def create_service_token(db: DbSession, name: str, scopes: list[str]) -> str:
 def resolve_service_token(db: DbSession, token: str | None) -> ServiceToken | None:
     if not token or not token.startswith("qpst_"):
         return None
-    st = db.execute(select(ServiceToken).where(ServiceToken.token_sha256 == token_hash(token),
-                                               ServiceToken.revoked_at.is_(None))).scalar_one_or_none()
+    st = db.execute(
+        select(ServiceToken).where(ServiceToken.token_sha256 == token_hash(token), ServiceToken.revoked_at.is_(None))
+    ).scalar_one_or_none()
     if st is None or (st.expires_at is not None and st.expires_at <= utcnow()):
         return None
     st.last_used_at = utcnow()

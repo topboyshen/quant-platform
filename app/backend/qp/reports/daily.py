@@ -4,6 +4,7 @@ The legacy system already freezes one immutable JSON per business date.  qp
 validates its internal hashes (text/details/references/binding) before archiving
 it as a ``reports.report``; it never rewrites the legacy file.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -23,9 +24,13 @@ class LegacyDailyInvalid(ValueError):
     """The legacy daily summary failed its own integrity checks."""
 
 
-def import_daily_summary(session: Session, summary: dict[str, Any], *,
-                         source_path: str | Path | None = None,
-                         source_sha256: str | None = None) -> tuple[Report, bool]:
+def import_daily_summary(
+    session: Session,
+    summary: dict[str, Any],
+    *,
+    source_path: str | Path | None = None,
+    source_sha256: str | None = None,
+) -> tuple[Report, bool]:
     errors = validate_legacy_daily(summary)
     if errors:
         raise LegacyDailyInvalid("invalid legacy daily summary: " + ", ".join(errors))
@@ -36,9 +41,10 @@ def import_daily_summary(session: Session, summary: dict[str, Any], *,
         source="legacy_daily_summary",
         locator=str(source_path) if source_path is not None else None,
         sha256=source_sha256,
-        detail={"textSha256": summary.get("textSha256"),
-                "detailsSha256": digest(summary.get("details")),
-                "version": summary.get("version")},
+        detail={
+            "textSha256": summary.get("textSha256"),
+            "detailsSha256": digest(summary.get("details")),
+            "version": summary.get("version"),
+        },
     )
-    return freeze_report(session, kind=KIND, business_date=day, payload=summary,
-                         sources=[source])
+    return freeze_report(session, kind=KIND, business_date=day, payload=summary, sources=[source])

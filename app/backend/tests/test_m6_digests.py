@@ -1,4 +1,5 @@
 """M6.3 research/execution digest archiving."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -26,8 +27,7 @@ def research_payload(trade_date: str = "2026-11-13", generated_at: str = "2026-1
     return {
         "generated_at": generated_at,
         "index_close_cache": {"trade_date": trade_date, "available": True},
-        "index_closes": [{"symbol": "sh000001", "trade_date": trade_date, "close": 3400.0,
-                          "source": "legacy"}],
+        "index_closes": [{"symbol": "sh000001", "trade_date": trade_date, "close": 3400.0, "source": "legacy"}],
         "macro": {"available": True, "date": trade_date},
         "note": "Not OpenBB. Local digest only.",
         "recent_runs": [],
@@ -81,9 +81,15 @@ def test_execution_digest_is_archived_by_reference(engine):
     cleanup(engine)
     try:
         with Session(engine) as session:
-            row = ExecutionDigest(digest_date=DAY, item_count=0, accepted=0, rejected=0,
-                                  body={"as_of_day": DAY.isoformat(), "items": []},
-                                  sha256="d" * 64, push_state="shadowed")
+            row = ExecutionDigest(
+                digest_date=DAY,
+                item_count=0,
+                accepted=0,
+                rejected=0,
+                body={"as_of_day": DAY.isoformat(), "items": []},
+                sha256="d" * 64,
+                push_state="shadowed",
+            )
             session.add(row)
             session.commit()
             report, created = import_execution_digest(session, row)
@@ -110,9 +116,12 @@ def test_jobs_skip_without_sources(engine, tmp_path: Path, monkeypatch):
             import_execution_digest_job,
             import_research_digest_job,
         )
-        assert import_research_digest_job(JobContext(engine=engine, run_id=0,
-                                                     name="reports.import_research_digest"))["skipped"]
-        assert import_execution_digest_job(JobContext(engine=engine, run_id=0,
-                                                      name="reports.import_execution_digest"))["skipped"]
+
+        assert import_research_digest_job(JobContext(engine=engine, run_id=0, name="reports.import_research_digest"))[
+            "skipped"
+        ]
+        assert import_execution_digest_job(JobContext(engine=engine, run_id=0, name="reports.import_execution_digest"))[
+            "skipped"
+        ]
     finally:
         cleanup(engine)

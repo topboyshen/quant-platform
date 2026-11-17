@@ -1,4 +1,5 @@
 """C13 forward paper portfolio: time/ledger/isolation contract, not profit fitting."""
+
 from __future__ import annotations
 
 import copy
@@ -42,8 +43,10 @@ BASE = HISTORY[-1]
 @pytest.fixture
 def book(engine, monkeypatch):
     from zoneinfo import ZoneInfo
+
     # Advance deliberately synthetic fixture time; production cannot backdate forward data.
     monkeypatch.setattr(rot, "now_cst", lambda: dt.datetime(2027, 12, 1, 16, tzinfo=ZoneInfo("Asia/Shanghai")))
+
     def cleanup():
         with Session(engine) as s:
             s.execute(delete(RotationShadowRun))
@@ -52,20 +55,28 @@ def book(engine, monkeypatch):
             s.execute(delete(RotationShadowBar))
             s.execute(delete(TradingDay).where(TradingDay.source == "m14-test"))
             s.commit()
+
     cleanup()
-    payload = {c: [[str(day), 2 + k * 0.1 + i * (0.001 + k * 0.0002),
-                    2.001 + k * 0.1 + i * (0.001 + k * 0.0002),
-                    2.01 + k * 0.1 + i * (0.001 + k * 0.0002),
-                    1.99 + k * 0.1 + i * (0.001 + k * 0.0002), 100_000.0]
-                   for i, day in enumerate([*HISTORY, *DAYS])]
-               for k, c in enumerate(CODES)}
+    payload = {
+        c: [
+            [
+                str(day),
+                2 + k * 0.1 + i * (0.001 + k * 0.0002),
+                2.001 + k * 0.1 + i * (0.001 + k * 0.0002),
+                2.01 + k * 0.1 + i * (0.001 + k * 0.0002),
+                1.99 + k * 0.1 + i * (0.001 + k * 0.0002),
+                100_000.0,
+            ]
+            for i, day in enumerate([*HISTORY, *DAYS])
+        ]
+        for k, c in enumerate(CODES)
+    }
     with Session(engine) as s:
         # Earlier chain tests seed every calendar day as open. Explicitly close
         # weekends in this fixture range, so warm-up completeness is truly isolated.
         cursor = HISTORY[0]
         while cursor <= DAYS[-1]:
-            s.merge(TradingDay(origin="qp", date=cursor, is_open=cursor.weekday() < 5,
-                               source="m14-test"))
+            s.merge(TradingDay(origin="qp", date=cursor, is_open=cursor.weekday() < 5, source="m14-test"))
             cursor += dt.timedelta(days=1)
         rot.seed_bars(s, payload)
         s.commit()
@@ -76,25 +87,38 @@ def book(engine, monkeypatch):
 def init(s, *, phase="forward", rule=rot.RULE):
     from unittest.mock import patch
     from zoneinfo import ZoneInfo
+
     stamp = dt.datetime.combine(BASE, dt.time(16), ZoneInfo("Asia/Shanghai"))
     with _INIT_LOCK, patch.object(rot, "now_cst", return_value=stamp):
         return rot.initialize(s, start_date=START, phase=phase, rule_version=rule, codes=CODES)
 
 
 def snapshots(s, rule=rot.RULE):
-    return [(str(r.trade_date), r.session_index, float(r.nav), float(r.cash),
-             r.positions, float(r.ew_nav), float(r.benchmark_nav), r.detail["state"])
-            for r in s.scalars(select(RotationShadowDay)
-                               .where(RotationShadowDay.rule_version == rule)
-                               .order_by(RotationShadowDay.trade_date))]
+    return [
+        (
+            str(r.trade_date),
+            r.session_index,
+            float(r.nav),
+            float(r.cash),
+            r.positions,
+            float(r.ew_nav),
+            float(r.benchmark_nav),
+            r.detail["state"],
+        )
+        for r in s.scalars(
+            select(RotationShadowDay)
+            .where(RotationShadowDay.rule_version == rule)
+            .order_by(RotationShadowDay.trade_date)
+        )
+    ]
 
 
 def test_tables_and_migration_match(engine):
     with engine.connect() as c:
-        names = set(c.execute(text("select table_name from information_schema.tables "
-                                   "where table_schema='signals'")).scalars())
-    assert {"rotation_shadow_account", "rotation_shadow_bar", "rotation_shadow_day",
-            "rotation_shadow_run"} <= names
+        names = set(
+            c.execute(text("select table_name from information_schema.tables where table_schema='signals'")).scalars()
+        )
+    assert {"rotation_shadow_account", "rotation_shadow_bar", "rotation_shadow_day", "rotation_shadow_run"} <= names
 
 
 def test_seed_strict_idempotent_and_raw_only(book):
@@ -164,10 +188,18 @@ def test_batch_incremental_replay_are_identical_and_idempotent(book):
             assert rot.replay(s, rule_version="incremental", until=day)["ok"]
             s.commit()
         assert snapshots(s, "batch") == snapshots(s, "incremental")
-        runs = list(s.scalars(select(RotationShadowRun).where(
-            RotationShadowRun.rule_version == "incremental").order_by(RotationShadowRun.signal_date)))
+        runs = list(
+            s.scalars(
+                select(RotationShadowRun)
+                .where(RotationShadowRun.rule_version == "incremental")
+                .order_by(RotationShadowRun.signal_date)
+            )
+        )
         assert [(p.signal_date, p.execute_date) for p in runs] == [
-            (BASE, DAYS[0]), (DAYS[19], DAYS[20]), (DAYS[39], DAYS[40])]
+            (BASE, DAYS[0]),
+            (DAYS[19], DAYS[20]),
+            (DAYS[39], DAYS[40]),
+        ]
         original = snapshots(s, "batch")
         assert rot.replay(s, rule_version="batch", until=DAYS[-1])["skipped"] == "up_to_date"
         s.commit()
@@ -199,8 +231,11 @@ def test_missing_bar_blocks_nav_and_recovers_without_clock_drift(book):
     with Session(engine) as s:
         assert init(s)["ok"]
         s.commit()
-        s.execute(delete(RotationShadowBar).where(RotationShadowBar.code == CODES[-1],
-                                                  RotationShadowBar.trade_date == DAYS[0]))
+        s.execute(
+            delete(RotationShadowBar).where(
+                RotationShadowBar.code == CODES[-1], RotationShadowBar.trade_date == DAYS[0]
+            )
+        )
         s.commit()
         out = rot.replay(s, until=DAYS[0])
         s.commit()
@@ -276,12 +311,14 @@ def test_registration_and_advance_serialized_across_sessions(book):
     with Session(engine) as s:
         assert init(s)["ok"]
         s.commit()
+
     def run():
         with Session(engine) as s:
             out = {"ok": True}
             result = rot.replay(s, until=DAYS[1])
             s.commit()
             return out, result
+
     with ThreadPoolExecutor(max_workers=2) as pool:
         outputs = list(pool.map(lambda _: run(), range(2)))
     assert all(result[1]["ok"] for result in outputs)
@@ -295,6 +332,7 @@ def test_api_auth_scope_phase_and_empty(book):
 
     from qp.api.main import app
     from qp.auth.sessions import create_service_token
+
     engine, _ = book
     with Session(engine) as s:
         init(s)
@@ -314,15 +352,19 @@ def test_api_auth_scope_phase_and_empty(book):
 
 def test_intraday_step_refuses_before_fetch_or_nav(book, monkeypatch):
     from zoneinfo import ZoneInfo
+
     engine, _ = book
+
     class MustNotFetch:
         def get(self, code):
             raise AssertionError("intraday fetch must not occur")
+
     with Session(engine) as s:
         init(s)
         s.commit()
-        monkeypatch.setattr(rot, "now_cst", lambda: dt.datetime.combine(
-            DAYS[0], dt.time(10), ZoneInfo("Asia/Shanghai")))
+        monkeypatch.setattr(
+            rot, "now_cst", lambda: dt.datetime.combine(DAYS[0], dt.time(10), ZoneInfo("Asia/Shanghai"))
+        )
         result = rot.step(s, as_of=DAYS[0], fetcher=MustNotFetch())
         assert result == {"ok": False, "error": "session_not_closed"}
         assert rot.summary(s)["days"] == 0
@@ -346,16 +388,20 @@ def test_suspended_zero_volume_no_fabricated_fills(book):
 def test_sync_recovers_interior_publication_gap(book):
     engine, payload = book
     code = CODES[0]
+
     class Fetcher:
         def get(self, _):
             rows = [r for r in payload[code] if r[0] in (str(BASE), str(DAYS[0]), str(DAYS[1]))]
-            return KlineResult(bars=[DailyBar(dt.date.fromisoformat(r[0]), r[1], r[3], r[4], r[2], r[5])
-                                     for r in rows], source="test")
+            return KlineResult(
+                bars=[DailyBar(dt.date.fromisoformat(r[0]), r[1], r[3], r[4], r[2], r[5]) for r in rows], source="test"
+            )
+
     with Session(engine) as s:
         init(s)
         s.commit()
-        s.execute(delete(RotationShadowBar).where(RotationShadowBar.code == code,
-                                                  RotationShadowBar.trade_date == DAYS[0]))
+        s.execute(
+            delete(RotationShadowBar).where(RotationShadowBar.code == code, RotationShadowBar.trade_date == DAYS[0])
+        )
         s.commit()
         assert s.get(RotationShadowBar, (code, DAYS[1]))
         result = rot.sync_bars(s, as_of=DAYS[1], codes=[code], fetcher=Fetcher())
@@ -375,8 +421,18 @@ def test_interior_calendar_hole_blocks_rebalance_clock(book):
         assert result["ok"] is False and str(DAYS[1]) in result["missing_dates"]
         assert rot.summary(s)["days"] == 1
         benchmark_bar = s.get(RotationShadowBar, (rot.BENCHMARK, DAYS[1]))
-        saved = {rot.BENCHMARK: [[str(DAYS[1]), float(benchmark_bar.open), float(benchmark_bar.close),
-                                  float(benchmark_bar.high), float(benchmark_bar.low), float(benchmark_bar.volume)]]}
+        saved = {
+            rot.BENCHMARK: [
+                [
+                    str(DAYS[1]),
+                    float(benchmark_bar.open),
+                    float(benchmark_bar.close),
+                    float(benchmark_bar.high),
+                    float(benchmark_bar.low),
+                    float(benchmark_bar.volume),
+                ]
+            ]
+        }
         s.delete(benchmark_bar)
         s.commit()
         # Missing benchmark and calendar together cannot hide other ETF evidence.
@@ -393,8 +449,11 @@ def test_interior_calendar_hole_blocks_rebalance_clock(book):
 def test_warmup_gap_not_stretched_to_older_momentum_anchor(book):
     engine, _ = book
     with Session(engine) as s:
-        s.execute(delete(RotationShadowBar).where(RotationShadowBar.code == CODES[0],
-                                                  RotationShadowBar.trade_date == HISTORY[-20]))
+        s.execute(
+            delete(RotationShadowBar).where(
+                RotationShadowBar.code == CODES[0], RotationShadowBar.trade_date == HISTORY[-20]
+            )
+        )
         result = init(s)
         assert result["ok"] is False and result["error"] == "ranking_warmup_session_gap"
         assert CODES[0] in result["missing_codes"]
@@ -405,6 +464,7 @@ def test_job_cli_and_timer_registration():
 
     from qp.cli import main
     from qp.jobs.registry import JOBS
+
     assert JOBS["signals.rotation_shadow"].schedule_hint.startswith("Mon-Fri 15:50, 16:40")
     timer = Path(__file__).resolve().parents[2] / "deploy/systemd/qp-signals-rotation-shadow.timer"
     assert "15:50:00 Asia/Shanghai" in timer.read_text()

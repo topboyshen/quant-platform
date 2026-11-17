@@ -9,6 +9,7 @@ All parsers are pure functions so fixtures can lock the exact legacy semantics:
 - limits: Eastmoney ZT/DT pools, ``data.tc``
 - risk: Yahoo chart -> CBOE/FRED fallbacks; strict thresholds and fail-closed levels
 """
+
 from __future__ import annotations
 
 import csv
@@ -58,8 +59,14 @@ class FactorStatus:
     anomalous: bool = False
 
     def as_dict(self) -> dict[str, Any]:
-        return {"available": self.available, "source": self.source, "message": self.message,
-                "observed_date": self.observed_date, "stale": self.stale, "anomalous": self.anomalous}
+        return {
+            "available": self.available,
+            "source": self.source,
+            "message": self.message,
+            "observed_date": self.observed_date,
+            "stale": self.stale,
+            "anomalous": self.anomalous,
+        }
 
 
 # --------------------------------------------------------------------------- total amount
@@ -135,8 +142,11 @@ def fetch_tencent_total(fetch_fn: Callable[..., Any] = http.fetch) -> tuple[floa
     payloads = {}
     for code in ("sh000001", "sz399001"):
         payloads[code] = fetch_fn(
-            TENCENT_QUOTE_URL, params={"param": f"{code},day,,,3,qfq"},
-            headers={"User-Agent": UA, "Referer": "https://gu.qq.com/"}, proxy=False, timeout=8,
+            TENCENT_QUOTE_URL,
+            params={"param": f"{code},day,,,3,qfq"},
+            headers={"User-Agent": UA, "Referer": "https://gu.qq.com/"},
+            proxy=False,
+            timeout=8,
         ).json()
     merged: dict[str, Any] = {"data": {}}
     for code, payload in payloads.items():
@@ -146,35 +156,54 @@ def fetch_tencent_total(fetch_fn: Callable[..., Any] = http.fetch) -> tuple[floa
 
 
 def fetch_sina_total(fetch_fn: Callable[..., Any] = http.fetch) -> tuple[float, str]:
-    resp = fetch_fn(SINA_QUOTE_URL, headers={
-        "Accept": "application/javascript,text/plain;q=0.9",
-        "Referer": "https://finance.sina.com.cn/", "User-Agent": "Mozilla/5.0",
-    }, proxy=False, timeout=8)
+    resp = fetch_fn(
+        SINA_QUOTE_URL,
+        headers={
+            "Accept": "application/javascript,text/plain;q=0.9",
+            "Referer": "https://finance.sina.com.cn/",
+            "User-Agent": "Mozilla/5.0",
+        },
+        proxy=False,
+        timeout=8,
+    )
     return parse_sina_total(resp.body.decode("gb18030"))
 
 
 def _eastmoney_snapshot_params(page: int, size: int) -> dict[str, str]:
     return {
-        "pn": str(page), "pz": str(size), "po": "1", "np": "1", "fltt": "2", "invt": "2",
+        "pn": str(page),
+        "pz": str(size),
+        "po": "1",
+        "np": "1",
+        "fltt": "2",
+        "invt": "2",
         "fid": "f6",
         "fs": "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23,m:0+t:81,m:1+t:1,m:0+t:7,m:1+t:3",
-        "fields": "f12,f6", "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+        "fields": "f12,f6",
+        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
     }
 
 
-def fetch_eastmoney_total(fetch_fn: Callable[..., Any] = http.fetch,
-                          observed_date: str | None = None) -> tuple[float, str]:
-    first = fetch_fn(EASTMONEY_LIST_URL, params=_eastmoney_snapshot_params(1, 1),
-                     headers={"User-Agent": UA}, proxy=False, timeout=15).json()
-    total_raw = ((first.get("data") or {}).get("total"))
+def fetch_eastmoney_total(
+    fetch_fn: Callable[..., Any] = http.fetch, observed_date: str | None = None
+) -> tuple[float, str]:
+    first = fetch_fn(
+        EASTMONEY_LIST_URL, params=_eastmoney_snapshot_params(1, 1), headers={"User-Agent": UA}, proxy=False, timeout=15
+    ).json()
+    total_raw = (first.get("data") or {}).get("total")
     if total_raw is None:
         raise ValueError("missing_total")
     pages = max(1, (int(total_raw) + 4999) // 5000)
     total_yuan = 0.0
     seen: set[str] = set()
     for page in range(1, pages + 1):
-        payload = fetch_fn(EASTMONEY_LIST_URL, params=_eastmoney_snapshot_params(page, 5000),
-                           headers={"User-Agent": UA}, proxy=False, timeout=15).json()
+        payload = fetch_fn(
+            EASTMONEY_LIST_URL,
+            params=_eastmoney_snapshot_params(page, 5000),
+            headers={"User-Agent": UA},
+            proxy=False,
+            timeout=15,
+        ).json()
         data = payload.get("data")
         if not isinstance(data, dict) or not (data.get("diff") or []):
             raise ValueError("incomplete_page")
@@ -192,7 +221,9 @@ def fetch_eastmoney_total(fetch_fn: Callable[..., Any] = http.fetch,
     return round(total_yuan / 1e8, 2), observed_date or dt.date.today().isoformat()
 
 
-def collect_total_amount(decision_date: str, fetch_fn: Callable[..., Any] = http.fetch) -> tuple[float | None, FactorStatus]:
+def collect_total_amount(
+    decision_date: str, fetch_fn: Callable[..., Any] = http.fetch
+) -> tuple[float | None, FactorStatus]:
     """Mirror legacy order: Tencent (stale allowed) -> Sina (same-day only) -> Eastmoney.
 
     Out-of-range values are rejected from the slice and only leave ``anomalous`` on the
@@ -214,8 +245,7 @@ def collect_total_amount(decision_date: str, fetch_fn: Callable[..., Any] = http
             errors.append("sina:observed_date_mismatch")
             continue
         stale = observed != decision_date
-        return value, FactorStatus(True, name, "" if not stale else "observed_date_mismatch",
-                                   observed, stale=stale)
+        return value, FactorStatus(True, name, "" if not stale else "observed_date_mismatch", observed, stale=stale)
     try:
         value, observed = fetch_eastmoney_total(fetch_fn, decision_date)
         if low <= value <= high:
@@ -223,8 +253,7 @@ def collect_total_amount(decision_date: str, fetch_fn: Callable[..., Any] = http
         errors.append("eastmoney_anomalous")
     except Exception as exc:
         errors.append(f"eastmoney:{type(exc).__name__}")
-    return None, FactorStatus(False, "tencent/sina/eastmoney", ";".join(errors)[:200],
-                              anomalous=bool(errors))
+    return None, FactorStatus(False, "tencent/sina/eastmoney", ";".join(errors)[:200], anomalous=bool(errors))
 
 
 # --------------------------------------------------------------------------- margin
@@ -255,33 +284,55 @@ def parse_szse_margin(payload: Any) -> float:
     return round(value, 2)
 
 
-def fetch_margin_history(fetch_fn: Callable[..., Any] = http.fetch, *, days: int = 21,
-                         max_dates: int = 6) -> list[tuple[str, float]]:
+def fetch_margin_history(
+    fetch_fn: Callable[..., Any] = http.fetch, *, days: int = 21, max_dates: int = 6
+) -> list[tuple[str, float]]:
     today = dt.date.today()
     start = (today - dt.timedelta(days=days)).strftime("%Y%m%d")
-    sse = fetch_fn(SSE_MARGIN_URL, params={
-        "isPagination": "true", "beginDate": start, "endDate": today.strftime("%Y%m%d"),
-        "tabType": "", "stockCode": "", "pageHelp.pageSize": "5000", "pageHelp.pageNo": "1",
-        "pageHelp.beginPage": "1", "pageHelp.cacheSize": "1", "pageHelp.endPage": "5",
-    }, headers={"User-Agent": UA, "Referer": "https://www.sse.com.cn/"}, proxy=False, timeout=15).json()
+    sse = fetch_fn(
+        SSE_MARGIN_URL,
+        params={
+            "isPagination": "true",
+            "beginDate": start,
+            "endDate": today.strftime("%Y%m%d"),
+            "tabType": "",
+            "stockCode": "",
+            "pageHelp.pageSize": "5000",
+            "pageHelp.pageNo": "1",
+            "pageHelp.beginPage": "1",
+            "pageHelp.cacheSize": "1",
+            "pageHelp.endPage": "5",
+        },
+        headers={"User-Agent": UA, "Referer": "https://www.sse.com.cn/"},
+        proxy=False,
+        timeout=15,
+    ).json()
     sse_rows = parse_sse_margin(sse)
     out: list[tuple[str, float]] = []
     for observed, balance in sse_rows[:max_dates]:
         try:
-            szse = fetch_fn(SZSE_MARGIN_URL, params={
-                "SHOWTYPE": "JSON", "CATALOGID": "1837_xxpl", "txtDate": observed,
-                "tab1PAGENO": "1", "random": "0.7425245522795993",
-            }, headers={"User-Agent": UA,
-                        "Referer": "https://www.szse.cn/disclosure/margin/object/index.html"},
-               proxy=False, timeout=15).json()
+            szse = fetch_fn(
+                SZSE_MARGIN_URL,
+                params={
+                    "SHOWTYPE": "JSON",
+                    "CATALOGID": "1837_xxpl",
+                    "txtDate": observed,
+                    "tab1PAGENO": "1",
+                    "random": "0.7425245522795993",
+                },
+                headers={"User-Agent": UA, "Referer": "https://www.szse.cn/disclosure/margin/object/index.html"},
+                proxy=False,
+                timeout=15,
+            ).json()
             out.append((observed, round(balance + parse_szse_margin(szse), 2)))
         except Exception:
             continue
     return out
 
 
-def collect_margin(decision_date: str, history: list[tuple[str, float]] | None,
-                   error: str = "") -> tuple[float | None, float | None, FactorStatus, FactorStatus]:
+def collect_margin(
+    decision_date: str, history: list[tuple[str, float]] | None, error: str = ""
+) -> tuple[float | None, float | None, FactorStatus, FactorStatus]:
     """Return balance/growth plus their statuses from a descending same-date history."""
     if not history:
         status = FactorStatus(False, "", error or "no_complete_pair")
@@ -289,8 +340,7 @@ def collect_margin(decision_date: str, history: list[tuple[str, float]] | None,
     observed, balance = history[0]
     age = (dt.date.fromisoformat(decision_date) - dt.date.fromisoformat(observed)).days
     stale = age < 0 or age > MARGIN_MAX_AGE_DAYS
-    balance_status = FactorStatus(True, "sse+szse", "" if not stale else "publication_lag",
-                                  observed, stale=stale)
+    balance_status = FactorStatus(True, "sse+szse", "" if not stale else "publication_lag", observed, stale=stale)
     growth = None
     growth_message = "missing_previous_pair"
     growth_anomalous = False
@@ -303,9 +353,14 @@ def collect_margin(decision_date: str, history: list[tuple[str, float]] | None,
             else:
                 growth_message = "out_of_range"
                 growth_anomalous = True
-    growth_status = FactorStatus(growth is not None, "sse+szse",
-                                 "" if growth is not None else growth_message,
-                                 observed, stale=stale, anomalous=growth_anomalous)
+    growth_status = FactorStatus(
+        growth is not None,
+        "sse+szse",
+        "" if growth is not None else growth_message,
+        observed,
+        stale=stale,
+        anomalous=growth_anomalous,
+    )
     return balance, growth, balance_status, growth_status
 
 
@@ -326,15 +381,27 @@ def fetch_limit_counts(decision_date: str, fetch_fn: Callable[..., Any] = http.f
     day = decision_date.replace("-", "")
     counts = []
     for url in (ZT_POOL_URL, DT_POOL_URL):
-        payload = fetch_fn(url, params={
-            "ut": "7eea3edcaed734bea9cbfc24409ed989", "dpt": "wz.ztzt", "Pageindex": "0",
-            "pagesize": "1", "sort": "fbt:asc", "date": day,
-        }, headers={"User-Agent": UA}, proxy=False, timeout=15).json()
+        payload = fetch_fn(
+            url,
+            params={
+                "ut": "7eea3edcaed734bea9cbfc24409ed989",
+                "dpt": "wz.ztzt",
+                "Pageindex": "0",
+                "pagesize": "1",
+                "sort": "fbt:asc",
+                "date": day,
+            },
+            headers={"User-Agent": UA},
+            proxy=False,
+            timeout=15,
+        ).json()
         counts.append(parse_limit_pool(payload))
     return counts[0], counts[1]
 
 
-def collect_limits(decision_date: str, fetch_fn: Callable[..., Any] = http.fetch) -> tuple[int | None, int | None, FactorStatus]:
+def collect_limits(
+    decision_date: str, fetch_fn: Callable[..., Any] = http.fetch
+) -> tuple[int | None, int | None, FactorStatus]:
     try:
         up, down = fetch_limit_counts(decision_date, fetch_fn)
     except Exception as exc:
@@ -347,9 +414,13 @@ def collect_limits(decision_date: str, fetch_fn: Callable[..., Any] = http.fetch
 
 
 # --------------------------------------------------------------------------- orchestration
-def collect_macro_slice(decision_date: str, *, fetch_fn: Callable[..., Any] = http.fetch,
-                        margin_history: list[tuple[str, float]] | None = None,
-                        margin_error: str = "") -> dict[str, Any]:
+def collect_macro_slice(
+    decision_date: str,
+    *,
+    fetch_fn: Callable[..., Any] = http.fetch,
+    margin_history: list[tuple[str, float]] | None = None,
+    margin_error: str = "",
+) -> dict[str, Any]:
     total, total_status = collect_total_amount(decision_date, fetch_fn)
     if margin_history is None:
         try:
@@ -357,8 +428,7 @@ def collect_macro_slice(decision_date: str, *, fetch_fn: Callable[..., Any] = ht
         except Exception as exc:
             margin_error = f"sse+szse:{type(exc).__name__}"
             margin_history = []
-    balance, growth, margin_status, growth_status = collect_margin(
-        decision_date, margin_history, margin_error)
+    balance, growth, margin_status, growth_status = collect_margin(decision_date, margin_history, margin_error)
     up, down, limit_status = collect_limits(decision_date, fetch_fn)
     ratio = round(up / (down + 1), 3) if up is not None and down is not None else None
     if ratio is not None and not 0 <= ratio <= 1000:
@@ -389,9 +459,13 @@ def _risk_meta(source_ts: float, source: str, now: float | None = None) -> dict[
 
 
 def fetch_yahoo_value(symbol: str, fetch_fn: Callable[..., Any] = http.fetch) -> tuple[float, dict[str, Any]]:
-    payload = fetch_fn(f"{YAHOO_URL}{urlquote(symbol, safe='')}",
-                       params={"interval": "1d", "range": "1d"},
-                       headers={"User-Agent": UA}, proxy=True, timeout=8).json()
+    payload = fetch_fn(
+        f"{YAHOO_URL}{urlquote(symbol, safe='')}",
+        params={"interval": "1d", "range": "1d"},
+        headers={"User-Agent": UA},
+        proxy=True,
+        timeout=8,
+    ).json()
     result = payload["chart"]["result"][0]
     price = (result.get("meta") or {}).get("regularMarketPrice")
     if price is not None and _finite(price, strict=True):
@@ -406,25 +480,28 @@ def fetch_yahoo_value(symbol: str, fetch_fn: Callable[..., Any] = http.fetch) ->
     raise ValueError("no_price")
 
 
-def fetch_cboe_vix(fetch_fn: Callable[..., Any] = http.fetch, *, now: float | None = None) -> tuple[float, dict[str, Any]]:
+def fetch_cboe_vix(
+    fetch_fn: Callable[..., Any] = http.fetch, *, now: float | None = None
+) -> tuple[float, dict[str, Any]]:
     now = time.time() if now is None else now
     payload = fetch_fn(CBOE_VIX_URL, headers={"User-Agent": UA}, proxy=False, timeout=8).json()
     data = payload["data"]
     value = float(data["current_price"])
-    source_ts = dt.datetime.strptime(str(payload["timestamp"]), "%Y-%m-%d %H:%M:%S").replace(
-        tzinfo=dt.UTC).timestamp()
+    source_ts = dt.datetime.strptime(str(payload["timestamp"]), "%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.UTC).timestamp()
     age = now - source_ts
     if not _finite(value, low=0.0, high=200.0, strict=True) or age < -300 or age > 4 * 86400:
         raise ValueError("stale_or_out_of_range")
     return value, _risk_meta(source_ts, "cboe_vix_delayed", now)
 
 
-def fetch_fred_value(series_id: str, fetch_fn: Callable[..., Any] = http.fetch,
-                     *, now: float | None = None) -> tuple[float, dict[str, Any]]:
+def fetch_fred_value(
+    series_id: str, fetch_fn: Callable[..., Any] = http.fetch, *, now: float | None = None
+) -> tuple[float, dict[str, Any]]:
     now = time.time() if now is None else now
     start = dt.datetime.fromtimestamp(now - 14 * 86400, tz=dt.UTC).date().isoformat()
-    resp = fetch_fn(FRED_URL, params={"id": series_id, "cosd": start},
-                    headers={"User-Agent": UA}, proxy=False, timeout=8)
+    resp = fetch_fn(
+        FRED_URL, params={"id": series_id, "cosd": start}, headers={"User-Agent": UA}, proxy=False, timeout=8
+    )
     latest: tuple[float, float] | None = None
     for row in csv.DictReader(io.StringIO(resp.text())):
         date_text = str(row.get("observation_date") or row.get("DATE") or "").strip()
@@ -443,19 +520,20 @@ def fetch_fred_value(series_id: str, fetch_fn: Callable[..., Any] = http.fetch,
             latest = (ts, value)
     if latest is None or now - latest[0] > FRED_MAX_AGE_SEC:
         raise ValueError("no_recent_observation")
-    source = ("fred_dcoilwtico_spot_daily" if series_id == "DCOILWTICO"
-              else f"fred_{series_id.lower()}_daily")
+    source = "fred_dcoilwtico_spot_daily" if series_id == "DCOILWTICO" else f"fred_{series_id.lower()}_daily"
     return latest[1], _risk_meta(latest[0], source, now)
 
 
 def _wti_spot_fallback_enabled() -> bool:
     return os.getenv("QP_RISK_ALLOW_WTI_SPOT_FALLBACK", "").strip().lower() in {
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     }
 
 
-def fetch_risk_values(fetch_fn: Callable[..., Any] = http.fetch, *,
-                      now: float | None = None) -> dict[str, Any]:
+def fetch_risk_values(fetch_fn: Callable[..., Any] = http.fetch, *, now: float | None = None) -> dict[str, Any]:
     """Fetch VIX/US10Y/WTI with the same provider order as the legacy controller."""
     now = time.time() if now is None else now
     crude_attempts = [("yahoo", lambda: fetch_yahoo_value("CL=F", fetch_fn))]
@@ -463,11 +541,15 @@ def fetch_risk_values(fetch_fn: Callable[..., Any] = http.fetch, *,
         # Legacy gates the spot series behind an explicit env flag; production has it off.
         crude_attempts.append(("fred", lambda: fetch_fred_value("DCOILWTICO", fetch_fn, now=now)))
     plan = {
-        "vix": [("yahoo", lambda: fetch_yahoo_value("^VIX", fetch_fn)),
-                ("cboe", lambda: fetch_cboe_vix(fetch_fn, now=now)),
-                ("fred", lambda: fetch_fred_value("VIXCLS", fetch_fn, now=now))],
-        "us_10y": [("yahoo", lambda: fetch_yahoo_value("^TNX", fetch_fn)),
-                   ("fred", lambda: fetch_fred_value("DGS10", fetch_fn, now=now))],
+        "vix": [
+            ("yahoo", lambda: fetch_yahoo_value("^VIX", fetch_fn)),
+            ("cboe", lambda: fetch_cboe_vix(fetch_fn, now=now)),
+            ("fred", lambda: fetch_fred_value("VIXCLS", fetch_fn, now=now)),
+        ],
+        "us_10y": [
+            ("yahoo", lambda: fetch_yahoo_value("^TNX", fetch_fn)),
+            ("fred", lambda: fetch_fred_value("DGS10", fetch_fn, now=now)),
+        ],
         "crude_oil": crude_attempts,
     }
     values: dict[str, float | None] = {}
@@ -489,14 +571,24 @@ def fetch_risk_values(fetch_fn: Callable[..., Any] = http.fetch, *,
             observed_at[field] = now
             break
     missing = [field for field, value in values.items() if value is None]
-    return {"values": values, "sources": sources, "source_timestamps": source_timestamps,
-            "observed_at": observed_at, "available_at": available_at,
-            "missing_fields": missing, "fetched_at": now}
+    return {
+        "values": values,
+        "sources": sources,
+        "source_timestamps": source_timestamps,
+        "observed_at": observed_at,
+        "available_at": available_at,
+        "missing_fields": missing,
+        "fetched_at": now,
+    }
 
 
-def evaluate_risk(values: dict[str, float | None], *, previous_state: dict[str, Any] | None = None,
-                  now: float | None = None,
-                  ttl: float = RISK_OBSERVATION_TTL_SEC) -> dict[str, Any]:
+def evaluate_risk(
+    values: dict[str, float | None],
+    *,
+    previous_state: dict[str, Any] | None = None,
+    now: float | None = None,
+    ttl: float = RISK_OBSERVATION_TTL_SEC,
+) -> dict[str, Any]:
     """Apply the legacy ordering and reuse a previous observation for up to ``ttl``.
 
     Cache substitution happens before threshold checks, exactly like
@@ -533,8 +625,7 @@ def evaluate_risk(values: dict[str, float | None], *, previous_state: dict[str, 
     elif vix is None and us_10y is None and crude is None:
         level = "warning"
         message = "DATA_UNAVAILABLE: VIX/US10Y/CRUDE all missing"
-    elif (us_10y is not None and us_10y >= US10Y_BLOCK) or (
-            crude is not None and crude > CRUDE_OIL_BLOCK):
+    elif (us_10y is not None and us_10y >= US10Y_BLOCK) or (crude is not None and crude > CRUDE_OIL_BLOCK):
         triggers = []
         if us_10y is not None and us_10y >= US10Y_BLOCK:
             triggers.append(f"US10Y={us_10y:.2f} >= {US10Y_BLOCK}")
@@ -577,8 +668,9 @@ def merge_risk_metadata(state: dict[str, Any], fetched: dict[str, Any]) -> dict[
     return state
 
 
-def risk_state_is_fresh(timestamp: float | None, *, now: float | None = None,
-                        max_age: float = RISK_STATE_MAX_AGE_SEC) -> bool:
+def risk_state_is_fresh(
+    timestamp: float | None, *, now: float | None = None, max_age: float = RISK_STATE_MAX_AGE_SEC
+) -> bool:
     now = time.time() if now is None else now
     if not timestamp:
         return False

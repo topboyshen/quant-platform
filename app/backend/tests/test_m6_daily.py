@@ -1,4 +1,5 @@
 """M6.2 daily summary: legacy integrity validation, freezing, job behaviour."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -26,10 +27,30 @@ def make_summary(text: str = "2026-11-12 收盘研究日报｜仅研究/模拟�
         "etfCoverage": {},
         "notificationCoverage": {},
         "sources": {
-            "profit": {f: None for f in ("executionId", "runId", "marketDate", "generatedAt",
-                                         "status", "releaseSha256", "resultSha256")},
-            "health": {f: None for f in ("executionId", "runId", "marketDate", "generatedAt",
-                                         "status", "releaseSha256", "resultSha256")},
+            "profit": {
+                f: None
+                for f in (
+                    "executionId",
+                    "runId",
+                    "marketDate",
+                    "generatedAt",
+                    "status",
+                    "releaseSha256",
+                    "resultSha256",
+                )
+            },
+            "health": {
+                f: None
+                for f in (
+                    "executionId",
+                    "runId",
+                    "marketDate",
+                    "generatedAt",
+                    "status",
+                    "releaseSha256",
+                    "resultSha256",
+                )
+            },
         },
     }
     summary = {
@@ -116,6 +137,7 @@ def test_job_skips_when_file_missing(engine, tmp_path: Path, monkeypatch):
         monkeypatch.setenv("QP_LEGACY_DAILY_DIR", str(tmp_path))
         monkeypatch.setenv("QP_REPORT_DATE", DAY)
         from qp.jobs.reports import import_daily_job
+
         result = import_daily_job(JobContext(engine=engine, run_id=0, name="reports.import_daily"))
         assert result["skipped"]
     finally:
@@ -130,6 +152,7 @@ def test_job_skips_operational_failure_record(engine, tmp_path: Path, monkeypatc
         monkeypatch.setenv("QP_LEGACY_DAILY_DIR", str(tmp_path))
         monkeypatch.setenv("QP_REPORT_DATE", DAY)
         from qp.jobs.reports import import_daily_job
+
         result = import_daily_job(JobContext(engine=engine, run_id=0, name="reports.import_daily"))
         assert "operational" in result["skipped"] or "not a readable" in result["skipped"]
     finally:
@@ -144,6 +167,7 @@ def test_job_imports_existing_file(engine, tmp_path: Path, monkeypatch):
         monkeypatch.setenv("QP_LEGACY_DAILY_DIR", str(tmp_path))
         monkeypatch.setenv("QP_REPORT_DATE", DAY)
         from qp.jobs.reports import import_daily_job
+
         result = import_daily_job(JobContext(engine=engine, run_id=0, name="reports.import_daily"))
         assert result["ok"] and result["created"] is True
         assert result["date"] == DAY

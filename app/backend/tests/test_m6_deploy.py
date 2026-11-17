@@ -1,4 +1,5 @@
 """M6 report module: timers removed on 2026-11-13, jobs stay manual-only."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,6 +42,12 @@ def test_runbook_documents_removed_timers_and_manual_operation():
 
 def test_env_example_lists_m6_keys():
     text = (DEPLOY / "qp.env.example").read_text(encoding="utf-8")
-    for key in ("QP_LEGACY_DAILY_DIR", "QP_RESEARCH_DIGEST_JSON", "QP_HERMES_ORIGINALS_DIR",
-                "QP_HERMES_DELIVERIES_DB", "QP_HERMES_EXECUTIONS_DB", "QP_REPORTS_REPORT_DIR"):
+    for key in (
+        "QP_LEGACY_DAILY_DIR",
+        "QP_RESEARCH_DIGEST_JSON",
+        "QP_HERMES_ORIGINALS_DIR",
+        "QP_HERMES_DELIVERIES_DB",
+        "QP_HERMES_EXECUTIONS_DB",
+        "QP_REPORTS_REPORT_DIR",
+    ):
         assert f"{key}=" in text, key

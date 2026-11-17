@@ -4,6 +4,7 @@ The 15:48 same-day EOD retry calls ``persist_macro`` again.  A retry whose upstr
 for one factor fails must keep the value (and possibly the repair record) that an
 earlier attempt already wrote; legacy ``SwingStore.upsert_partial`` behaved this way.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -18,18 +19,30 @@ DAY = dt.date(2027, 3, 4)  # Thursday, beyond the test calendar fixtures
 
 
 def status(available: bool, *, source: str = "test", message: str = "") -> dict:
-    return {"available": available, "source": source, "message": message,
-            "observed_date": DAY.isoformat() if available else None,
-            "stale": not available, "anomalous": False}
+    return {
+        "available": available,
+        "source": source,
+        "message": message,
+        "observed_date": DAY.isoformat() if available else None,
+        "stale": not available,
+        "anomalous": False,
+    }
 
 
 def macro(**overrides) -> dict:
     payload = {
-        "total_amount": 13573.57, "margin_balance": 22800.0, "margin_growth_pct": 0.5,
-        "limit_up": 60, "limit_down": 2, "limit_ratio": 20.0, "source": "tencent",
+        "total_amount": 13573.57,
+        "margin_balance": 22800.0,
+        "margin_growth_pct": 0.5,
+        "limit_up": 60,
+        "limit_down": 2,
+        "limit_ratio": 20.0,
+        "source": "tencent",
         "collect_status": {
-            "total_amount": status(True), "margin_balance": status(True),
-            "margin_growth_pct": status(True), "limit_ratio": status(True),
+            "total_amount": status(True),
+            "margin_balance": status(True),
+            "margin_growth_pct": status(True),
+            "limit_ratio": status(True),
         },
     }
     payload.update(overrides)
@@ -50,11 +63,16 @@ def test_retry_without_total_amount_keeps_earlier_value(engine):
             session.commit()
         failed = status(False, source="tencent/sina/eastmoney", message="missing")
         with Session(engine) as session:
-            persist_macro(session, DAY, macro(
-                total_amount=None, margin_balance=23100.0,
-                source="sina",
-                collect_status={"total_amount": failed,
-                                "margin_balance": status(True, source="sse")}))
+            persist_macro(
+                session,
+                DAY,
+                macro(
+                    total_amount=None,
+                    margin_balance=23100.0,
+                    source="sina",
+                    collect_status={"total_amount": failed, "margin_balance": status(True, source="sse")},
+                ),
+            )
             session.commit()
         with Session(engine) as session:
             row = session.get(MacroSlice, DAY)
@@ -77,10 +95,16 @@ def test_complete_new_value_replaces_old_value_and_status(engine):
     cleanup(engine)
     try:
         with Session(engine) as session:
-            persist_macro(session, DAY, macro(total_amount=None, collect_status={
-                "total_amount": status(False, message="missing")}))
-            persist_macro(session, DAY, macro(total_amount=14000.0, collect_status={
-                "total_amount": status(True, source="tencent")}))
+            persist_macro(
+                session,
+                DAY,
+                macro(total_amount=None, collect_status={"total_amount": status(False, message="missing")}),
+            )
+            persist_macro(
+                session,
+                DAY,
+                macro(total_amount=14000.0, collect_status={"total_amount": status(True, source="tencent")}),
+            )
             session.commit()
         with Session(engine) as session:
             row = session.get(MacroSlice, DAY)
@@ -94,20 +118,24 @@ def test_complete_new_value_replaces_old_value_and_status(engine):
 def test_repair_record_and_value_survive_a_failed_retry(engine):
     cleanup(engine)
     try:
-        record = {"batch_id": f"qp-total-amount-repair-{DAY.isoformat()}",
-                  "qualifying_run_id": 42, "value": 13573.57}
+        record = {"batch_id": f"qp-total-amount-repair-{DAY.isoformat()}", "qualifying_run_id": 42, "value": 13573.57}
         with Session(engine) as session:
-            persist_macro(session, DAY, macro(collect_status={
-                "total_amount": {**status(True, source="tencent"),
-                                 "repair": {"batch_id": record["batch_id"]}},
-                "factor_imports": [record],
-            }))
+            persist_macro(
+                session,
+                DAY,
+                macro(
+                    collect_status={
+                        "total_amount": {**status(True, source="tencent"), "repair": {"batch_id": record["batch_id"]}},
+                        "factor_imports": [record],
+                    }
+                ),
+            )
             session.commit()
         failed = status(False, source="tencent/sina/eastmoney", message="missing")
         with Session(engine) as session:
-            persist_macro(session, DAY, macro(
-                total_amount=None, source="sina/eastmoney",
-                collect_status={"total_amount": failed}))
+            persist_macro(
+                session, DAY, macro(total_amount=None, source="sina/eastmoney", collect_status={"total_amount": failed})
+            )
             session.commit()
         with Session(engine) as session:
             row = session.get(MacroSlice, DAY)

@@ -1,5 +1,6 @@
 """Job registry + runner. systemd timers only trigger `qp job run <name>`; dedup, locking and
 run records live in ops.job_run. Locking uses a PostgreSQL session advisory lock per job name."""
+
 from __future__ import annotations
 
 import os
@@ -38,11 +39,13 @@ class JobContext:
 JOBS: dict[str, JobSpec] = {}
 
 
-def job(name: str, description: str = "", schedule_hint: str | None = None,
-        dedup: Callable[[], str | None] | None = None):
+def job(
+    name: str, description: str = "", schedule_hint: str | None = None, dedup: Callable[[], str | None] | None = None
+):
     def deco(f):
         JOBS[name] = JobSpec(name, f, description, schedule_hint, dedup)
         return f
+
     return deco
 
 
@@ -73,16 +76,26 @@ def run_job(engine: Engine, name: str, trigger: str = "manual", dedup_key: str |
         got = lock_conn.execute(text("SELECT pg_try_advisory_lock(20816, :k)"), {"k": _lock_key(name)}).scalar()
         try:
             with Session(engine, expire_on_commit=False) as s:
-                run = JobRun(job_name=name, dedup_key=dedup_key, status="running", trigger=trigger,
-                             host=socket.gethostname(), pid=os.getpid(), result={})
+                run = JobRun(
+                    job_name=name,
+                    dedup_key=dedup_key,
+                    status="running",
+                    trigger=trigger,
+                    host=socket.gethostname(),
+                    pid=os.getpid(),
+                    result={},
+                )
                 if not got:
                     run.status, run.finished_at, run.duration_s = "skipped_locked", utcnow(), 0.0
                     s.add(run)
                     s.commit()
                     return run
                 if dedup_key is not None:
-                    dup = s.execute(select(JobRun.id).where(JobRun.job_name == name, JobRun.dedup_key == dedup_key,
-                                                            JobRun.status == "succeeded")).first()
+                    dup = s.execute(
+                        select(JobRun.id).where(
+                            JobRun.job_name == name, JobRun.dedup_key == dedup_key, JobRun.status == "succeeded"
+                        )
+                    ).first()
                     if dup:
                         run.status, run.finished_at, run.duration_s = "skipped_dup", utcnow(), 0.0
                         run.result = {"duplicate_of": dup[0]}

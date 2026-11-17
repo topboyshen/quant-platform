@@ -1,4 +1,5 @@
 """M5.1 research import: idempotency, status mirroring, phase2 JSON, failure bookkeeping."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -42,45 +43,70 @@ class FakeReader:
 
 def ledger_tables(status: str = "SEALED") -> dict[str, list[dict]]:
     return {
-        "forecast_protocol": [{
-            "protocol_id": str(uuid.uuid4()), "protocol_version": "v1",
-            "protocol_hash": "p" * 64, "status": "ACTIVE",
-            "created_at": dt.datetime(2026, 8, 1, tzinfo=dt.UTC),
-        }],
-        "forecast_batch": [{
-            "batch_id": BATCH, "target_session": dt.date(2026, 8, 14),
-            "batch_status": "SEALED", "expected_universe_size": 40,
-            "qualified_coverage": 40, "imported_from": "RESEARCH_SYSTEM_PHASE2",
-        }],
-        "forecast": [{
-            "forecast_id": FORECAST, "batch_id": BATCH, "status": status,
-            "forecast_type": "BINARY_EVENT", "target_key": "600104.SH",
-            "target_session": dt.date(2026, 8, 14), "probability": 0.61,
-            "source_hashes": ["a" * 64], "prospective_eligible": True,
-            "created_at": dt.datetime(2026, 8, 13, tzinfo=dt.UTC),
-        }],
+        "forecast_protocol": [
+            {
+                "protocol_id": str(uuid.uuid4()),
+                "protocol_version": "v1",
+                "protocol_hash": "p" * 64,
+                "status": "ACTIVE",
+                "created_at": dt.datetime(2026, 8, 1, tzinfo=dt.UTC),
+            }
+        ],
+        "forecast_batch": [
+            {
+                "batch_id": BATCH,
+                "target_session": dt.date(2026, 8, 14),
+                "batch_status": "SEALED",
+                "expected_universe_size": 40,
+                "qualified_coverage": 40,
+                "imported_from": "RESEARCH_SYSTEM_PHASE2",
+            }
+        ],
+        "forecast": [
+            {
+                "forecast_id": FORECAST,
+                "batch_id": BATCH,
+                "status": status,
+                "forecast_type": "BINARY_EVENT",
+                "target_key": "600104.SH",
+                "target_session": dt.date(2026, 8, 14),
+                "probability": 0.61,
+                "source_hashes": ["a" * 64],
+                "prospective_eligible": True,
+                "created_at": dt.datetime(2026, 8, 13, tzinfo=dt.UTC),
+            }
+        ],
     }
 
 
 def phase2_tables() -> dict[str, list[dict]]:
     return {
-        "protocol": [{
-            "protocol_hash": "h" * 64, "protocol_id": "phase2-v1", "version": "1",
-            "protocol_json": '{"cohort": "binary"}', "frozen_at": "2026-08-01T00:00:00+08:00",
-            "created_at": "2026-08-01T00:00:00+08:00",
-        }],
-        "audit": [{
-            "event_id": "event-1", "action": "SEAL", "actor": "worker",
-            "occurred_at": "2026-08-13T16:00:00+08:00", "payload_hash": "x" * 64,
-            "payload_json": '{"batch": "b1"}',
-        }],
+        "protocol": [
+            {
+                "protocol_hash": "h" * 64,
+                "protocol_id": "phase2-v1",
+                "version": "1",
+                "protocol_json": '{"cohort": "binary"}',
+                "frozen_at": "2026-08-01T00:00:00+08:00",
+                "created_at": "2026-08-01T00:00:00+08:00",
+            }
+        ],
+        "audit": [
+            {
+                "event_id": "event-1",
+                "action": "SEAL",
+                "actor": "worker",
+                "occurred_at": "2026-08-13T16:00:00+08:00",
+                "payload_hash": "x" * 64,
+                "payload_json": '{"batch": "b1"}',
+            }
+        ],
     }
 
 
 def cleanup(engine) -> None:
     with Session(engine) as session:
-        for model in (Forecast, ForecastBatch, ForecastProtocol, Phase2Protocol, Phase2Audit,
-                      ImportRun):
+        for model in (Forecast, ForecastBatch, ForecastProtocol, Phase2Protocol, Phase2Audit, ImportRun):
             session.execute(delete(model))
         session.commit()
 
@@ -144,10 +170,14 @@ def test_upsert_deduplicates_by_natural_key(engine):
     try:
         spec = TableSpec(ForecastBatch, "batch_id", "forecast_batch")
         with Session(engine) as session:
-            n = upsert_rows(session, spec, [
-                {"batch_id": BATCH, "batch_status": "OPEN"},
-                {"batch_id": BATCH, "batch_status": "SEALED"},
-            ])
+            n = upsert_rows(
+                session,
+                spec,
+                [
+                    {"batch_id": BATCH, "batch_status": "OPEN"},
+                    {"batch_id": BATCH, "batch_status": "SEALED"},
+                ],
+            )
             session.commit()
             assert n == 1
             assert session.get(ForecastBatch, BATCH).batch_status == "SEALED"

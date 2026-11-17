@@ -1,4 +1,5 @@
 """M9 decommission package: CLI wiring and runbook content."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +10,7 @@ DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
 
 def test_cli_inventory_writes_manifest(tmp_path: Path):
     from qp.cli import main
+
     out = tmp_path / "inventory.json"
     assert main(["decommission", "inventory", "--out", str(out)]) == 0
     data = json.loads(out.read_text(encoding="utf-8"))

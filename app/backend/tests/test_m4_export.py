@@ -1,4 +1,5 @@
 """M4.6 read-only legacy exporter: file layout, manifest, sanitization, read-only."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -101,15 +102,54 @@ def make_legacy(tmp_path, *, with_db: bool = True) -> tuple:
             "completed_at,target_count,evaluated_count,failed_count,signal_count,"
             "allowed_signal_count,blocked_signal_count,decision_outcome,reason_codes,details) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (RUN_ID, DAY, DAY, "success", f"{DAY}T07:30:00Z", f"{DAY}T07:31:00Z",
-             2, 2, 0, 1, 1, 0, "emitted", "[]", '{"generated_signals":1}'))
+            (
+                RUN_ID,
+                DAY,
+                DAY,
+                "success",
+                f"{DAY}T07:30:00Z",
+                f"{DAY}T07:31:00Z",
+                2,
+                2,
+                0,
+                1,
+                1,
+                0,
+                "emitted",
+                "[]",
+                '{"generated_signals":1}',
+            ),
+        )
         decisions = [
-            ("d1", "510300", "沪深300ETF", "宽基", "ok", "allowed", 1,
-             '[{"signal_type":"weekly_macd_golden_cross","period":"W","title":"金叉",'
-             '"confidence":0.6,"detail":{"dif":0.1,"dea":0.05,"weekly_close":4.0}}]',
-             "allowed", "ok", "signal_allowed", 4.0),
-            ("d2", "159915", "创业板ETF", "成长", "ok", "no_trigger", 0, "[]",
-             "not_applicable", "ok", "signal_not_triggered", 2.0),
+            (
+                "d1",
+                "510300",
+                "沪深300ETF",
+                "宽基",
+                "ok",
+                "allowed",
+                1,
+                '[{"signal_type":"weekly_macd_golden_cross","period":"W","title":"金叉",'
+                '"confidence":0.6,"detail":{"dif":0.1,"dea":0.05,"weekly_close":4.0}}]',
+                "allowed",
+                "ok",
+                "signal_allowed",
+                4.0,
+            ),
+            (
+                "d2",
+                "159915",
+                "创业板ETF",
+                "成长",
+                "ok",
+                "no_trigger",
+                0,
+                "[]",
+                "not_applicable",
+                "ok",
+                "signal_not_triggered",
+                2.0,
+            ),
         ]
         for row in decisions:
             db.execute(
@@ -117,54 +157,135 @@ def make_legacy(tmp_path, *, with_db: bool = True) -> tuple:
                 "data_date,code,name,sector,data_status,decision_state,raw_trigger_count,"
                 "raw_signals_json,risk_action,risk_level,reason_code,reference_close,"
                 "validation_split,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (row[0], RUN_ID, DAY, f"{DAY}T07:30:00Z", DAY, row[1], row[2], row[3],
-                 row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11],
-                 "live_oos", f"{DAY}T07:31:00Z"))
+                (
+                    row[0],
+                    RUN_ID,
+                    DAY,
+                    f"{DAY}T07:30:00Z",
+                    DAY,
+                    row[1],
+                    row[2],
+                    row[3],
+                    row[4],
+                    row[5],
+                    row[6],
+                    row[7],
+                    row[8],
+                    row[9],
+                    row[10],
+                    row[11],
+                    "live_oos",
+                    f"{DAY}T07:31:00Z",
+                ),
+            )
         db.execute(
             "INSERT INTO eod_risk_snapshot(snapshot_id,run_id,decision_at,level,values_json,"
             "source_timestamps_json,available_at_json,sources_json,missing_fields_json,created_at) "
             "VALUES (?,?,?,?,?,?,?,?,?,?)",
-            ("s1", RUN_ID, f"{DAY}T07:30:00Z", "ok",
-             '{"vix":17.49,"us_10y":4.2,"crude_oil":80.0}', "{}", "{}",
-             '{"vix":"cboe","us_10y":"fred","crude_oil":"fred"}', "[]",
-             f"{DAY}T07:30:00Z"))
+            (
+                "s1",
+                RUN_ID,
+                f"{DAY}T07:30:00Z",
+                "ok",
+                '{"vix":17.49,"us_10y":4.2,"crude_oil":80.0}',
+                "{}",
+                "{}",
+                '{"vix":"cboe","us_10y":"fred","crude_oil":"fred"}',
+                "[]",
+                f"{DAY}T07:30:00Z",
+            ),
+        )
         db.execute(
             "INSERT INTO trend_signal(date,code,name,signal_type,period,data_date,title,detail,"
             "confidence,notified_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (DAY, "510300", "沪深300ETF", "weekly_macd_golden_cross", "W", "2027-04-30",
-             "周线金叉", '{"dif":0.1,"dea":0.05,"weekly_close":4.0}', 0.6, None))
+            (
+                DAY,
+                "510300",
+                "沪深300ETF",
+                "weekly_macd_golden_cross",
+                "W",
+                "2027-04-30",
+                "周线金叉",
+                '{"dif":0.1,"dea":0.05,"weekly_close":4.0}',
+                0.6,
+                None,
+            ),
+        )
         db.execute(
             "INSERT INTO eod_decision_outcome(outcome_id,decision_id,horizon_sessions,"
             "evaluation_as_of,entry_date,entry_fill,exit_date,exit_fill,benchmark_code,"
             "benchmark_return,net_return,excess_return,fill_status,fill_reason,created_at) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("o1", "d1", 1, f"{DAY}T08:10:00Z", DAY, 4.0, "2027-05-05", 4.04,
-             "510300", 0.01, 0.009, -0.001, "filled", "ok", f"{DAY}T08:10:00Z"))
+            (
+                "o1",
+                "d1",
+                1,
+                f"{DAY}T08:10:00Z",
+                DAY,
+                4.0,
+                "2027-05-05",
+                4.04,
+                "510300",
+                0.01,
+                0.009,
+                -0.001,
+                "filled",
+                "ok",
+                f"{DAY}T08:10:00Z",
+            ),
+        )
         db.execute(
             "INSERT INTO macro_slice(date,total_amount,margin_balance,margin_growth_pct,"
             "limit_up,limit_down,limit_ratio,source,extra) VALUES (?,?,?,?,?,?,?,?,?)",
-            (DAY, 13573.57, 22948.01, 0.339, 85, 0, 85.0, "tencent+akshare",
-             '{"collect_status":{"total_amount":{"available":true}}}'))
+            (
+                DAY,
+                13573.57,
+                22948.01,
+                0.339,
+                85,
+                0,
+                85.0,
+                "tencent+akshare",
+                '{"collect_status":{"total_amount":{"available":true}}}',
+            ),
+        )
         db.execute(
             "INSERT INTO notification_outbox(idempotency_key,channel,operation,payload_json,"
             "status,attempts,created_at) VALUES (?,?,?,?,?,?,?)",
-            (f"watchdog:{DAY}:daily", "telegram", "send_system_alert",
-             json.dumps({"text": "EOD 日报", "chat_id": "123", "token": "secret-value"}),
-             "sent", 1, f"{DAY}T07:50:00Z"))
+            (
+                f"watchdog:{DAY}:daily",
+                "telegram",
+                "send_system_alert",
+                json.dumps({"text": "EOD 日报", "chat_id": "123", "token": "secret-value"}),
+                "sent",
+                1,
+                f"{DAY}T07:50:00Z",
+            ),
+        )
         db.execute(
             "INSERT INTO notification_dispatch(business_key,namespace,channel,operation,"
             "payload_json,state,attempts_used) VALUES (?,?,?,?,?,?,?)",
-            (f"key-{DAY}", f"watchdog:{DAY}:daily", "telegram", "send_system_alert",
-             json.dumps({"text": "EOD 日报", "chat_id": "123"}), "confirmed", 1))
+            (
+                f"key-{DAY}",
+                f"watchdog:{DAY}:daily",
+                "telegram",
+                "send_system_alert",
+                json.dumps({"text": "EOD 日报", "chat_id": "123"}),
+                "confirmed",
+                1,
+            ),
+        )
         db.execute(
-            "INSERT INTO notification_attempt(dispatch_id,attempt_no,started_at,outcome) "
-            "VALUES (1,1,?, 'confirmed')", (f"{DAY}T07:50:01Z",))
+            "INSERT INTO notification_attempt(dispatch_id,attempt_no,started_at,outcome) VALUES (1,1,?, 'confirmed')",
+            (f"{DAY}T07:50:01Z",),
+        )
         db.commit()
         db.close()
     intake = sqlite3.connect(root / "data/approved-signals/intake.sqlite3")
     intake.execute(
         "CREATE TABLE intakes (idempotency_key TEXT PRIMARY KEY, received_at TEXT NOT NULL,"
-        " status TEXT NOT NULL, payload_json TEXT NOT NULL, detail TEXT)")
+        " status TEXT NOT NULL, payload_json TEXT NOT NULL, detail TEXT)"
+    )
     intake.commit()
     intake.close()
     return root, db_path
@@ -172,22 +293,29 @@ def make_legacy(tmp_path, *, with_db: bool = True) -> tuple:
 
 def seed_intake(root, payload: dict, *, key: str = "ak-1") -> None:
     db = sqlite3.connect(root / "data/approved-signals/intake.sqlite3")
-    db.execute("INSERT INTO intakes VALUES (?,?,?,?,?)",
-               (key, f"{DAY}T01:02:03Z", "accepted",
-                json.dumps(payload, ensure_ascii=False), "ok"))
+    db.execute(
+        "INSERT INTO intakes VALUES (?,?,?,?,?)",
+        (key, f"{DAY}T01:02:03Z", "accepted", json.dumps(payload, ensure_ascii=False), "ok"),
+    )
     db.commit()
     db.close()
 
 
 def write_digest(root, day: str = DAY) -> dict:
     body = {
-        "schema_version": "0.2", "report_type": "execution_digest", "as_of_day": day,
-        "generated_at": f"{day}T08:35:00+08:00", "source": "quant",
+        "schema_version": "0.2",
+        "report_type": "execution_digest",
+        "as_of_day": day,
+        "generated_at": f"{day}T08:35:00+08:00",
+        "source": "quant",
         "summary": {"accepted": 0, "rejected": 0, "fills": 0, "pnl": None},
-        "text": "【执行摘要】\n", "markdown": "【执行摘要】\n", "items": [],
+        "text": "【执行摘要】\n",
+        "markdown": "【执行摘要】\n",
+        "items": [],
     }
     (root / f"data/approved-signals/digests/execution_digest_{day}.json").write_text(
-        json.dumps(body, ensure_ascii=False), encoding="utf-8")
+        json.dumps(body, ensure_ascii=False), encoding="utf-8"
+    )
     return body
 
 
@@ -196,8 +324,7 @@ def test_export_writes_all_files_and_manifest(tmp_path):
     seed_intake(root, {"idempotency_key": "ak-1", "symbol": "510300", "chat_id": "999"})
     write_digest(root)
     before = db_path.stat().st_mtime_ns
-    manifest = export_day(root, DAY, tmp_path / "out",
-                          now=dt.datetime(2027, 5, 5, 0, 45, tzinfo=UTC))
+    manifest = export_day(root, DAY, tmp_path / "out", now=dt.datetime(2027, 5, 5, 0, 45, tzinfo=UTC))
     after = db_path.stat().st_mtime_ns
     assert before == after
     assert manifest["ok"] is True and manifest["decision_date"] == DAY
@@ -225,7 +352,8 @@ def test_export_writes_all_files_and_manifest(tmp_path):
     intake = json.loads((target / "intake.json").read_text())[0]
     assert intake["payload"]["chat_id"] == "[redacted]"
     assert intake["payload_sha256"] == canonical_payload_sha256(
-        {"idempotency_key": "ak-1", "symbol": "510300", "chat_id": "999"})
+        {"idempotency_key": "ak-1", "symbol": "510300", "chat_id": "999"}
+    )
     digest = json.loads((target / "digest.json").read_text())
     assert digest["as_of_day"] == DAY
 
@@ -233,15 +361,22 @@ def test_export_writes_all_files_and_manifest(tmp_path):
 def test_export_emit_json_does_not_write(tmp_path, capsys):
     root, _ = make_legacy(tmp_path)
     out_root = tmp_path / "out"
-    rc = main(["--date", DAY, "--legacy-root", str(root), "--out-root", str(out_root),
-               "--emit-json"])
+    rc = main(["--date", DAY, "--legacy-root", str(root), "--out-root", str(out_root), "--emit-json"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
     assert set(payload["files"]) == {
-        "eod_run.json", "target_decisions.json", "risk_snapshot.json", "trend_signals.json",
-        "outcomes.json", "macro_slice.json", "notifications.json", "risk_state.json",
-        "intake.json", "digest.json"}
+        "eod_run.json",
+        "target_decisions.json",
+        "risk_snapshot.json",
+        "trend_signals.json",
+        "outcomes.json",
+        "macro_slice.json",
+        "notifications.json",
+        "risk_state.json",
+        "intake.json",
+        "digest.json",
+    }
     assert not out_root.exists()
 
 
@@ -264,6 +399,7 @@ def test_digest_selection_uses_decision_date_not_previous_day(tmp_path):
 
 def _raw(root):
     from qp.collect.signals import collect_raw
+
     return collect_raw(root, DAY)
 
 
@@ -284,8 +420,7 @@ def test_export_accepts_relative_date_and_writes_canonical_manifest(tmp_path, ca
 
     root, _ = make_legacy(tmp_path)
     with patch("qp.collect.signals.resolve_date", return_value=dt.date(2027, 5, 4)):
-        rc = main(["--date", "yesterday", "--legacy-root", str(root),
-                   "--out-root", str(tmp_path / "out")])
+        rc = main(["--date", "yesterday", "--legacy-root", str(root), "--out-root", str(tmp_path / "out")])
     assert rc == 0
     assert json.loads(capsys.readouterr().out)["decision_date"] == DAY
     manifest = json.loads((tmp_path / "out" / DAY / "manifest.json").read_text())

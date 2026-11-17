@@ -1,6 +1,7 @@
 """signals schema (M4): swing EOD runs, macro risk, target decisions, trend signals, outcomes,
 macro slices, approved-signal intake and execution digests. SHADOW only: writes go to the qp
 database; legacy SQLite/state files are read-only inputs for comparison."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -48,15 +49,18 @@ class EodRun(Base):
     attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     data_date: Mapped[dt.date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(16), nullable=False)  # success|partial|failed|skipped|running
-    decision_outcome: Mapped[str | None] = mapped_column(String(24))  # no_signal|emitted|blocked|data_unavailable|skipped
+    decision_outcome: Mapped[str | None] = mapped_column(
+        String(24)
+    )  # no_signal|emitted|blocked|data_unavailable|skipped
     target_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     evaluated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     signal_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     allowed_signal_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     blocked_signal_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    reason_codes: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"),
-                                                    default=list)
+    reason_codes: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
     details: Mapped[dict[str, Any]] = _json_col()
     legacy_run_id: Mapped[str | None] = mapped_column(String(64))
     started_at: Mapped[dt.datetime] = _now_col()
@@ -77,8 +81,9 @@ class RiskSnapshot(Base):
     sources: Mapped[dict[str, Any]] = _json_col()
     observed_at: Mapped[dict[str, Any]] = _json_col()
     available_at: Mapped[dict[str, Any]] = _json_col()
-    missing_fields: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"),
-                                                      default=list)
+    missing_fields: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
 
 
 class TargetDecision(Base):
@@ -89,8 +94,9 @@ class TargetDecision(Base):
         S,
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    run_id: Mapped[int] = mapped_column(ForeignKey("signals.eod_run.run_id", ondelete="CASCADE"), nullable=False,
-                                        index=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("signals.eod_run.run_id", ondelete="CASCADE"), nullable=False, index=True
+    )
     decision_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
     code: Mapped[str] = mapped_column(String(16), nullable=False)
     name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
@@ -102,8 +108,9 @@ class TargetDecision(Base):
     reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
     reference_close: Mapped[float | None] = mapped_column(Numeric(18, 4))
     raw_trigger_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    raw_signals: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"),
-                                                   default=list)
+    raw_signals: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
     validation_split: Mapped[str] = mapped_column(String(16), nullable=False, default="live_oos")
 
 
@@ -134,7 +141,8 @@ class DecisionOutcome(Base):
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     decision_id: Mapped[int] = mapped_column(
-        ForeignKey("signals.target_decision.id", ondelete="CASCADE"), nullable=False, index=True)
+        ForeignKey("signals.target_decision.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     horizon_sessions: Mapped[int] = mapped_column(Integer, nullable=False)
     entry_date: Mapped[dt.date | None] = mapped_column(Date)
     exit_date: Mapped[dt.date | None] = mapped_column(Date)
@@ -155,6 +163,7 @@ class ShadowSignal(Base):
     Validation only: never notified, never part of target_decision/decision_outcome
     statistics, no effect on the production chain.
     """
+
     __tablename__ = "shadow_signal"
     __table_args__ = (
         UniqueConstraint("decision_date", "code", name="uq_shadow_signal_decision_date_code"),
@@ -168,13 +177,15 @@ class ShadowSignal(Base):
     name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     sector: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     source_decision_id: Mapped[int] = mapped_column(
-        ForeignKey("signals.target_decision.id", ondelete="CASCADE"), nullable=False)
+        ForeignKey("signals.target_decision.id", ondelete="CASCADE"), nullable=False
+    )
     source_run_id: Mapped[int | None] = mapped_column(BigInteger)
     risk_level: Mapped[str | None] = mapped_column(String(24))
     reason_code: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     raw_trigger_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    raw_signals: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"),
-                                                   default=list)
+    raw_signals: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
     reference_close: Mapped[float | None] = mapped_column(Numeric(18, 4))
     recorded_at: Mapped[dt.datetime] = _now_col()
 
@@ -187,7 +198,8 @@ class ShadowOutcome(Base):
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     shadow_id: Mapped[int] = mapped_column(
-        ForeignKey("signals.shadow_signal.id", ondelete="CASCADE"), nullable=False, index=True)
+        ForeignKey("signals.shadow_signal.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     horizon_sessions: Mapped[int] = mapped_column(Integer, nullable=False)
     entry_date: Mapped[dt.date | None] = mapped_column(Date)
     exit_date: Mapped[dt.date | None] = mapped_column(Date)
@@ -210,10 +222,10 @@ class RuleShadowSignal(Base):
     of the live chain.  ``detail`` keeps the rule diagnostics and the live risk
     level on that day so gated and ungated variants can be compared later.
     """
+
     __tablename__ = "rule_shadow_signal"
     __table_args__ = (
-        UniqueConstraint("rule_version", "decision_date", "code", "signal_type",
-                         name="uq_rule_shadow_signal_identity"),
+        UniqueConstraint("rule_version", "decision_date", "code", "signal_type", name="uq_rule_shadow_signal_identity"),
         Index("ix_rule_shadow_signal_date", "decision_date"),
         S,
     )
@@ -234,13 +246,13 @@ class RuleShadowSignal(Base):
 class RuleShadowOutcome(Base):
     __tablename__ = "rule_shadow_outcome"
     __table_args__ = (
-        UniqueConstraint("signal_id", "horizon_sessions",
-                         name="uq_rule_shadow_outcome_signal_id_horizon"),
+        UniqueConstraint("signal_id", "horizon_sessions", name="uq_rule_shadow_outcome_signal_id_horizon"),
         S,
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     signal_id: Mapped[int] = mapped_column(
-        ForeignKey("signals.rule_shadow_signal.id", ondelete="CASCADE"), nullable=False, index=True)
+        ForeignKey("signals.rule_shadow_signal.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     horizon_sessions: Mapped[int] = mapped_column(Integer, nullable=False)
     entry_date: Mapped[dt.date | None] = mapped_column(Date)
     exit_date: Mapped[dt.date | None] = mapped_column(Date)
@@ -316,7 +328,9 @@ class ExecutionDigest(Base):
     body: Mapped[dict[str, Any]] = _json_col()
     sha256: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     pushed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
-    push_state: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")  # pending|shadowed|sent|failed
+    push_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending"
+    )  # pending|shadowed|sent|failed
 
 
 class RotationShadowBar(Base):
@@ -325,6 +339,7 @@ class RotationShadowBar(Base):
     Split normalization is only for ranking. Execution and valuation always use
     these raw prices; a new price discontinuity blocks the paper ledger.
     """
+
     __tablename__ = "rotation_shadow_bar"
     __table_args__ = (
         Index("ix_rotation_shadow_bar_date", "trade_date"),
@@ -343,6 +358,7 @@ class RotationShadowBar(Base):
 
 class RotationShadowAccount(Base):
     """Registered shadow contract and data quality, separate from immutable NAV."""
+
     __tablename__ = "rotation_shadow_account"
     __table_args__ = S
     rule_version: Mapped[str] = mapped_column(String(32), primary_key=True)
@@ -356,6 +372,7 @@ class RotationShadowAccount(Base):
 
 class RotationShadowRun(Base):
     """One C13 rebalance decision: signal close -> next-open execution."""
+
     __tablename__ = "rotation_shadow_run"
     __table_args__ = (
         UniqueConstraint("rule_version", "phase", "signal_date", name="uq_rotation_shadow_run_signal"),
@@ -370,19 +387,18 @@ class RotationShadowRun(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")  # pending|executed
     universe: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     top_k: Mapped[int] = mapped_column(Integer, nullable=False, default=8)
-    selected: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"),
-                                                default=list)
+    selected: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list)
     nav_before: Mapped[float | None] = mapped_column(Numeric(18, 4))
     nav_after: Mapped[float | None] = mapped_column(Numeric(18, 4))
     turnover: Mapped[float | None] = mapped_column(Numeric(10, 4))
-    fills: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"),
-                                             default=list)
+    fills: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list)
     detail: Mapped[dict[str, Any]] = _json_col()
     created_at: Mapped[dt.datetime] = _now_col()
 
 
 class RotationShadowDay(Base):
     """Daily mark-to-market of the rotation shadow and its two benchmarks."""
+
     __tablename__ = "rotation_shadow_day"
     __table_args__ = (
         UniqueConstraint("rule_version", "phase", "trade_date", name="uq_rotation_shadow_day_date"),

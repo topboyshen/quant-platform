@@ -4,6 +4,7 @@ The research digest is the legacy hourly local JSON (read-only).  The execution
 digest is not recomputed: qp references the M4 ``signals.execution_digest`` row
 and archives its body plus the digest sha256.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -46,9 +47,13 @@ def research_digest_date(payload: dict[str, Any]) -> dt.date:
         raise ValueError("research digest has no business date") from exc
 
 
-def import_research_digest(session: Session, payload: dict[str, Any], *,
-                           source_path: str | Path | None = None,
-                           source_sha256: str | None = None) -> tuple[Report, bool]:
+def import_research_digest(
+    session: Session,
+    payload: dict[str, Any],
+    *,
+    source_path: str | Path | None = None,
+    source_sha256: str | None = None,
+) -> tuple[Report, bool]:
     if not isinstance(payload, dict) or "generated_at" not in payload:
         raise ValueError("not a research digest payload")
     day = research_digest_date(payload)
@@ -58,8 +63,7 @@ def import_research_digest(session: Session, payload: dict[str, Any], *,
         sha256=source_sha256,
         detail={"generated_at": payload.get("generated_at")},
     )
-    return freeze_report(session, kind=RESEARCH_KIND, business_date=day, payload=payload,
-                         sources=[source])
+    return freeze_report(session, kind=RESEARCH_KIND, business_date=day, payload=payload, sources=[source])
 
 
 def execution_digest_payload(row: ExecutionDigest) -> dict[str, Any]:
@@ -73,15 +77,17 @@ def execution_digest_payload(row: ExecutionDigest) -> dict[str, Any]:
     }
 
 
-def import_execution_digest(session: Session, row: ExecutionDigest, *,
-                            source_locator: str | None = None) -> tuple[Report, bool]:
+def import_execution_digest(
+    session: Session, row: ExecutionDigest, *, source_locator: str | None = None
+) -> tuple[Report, bool]:
     payload = execution_digest_payload(row)
-    source = SourceRef(source="signals.execution_digest", locator=source_locator,
-                       sha256=row.sha256,
-                       detail={"item_count": row.item_count, "accepted": row.accepted,
-                               "rejected": row.rejected})
-    return freeze_report(session, kind=EXECUTION_KIND, business_date=row.digest_date,
-                         payload=payload, sources=[source])
+    source = SourceRef(
+        source="signals.execution_digest",
+        locator=source_locator,
+        sha256=row.sha256,
+        detail={"item_count": row.item_count, "accepted": row.accepted, "rejected": row.rejected},
+    )
+    return freeze_report(session, kind=EXECUTION_KIND, business_date=row.digest_date, payload=payload, sources=[source])
 
 
 def load_research_digest(path: str | Path) -> dict[str, Any]:

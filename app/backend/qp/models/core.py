@@ -53,7 +53,9 @@ class AuditEvent(Base):
     __tablename__ = "audit_event"
     __table_args__ = {"schema": "core"}
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
     actor: Mapped[str | None] = mapped_column(String(128))
     action: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     ok: Mapped[bool] = mapped_column(Boolean, nullable=False)

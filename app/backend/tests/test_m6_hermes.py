@@ -1,4 +1,5 @@
 """M6.4 Hermes cron summaries: envelope lookup, body verification, versioned freeze."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -20,8 +21,7 @@ PROFIT_JOB = "ec6c86fd856c"
 HEALTH_JOB = "026a1083d9e0"
 
 
-def write_envelope(root: Path, job_id: str, mode: str, text: str,
-                   business_date: str = DAY) -> Path:
+def write_envelope(root: Path, job_id: str, mode: str, text: str, business_date: str = DAY) -> Path:
     job_dir = root / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     dispatch = hashlib.sha256((job_id + mode + business_date + text).encode()).hexdigest()[:32]
@@ -120,10 +120,13 @@ def test_jobs_skip_without_envelopes(engine, tmp_path: Path, monkeypatch):
         monkeypatch.setenv("QP_HERMES_ORIGINALS_DIR", str(tmp_path))
         monkeypatch.setenv("QP_REPORT_DATE", DAY)
         from qp.jobs.reports import import_health_summary_job, import_profit_summary_job
-        assert import_profit_summary_job(JobContext(engine=engine, run_id=0,
-                                                     name="reports.import_profit_summary"))["skipped"]
-        assert import_health_summary_job(JobContext(engine=engine, run_id=0,
-                                                    name="reports.import_health_summary"))["skipped"]
+
+        assert import_profit_summary_job(JobContext(engine=engine, run_id=0, name="reports.import_profit_summary"))[
+            "skipped"
+        ]
+        assert import_health_summary_job(JobContext(engine=engine, run_id=0, name="reports.import_health_summary"))[
+            "skipped"
+        ]
     finally:
         cleanup(engine)
 
@@ -135,8 +138,8 @@ def test_job_imports_profit_envelope(engine, tmp_path: Path, monkeypatch):
         monkeypatch.setenv("QP_HERMES_ORIGINALS_DIR", str(tmp_path))
         monkeypatch.setenv("QP_REPORT_DATE", DAY)
         from qp.jobs.reports import import_profit_summary_job
-        result = import_profit_summary_job(JobContext(engine=engine, run_id=0,
-                                                      name="reports.import_profit_summary"))
+
+        result = import_profit_summary_job(JobContext(engine=engine, run_id=0, name="reports.import_profit_summary"))
         assert result["ok"] and result["created"] is True
         assert result["kind"] == "profit_summary" and result["version"] == 1
     finally:

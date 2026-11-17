@@ -1,4 +1,5 @@
 """M5.7 deployment package: timer -> registered job wiring, read-only prerequisites, runbook."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -50,6 +51,5 @@ def test_runbook_documents_read_only_prerequisites_and_rollback():
 
 def test_env_example_lists_m5_keys():
     text = (DEPLOY / "qp.env.example").read_text(encoding="utf-8")
-    for key in ("QP_LEDGER_DSN", "QP_PHASE2_DB", "QP_QD_DSN", "QP_LLM_SHADOW",
-                "QP_RESEARCH_REPORT_DIR"):
+    for key in ("QP_LEDGER_DSN", "QP_PHASE2_DB", "QP_QD_DSN", "QP_LLM_SHADOW", "QP_RESEARCH_REPORT_DIR"):
         assert f"{key}=" in text, key

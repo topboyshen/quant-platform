@@ -1,4 +1,5 @@
 """M5.2 backtest history import: composite keys, JSON text, chunking, idempotency."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -29,48 +30,115 @@ class FakeReader:
 def qd_tables(status: str = "success", equity_rows: int = 2) -> dict[str, list[dict]]:
     now = dt.datetime(2026, 8, 20, 15, 30)
     return {
-        "qd_backtest_runs": [{
-            "id": 7, "user_id": 1, "strategy_id": 3, "strategy_name": "etf-trend",
-            "run_type": "backtest", "market": "cn", "symbol": "510300",
-            "timeframe": "1d", "start_date": "2025-01-01", "end_date": "2026-08-01",
-            "initial_capital": 100000, "commission": 0.0003, "slippage": 0.0,
-            "leverage": 1, "trade_direction": "long",
-            "strategy_config": '{"ma": 60}', "config_snapshot": '{"v": 1}',
-            "engine_version": "1.2", "code_hash": "c" * 64, "status": status,
-            "error_message": None, "result_json": '{"total_return": 0.123}',
-            "created_at": now,
-        }],
-        "qd_backtest_equity_points": [
-            {"run_id": 7, "point_index": i, "point_time": f"2026-08-{i + 1:02d}",
-             "point_value": 100000.0 + i, "created_at": now} for i in range(equity_rows)
+        "qd_backtest_runs": [
+            {
+                "id": 7,
+                "user_id": 1,
+                "strategy_id": 3,
+                "strategy_name": "etf-trend",
+                "run_type": "backtest",
+                "market": "cn",
+                "symbol": "510300",
+                "timeframe": "1d",
+                "start_date": "2025-01-01",
+                "end_date": "2026-08-01",
+                "initial_capital": 100000,
+                "commission": 0.0003,
+                "slippage": 0.0,
+                "leverage": 1,
+                "trade_direction": "long",
+                "strategy_config": '{"ma": 60}',
+                "config_snapshot": '{"v": 1}',
+                "engine_version": "1.2",
+                "code_hash": "c" * 64,
+                "status": status,
+                "error_message": None,
+                "result_json": '{"total_return": 0.123}',
+                "created_at": now,
+            }
         ],
-        "qd_backtest_trades": [{
-            "run_id": 7, "trade_index": 0, "user_id": 1, "strategy_id": 3,
-            "trade_time": "2026-08-01", "trade_type": "buy", "side": "long",
-            "price": 4.1, "amount": 1000, "profit": 12.5, "balance": 100012.5,
-            "reason": "signal", "payload_json": '{"note": "x"}', "created_at": now,
-        }],
-        "qd_backtest_orders": [{
-            "run_id": 7, "order_seq": 0, "user_id": 1, "order_id": "o-1",
-            "intent": "open", "side": "buy", "order_type": "market", "status": "filled",
-            "payload_json": "{}", "created_at": now,
-        }],
-        "qd_backtest_fills": [{
-            "run_id": 7, "fill_seq": 0, "user_id": 1, "fill_id": "f-1", "order_seq": 0,
-            "qty": "1000", "price": "4.1", "payload_json": "{}", "created_at": now,
-        }],
-        "qd_backtest_account_points": [{
-            "run_id": 7, "point_seq": 0, "user_id": 1, "bar_index": 1,
-            "point_time": "2026-08-01", "mark_price": "4.1", "equity": "100012.5",
-            "payload_json": "{}", "created_at": now,
-        }],
+        "qd_backtest_equity_points": [
+            {
+                "run_id": 7,
+                "point_index": i,
+                "point_time": f"2026-08-{i + 1:02d}",
+                "point_value": 100000.0 + i,
+                "created_at": now,
+            }
+            for i in range(equity_rows)
+        ],
+        "qd_backtest_trades": [
+            {
+                "run_id": 7,
+                "trade_index": 0,
+                "user_id": 1,
+                "strategy_id": 3,
+                "trade_time": "2026-08-01",
+                "trade_type": "buy",
+                "side": "long",
+                "price": 4.1,
+                "amount": 1000,
+                "profit": 12.5,
+                "balance": 100012.5,
+                "reason": "signal",
+                "payload_json": '{"note": "x"}',
+                "created_at": now,
+            }
+        ],
+        "qd_backtest_orders": [
+            {
+                "run_id": 7,
+                "order_seq": 0,
+                "user_id": 1,
+                "order_id": "o-1",
+                "intent": "open",
+                "side": "buy",
+                "order_type": "market",
+                "status": "filled",
+                "payload_json": "{}",
+                "created_at": now,
+            }
+        ],
+        "qd_backtest_fills": [
+            {
+                "run_id": 7,
+                "fill_seq": 0,
+                "user_id": 1,
+                "fill_id": "f-1",
+                "order_seq": 0,
+                "qty": "1000",
+                "price": "4.1",
+                "payload_json": "{}",
+                "created_at": now,
+            }
+        ],
+        "qd_backtest_account_points": [
+            {
+                "run_id": 7,
+                "point_seq": 0,
+                "user_id": 1,
+                "bar_index": 1,
+                "point_time": "2026-08-01",
+                "mark_price": "4.1",
+                "equity": "100012.5",
+                "payload_json": "{}",
+                "created_at": now,
+            }
+        ],
     }
 
 
 def cleanup(engine) -> None:
     with Session(engine) as session:
-        for model in (BacktestRun, BacktestEquity, BacktestTrade, BacktestOrder, BacktestFill,
-                      BacktestAccountPoint, ImportRun):
+        for model in (
+            BacktestRun,
+            BacktestEquity,
+            BacktestTrade,
+            BacktestOrder,
+            BacktestFill,
+            BacktestAccountPoint,
+            ImportRun,
+        ):
             session.execute(delete(model))
         session.commit()
 

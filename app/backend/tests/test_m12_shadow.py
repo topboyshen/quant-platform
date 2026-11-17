@@ -1,4 +1,5 @@
 """M12 shadow allowed samples: record blocked triggers, collect outcomes, API."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -31,19 +32,16 @@ SESSIONS = business_days(DAY + dt.timedelta(days=1), 20)
 
 
 def bar(day: dt.date, *, open_: float, close: float) -> DailyBar:
-    return DailyBar(day, open=open_, high=max(open_, close), low=min(open_, close),
-                    close=close, volume=1000.0)
+    return DailyBar(day, open=open_, high=max(open_, close), low=min(open_, close), close=close, volume=1000.0)
 
 
 class FakeFetcher:
     def __init__(self) -> None:
         self.bars = {
-            CODE: [bar(DAY, open_=9.8, close=9.8)] + [
-                bar(day, open_=10.0 + i * 0.02, close=10.1 + i * 0.02)
-                for i, day in enumerate(SESSIONS)],
-            BENCHMARK: [bar(DAY, open_=100.0, close=100.0)] + [
-                bar(day, open_=100.0, close=100.0 + i * 0.1)
-                for i, day in enumerate(SESSIONS)],
+            CODE: [bar(DAY, open_=9.8, close=9.8)]
+            + [bar(day, open_=10.0 + i * 0.02, close=10.1 + i * 0.02) for i, day in enumerate(SESSIONS)],
+            BENCHMARK: [bar(DAY, open_=100.0, close=100.0)]
+            + [bar(day, open_=100.0, close=100.0 + i * 0.1) for i, day in enumerate(SESSIONS)],
         }
 
     def get(self, code: str) -> KlineResult:
@@ -53,10 +51,14 @@ class FakeFetcher:
 class BenchmarkDownFetcher(FakeFetcher):
     def get(self, code: str) -> KlineResult:
         if code == BENCHMARK:
-            return KlineResult(bars=[], source="", attempts=[
-                {"source": "tencent", "rows": 0, "latest_date": None, "error": "HTTPError"},
-                {"source": "sina", "rows": 0, "latest_date": None, "error": "Timeout"},
-            ])
+            return KlineResult(
+                bars=[],
+                source="",
+                attempts=[
+                    {"source": "tencent", "rows": 0, "latest_date": None, "error": "HTTPError"},
+                    {"source": "sina", "rows": 0, "latest_date": None, "error": "Timeout"},
+                ],
+            )
         return super().get(code)
 
 
@@ -66,8 +68,7 @@ def cleanup(engine) -> None:
         session.execute(delete(ShadowSignal))
         session.execute(delete(TargetDecision).where(TargetDecision.decision_date == DAY))
         session.execute(delete(EodRun).where(EodRun.decision_date == DAY))
-        session.execute(delete(TradingDay).where(TradingDay.origin == "qp",
-                                                  TradingDay.date.in_([DAY, *SESSIONS])))
+        session.execute(delete(TradingDay).where(TradingDay.origin == "qp", TradingDay.date.in_([DAY, *SESSIONS])))
         session.commit()
 
 
@@ -75,12 +76,21 @@ def seed(engine) -> int:
     with Session(engine) as session:
         for day in [DAY, *SESSIONS]:
             session.merge(TradingDay(origin="qp", date=day, is_open=True, source="test"))
-        run = EodRun(decision_date=DAY, attempt_no=1, status="success",
-                     decision_outcome="blocked", target_count=3, evaluated_count=3,
-                     failed_count=0, signal_count=1, allowed_signal_count=0,
-                     blocked_signal_count=1, reason_codes=[],
-                     started_at=dt.datetime(2027, 4, 5, 15, 30),
-                     finished_at=dt.datetime(2027, 4, 5, 15, 31))
+        run = EodRun(
+            decision_date=DAY,
+            attempt_no=1,
+            status="success",
+            decision_outcome="blocked",
+            target_count=3,
+            evaluated_count=3,
+            failed_count=0,
+            signal_count=1,
+            allowed_signal_count=0,
+            blocked_signal_count=1,
+            reason_codes=[],
+            started_at=dt.datetime(2027, 4, 5, 15, 30),
+            finished_at=dt.datetime(2027, 4, 5, 15, 31),
+        )
         session.add(run)
         session.flush()
         rows = [
@@ -90,23 +100,34 @@ def seed(engine) -> int:
             ("data_failed", "518880", 1, "trend_data_unavailable"),
         ]
         for _i, (state, code, triggers, reason) in enumerate(rows):
-            session.add(TargetDecision(
-                run_id=run.run_id, decision_date=DAY, code=code, name=code, sector="宽基",
-                data_status="failed" if state == "data_failed" else "ok",
-                decision_state=state,
-                risk_action="blocked" if state == "blocked" else "not_applicable",
-                risk_level="critical", reason_code=reason,
-                reference_close=None if state == "data_failed" else 9.8,
-                raw_trigger_count=triggers if state != "data_failed" else 1,
-                raw_signals=[], validation_split="live_oos"))
+            session.add(
+                TargetDecision(
+                    run_id=run.run_id,
+                    decision_date=DAY,
+                    code=code,
+                    name=code,
+                    sector="宽基",
+                    data_status="failed" if state == "data_failed" else "ok",
+                    decision_state=state,
+                    risk_action="blocked" if state == "blocked" else "not_applicable",
+                    risk_level="critical",
+                    reason_code=reason,
+                    reference_close=None if state == "data_failed" else 9.8,
+                    raw_trigger_count=triggers if state != "data_failed" else 1,
+                    raw_signals=[],
+                    validation_split="live_oos",
+                )
+            )
         session.commit()
         return run.run_id
 
 
 def test_migration_tables_and_constraints(engine):
     with engine.connect() as c:
-        tables = {row[0] for row in c.execute(text(
-            "select table_name from information_schema.tables where table_schema='signals'"))}
+        tables = {
+            row[0]
+            for row in c.execute(text("select table_name from information_schema.tables where table_schema='signals'"))
+        }
     assert {"shadow_signal", "shadow_outcome"} <= tables
     with Session(engine) as session:
         session.execute(delete(ShadowOutcome))
@@ -126,8 +147,7 @@ def test_record_only_blocked_triggered_and_idempotent(engine):
             rows = list(session.scalars(select(ShadowSignal)))
         assert first["inserted"] == 1 and first["total"] == 1
         assert second["inserted"] == 0 and second["total"] == 1
-        assert [(r.code, r.risk_level, r.reason_code) for r in rows] == [
-            (CODE, "critical", "macro_risk_blocked")]
+        assert [(r.code, r.risk_level, r.reason_code) for r in rows] == [(CODE, "critical", "macro_risk_blocked")]
     finally:
         cleanup(engine)
 
@@ -177,14 +197,14 @@ def test_api_returns_samples_with_outcomes(engine):
 
     from qp.api.main import app
     from qp.auth.sessions import create_service_token
+
     cleanup(engine)
     try:
         seed(engine)
         with Session(engine) as session:
             shadow.record(session, decision_date=DAY)
             shadow.collect(session, as_of=SESSIONS[-1], fetcher=FakeFetcher())
-            token = create_service_token(session, f"m12-shadow-{dt.datetime.now().timestamp()}",
-                                         ["signals:read"])
+            token = create_service_token(session, f"m12-shadow-{dt.datetime.now().timestamp()}", ["signals:read"])
             session.commit()
         client = TestClient(app, base_url="https://testserver")
         response = client.get("/api/signals/shadow", headers={"authorization": f"Bearer {token}"})
@@ -201,6 +221,7 @@ def test_api_returns_samples_with_outcomes(engine):
 
 def test_acceptance_strategy_reports_shadow(engine):
     from qp.signals import acceptance
+
     cleanup(engine)
     try:
         seed(engine)

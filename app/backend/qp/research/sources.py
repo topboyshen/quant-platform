@@ -10,6 +10,7 @@ The legacy research stores are never written by qp:
 All adapters return plain ``dict`` rows so the importer stays testable
 without either source.
 """
+
 from __future__ import annotations
 
 import sqlite3

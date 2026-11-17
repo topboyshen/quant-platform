@@ -1,4 +1,5 @@
 """M4.4 stale-only total-amount repair: predicates, window, fill-only and idempotency."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -25,40 +26,82 @@ def cleanup(engine, day: dt.date = DAY) -> None:
         session.commit()
 
 
-def seed(engine, *, day: dt.date = DAY, status: str = "partial",
-         reasons: list[str] | None = None, total_amount: float | None = None,
-         create_slice: bool = True) -> int:
+def seed(
+    engine,
+    *,
+    day: dt.date = DAY,
+    status: str = "partial",
+    reasons: list[str] | None = None,
+    total_amount: float | None = None,
+    create_slice: bool = True,
+) -> int:
     cleanup(engine, day)
     with Session(engine) as session:
-        run = EodRun(decision_date=day, attempt_no=1, status=status,
-                     decision_outcome="no_signal" if status != "failed" else "data_unavailable",
-                     target_count=0, evaluated_count=0, failed_count=0, signal_count=0,
-                     allowed_signal_count=0, blocked_signal_count=0,
-                     reason_codes=reasons if reasons is not None else ["macro_data_partial"])
+        run = EodRun(
+            decision_date=day,
+            attempt_no=1,
+            status=status,
+            decision_outcome="no_signal" if status != "failed" else "data_unavailable",
+            target_count=0,
+            evaluated_count=0,
+            failed_count=0,
+            signal_count=0,
+            allowed_signal_count=0,
+            blocked_signal_count=0,
+            reason_codes=reasons if reasons is not None else ["macro_data_partial"],
+        )
         session.add(run)
         session.flush()
         if create_slice:
-            session.add(MacroSlice(
-                decision_date=day, total_amount=total_amount, margin_balance=22800.0,
-                margin_growth_pct=0.5, limit_up=60, limit_down=2, limit_ratio=20.0,
-                source="test",
-                collect_status={
-                    "total_amount": {"available": False, "source": "tencent/sina/eastmoney",
-                                     "message": "missing", "observed_date": None,
-                                     "stale": True, "anomalous": True},
-                    "margin_balance": {"available": True, "source": "sse+szse",
-                                       "message": "", "observed_date": day.isoformat(),
-                                       "stale": False, "anomalous": False},
-                }))
+            session.add(
+                MacroSlice(
+                    decision_date=day,
+                    total_amount=total_amount,
+                    margin_balance=22800.0,
+                    margin_growth_pct=0.5,
+                    limit_up=60,
+                    limit_down=2,
+                    limit_ratio=20.0,
+                    source="test",
+                    collect_status={
+                        "total_amount": {
+                            "available": False,
+                            "source": "tencent/sina/eastmoney",
+                            "message": "missing",
+                            "observed_date": None,
+                            "stale": True,
+                            "anomalous": True,
+                        },
+                        "margin_balance": {
+                            "available": True,
+                            "source": "sse+szse",
+                            "message": "",
+                            "observed_date": day.isoformat(),
+                            "stale": False,
+                            "anomalous": False,
+                        },
+                    },
+                )
+            )
         session.commit()
         return run.run_id
 
 
 def usable(day: dt.date = DAY, value: float = 13573.57) -> dict:
-    return {"usable": True, "value": value, "source": "tencent",
+    return {
+        "usable": True,
+        "value": value,
+        "source": "tencent",
+        "observed_date": day.isoformat(),
+        "status": {
+            "available": True,
+            "source": "tencent",
+            "message": "",
             "observed_date": day.isoformat(),
-            "status": {"available": True, "source": "tencent", "message": "",
-                       "observed_date": day.isoformat(), "stale": False, "anomalous": False}}
+            "stale": False,
+            "anomalous": False,
+        },
+    }
 
 
 def test_repair_fills_empty_value_and_appends_one_import(engine):
@@ -98,8 +141,7 @@ def test_dry_run_writes_nothing(engine):
     seed(engine)
     try:
         with Session(engine) as session:
-            out = run_repair(session, now=at(15, 47), dry_run=True,
-                             fetch_total=lambda day: usable(day))
+            out = run_repair(session, now=at(15, 47), dry_run=True, fetch_total=lambda day: usable(day))
             session.commit()
             assert out["action"] == "would_repair" and out["dry_run"] is True
             assert session.get(MacroSlice, DAY).total_amount is None
@@ -157,8 +199,7 @@ def test_window_and_non_trading_day(engine):
         weekend = dt.date(2027, 3, 6)  # Saturday
         seed(engine, day=weekend)
         with Session(engine) as session:
-            out = run_repair(session, now=at(15, 47, day=weekend),
-                             fetch_total=lambda day: usable(day))
+            out = run_repair(session, now=at(15, 47, day=weekend), fetch_total=lambda day: usable(day))
             assert out["reason"] == "non_trading_day"
         cleanup(engine, weekend)
     finally:
@@ -169,8 +210,9 @@ def test_repair_is_same_day_only(engine):
     seed(engine)
     try:
         with Session(engine) as session:
-            out = run_repair(session, now=at(15, 47, day=dt.date(2027, 3, 3)),
-                             decision_date=DAY, fetch_total=lambda day: usable(day))
+            out = run_repair(
+                session, now=at(15, 47, day=dt.date(2027, 3, 3)), decision_date=DAY, fetch_total=lambda day: usable(day)
+            )
             assert out["reason"] == "not_same_day"
     finally:
         cleanup(engine)
@@ -180,10 +222,8 @@ def test_write_boundary_never_overwrites(engine):
     seed(engine, total_amount=12000.0)
     try:
         with Session(engine) as session:
-            record = build_import_record(decision_date=DAY, run_id=1,
-                                         collected_at=at(15, 47), result=usable())
-            assert _write_repair(session, decision_date=DAY, value=13573.57,
-                                 record=record) == "already_repaired"
+            record = build_import_record(decision_date=DAY, run_id=1, collected_at=at(15, 47), result=usable())
+            assert _write_repair(session, decision_date=DAY, value=13573.57, record=record) == "already_repaired"
             session.rollback()
         with Session(engine) as session:
             assert float(session.get(MacroSlice, DAY).total_amount) == 12000.0

@@ -8,6 +8,7 @@ same execution model as ``decision_outcome``.
 Validation only: nothing here is notified, counted in production statistics or
 fed to the record chain.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -29,39 +30,67 @@ from qp.signals.outcomes import (
     normalise_bars,
 )
 
-_COLUMNS = ["decision_date", "code", "name", "sector", "source_decision_id", "source_run_id",
-            "risk_level", "reason_code", "raw_trigger_count", "raw_signals", "reference_close"]
+_COLUMNS = [
+    "decision_date",
+    "code",
+    "name",
+    "sector",
+    "source_decision_id",
+    "source_run_id",
+    "risk_level",
+    "reason_code",
+    "raw_trigger_count",
+    "raw_signals",
+    "reference_close",
+]
 
 
-def record(session: Session, *, since: dt.date | None = None,
-           decision_date: dt.date | None = None) -> dict[str, Any]:
+def record(session: Session, *, since: dt.date | None = None, decision_date: dt.date | None = None) -> dict[str, Any]:
     """Copy blocked-but-triggered decisions of the latest terminal run per date.
 
     Idempotent: ``(decision_date, code)`` is unique and conflicts are skipped.
     """
-    latest = (select(TargetDecision.decision_date,
-                     func.max(TargetDecision.run_id).label("run_id"))
-              .join(EodRun, EodRun.run_id == TargetDecision.run_id)
-              .where(EodRun.status.in_(("success", "partial")))
-              .group_by(TargetDecision.decision_date).subquery())
+    latest = (
+        select(TargetDecision.decision_date, func.max(TargetDecision.run_id).label("run_id"))
+        .join(EodRun, EodRun.run_id == TargetDecision.run_id)
+        .where(EodRun.status.in_(("success", "partial")))
+        .group_by(TargetDecision.decision_date)
+        .subquery()
+    )
     selectable = (
-        select(TargetDecision.decision_date, TargetDecision.code, TargetDecision.name,
-               TargetDecision.sector, TargetDecision.id, TargetDecision.run_id,
-               TargetDecision.risk_level, TargetDecision.reason_code,
-               TargetDecision.raw_trigger_count, TargetDecision.raw_signals,
-               TargetDecision.reference_close)
-        .join(latest, and_(latest.c.decision_date == TargetDecision.decision_date,
-                           latest.c.run_id == TargetDecision.run_id))
-        .where(TargetDecision.decision_state == "blocked",
-               TargetDecision.raw_trigger_count > 0,
-               TargetDecision.data_status == "ok"))
+        select(
+            TargetDecision.decision_date,
+            TargetDecision.code,
+            TargetDecision.name,
+            TargetDecision.sector,
+            TargetDecision.id,
+            TargetDecision.run_id,
+            TargetDecision.risk_level,
+            TargetDecision.reason_code,
+            TargetDecision.raw_trigger_count,
+            TargetDecision.raw_signals,
+            TargetDecision.reference_close,
+        )
+        .join(
+            latest,
+            and_(latest.c.decision_date == TargetDecision.decision_date, latest.c.run_id == TargetDecision.run_id),
+        )
+        .where(
+            TargetDecision.decision_state == "blocked",
+            TargetDecision.raw_trigger_count > 0,
+            TargetDecision.data_status == "ok",
+        )
+    )
     if since is not None:
         selectable = selectable.where(TargetDecision.decision_date >= since)
     if decision_date is not None:
         selectable = selectable.where(TargetDecision.decision_date == decision_date)
     before = int(session.scalar(select(func.count()).select_from(ShadowSignal)) or 0)
-    stmt = (pg_insert(ShadowSignal).from_select(_COLUMNS, selectable)
-            .on_conflict_do_nothing(index_elements=["decision_date", "code"]))
+    stmt = (
+        pg_insert(ShadowSignal)
+        .from_select(_COLUMNS, selectable)
+        .on_conflict_do_nothing(index_elements=["decision_date", "code"])
+    )
     session.execute(stmt)
     total = int(session.scalar(select(func.count()).select_from(ShadowSignal)) or 0)
     # INSERT ... SELECT reports rowcount -1 with psycopg; count before/after instead.
@@ -69,32 +98,48 @@ def record(session: Session, *, since: dt.date | None = None,
 
 
 def _pending(session: Session, *, as_of: dt.date, limit: int) -> list[ShadowSignal]:
-    counts = (select(ShadowOutcome.shadow_id.label("shadow_id"), func.count().label("n"))
-              .group_by(ShadowOutcome.shadow_id).subquery())
-    rows = list(session.execute(
-        select(ShadowSignal)
-        .outerjoin(counts, counts.c.shadow_id == ShadowSignal.id)
-        .where(func.coalesce(counts.c.n, 0) < len(HORIZONS))
-        .order_by(ShadowSignal.decision_date, ShadowSignal.code).limit(5000)).scalars())
+    counts = (
+        select(ShadowOutcome.shadow_id.label("shadow_id"), func.count().label("n"))
+        .group_by(ShadowOutcome.shadow_id)
+        .subquery()
+    )
+    rows = list(
+        session.execute(
+            select(ShadowSignal)
+            .outerjoin(counts, counts.c.shadow_id == ShadowSignal.id)
+            .where(func.coalesce(counts.c.n, 0) < len(HORIZONS))
+            .order_by(ShadowSignal.decision_date, ShadowSignal.code)
+            .limit(5000)
+        ).scalars()
+    )
     if not rows:
         return []
     completed: dict[int, set[int]] = {}
     for shadow_id, horizon in session.execute(
-            select(ShadowOutcome.shadow_id, ShadowOutcome.horizon_sessions)
-            .where(ShadowOutcome.shadow_id.in_([row.id for row in rows]))):
+        select(ShadowOutcome.shadow_id, ShadowOutcome.horizon_sessions).where(
+            ShadowOutcome.shadow_id.in_([row.id for row in rows])
+        )
+    ):
         completed.setdefault(int(shadow_id), set()).add(int(horizon))
     start = min(row.decision_date for row in rows)
-    days = list(session.scalars(
-        select(TradingDay.date).where(TradingDay.origin == "qp", TradingDay.is_open.is_(True),
-                                      TradingDay.date > start, TradingDay.date <= as_of)
-        .order_by(TradingDay.date)).all())
+    days = list(
+        session.scalars(
+            select(TradingDay.date)
+            .where(
+                TradingDay.origin == "qp",
+                TradingDay.is_open.is_(True),
+                TradingDay.date > start,
+                TradingDay.date <= as_of,
+            )
+            .order_by(TradingDay.date)
+        ).all()
+    )
     due: list[ShadowSignal] = []
     for row in rows:
         sessions = sum(1 for day in days if day > row.decision_date)
-        if any(horizon <= sessions and horizon not in completed.get(row.id, set())
-               for horizon in HORIZONS):
+        if any(horizon <= sessions and horizon not in completed.get(row.id, set()) for horizon in HORIZONS):
             due.append(row)
-    return due[:max(1, int(limit))]
+    return due[: max(1, int(limit))]
 
 
 def _persist(session: Session, rows: list[dict[str, Any]]) -> dict[int, str]:
@@ -115,26 +160,42 @@ def _persist(session: Session, rows: list[dict[str, Any]]) -> dict[int, str]:
             "fill_reason": row["fill_reason"],
             "details": row["details"],
         }
-        stmt = (pg_insert(ShadowOutcome).values(**payload)
-                .on_conflict_do_nothing(index_elements=["shadow_id", "horizon_sessions"])
-                .returning(ShadowOutcome.horizon_sessions))
+        stmt = (
+            pg_insert(ShadowOutcome)
+            .values(**payload)
+            .on_conflict_do_nothing(index_elements=["shadow_id", "horizon_sessions"])
+            .returning(ShadowOutcome.horizon_sessions)
+        )
         if session.execute(stmt).first() is not None:
             inserted[int(row["horizon_sessions"])] = str(row["fill_status"])
     return inserted
 
 
-def collect(session: Session, *, as_of: dt.date | None = None, limit: int = 500,
-            fetcher: Any | None = None, settings: OutcomeSettings | None = None) -> dict[str, Any]:
+def collect(
+    session: Session,
+    *,
+    as_of: dt.date | None = None,
+    limit: int = 500,
+    fetcher: Any | None = None,
+    settings: OutcomeSettings | None = None,
+) -> dict[str, Any]:
     """Record matured forward returns for shadow samples; idempotent per horizon."""
     settings = settings or OutcomeSettings()
     as_of = as_of or now_cst().date()
     fetcher = fetcher or KlineFetcher(days=DEFAULT_HISTORY_DAYS)
     pending = _pending(session, as_of=as_of, limit=limit)
     summary: dict[str, Any] = {
-        "checked": 0, "inserted": 0, "not_mature": 0, "unfilled": 0,
-        "failed": 0, "benchmark_ok": False, "as_of": as_of.isoformat(),
-        "benchmark_code": settings.benchmark_code, "benchmark_source": None,
-        "benchmark_attempts": [], "benchmark_error": None,
+        "checked": 0,
+        "inserted": 0,
+        "not_mature": 0,
+        "unfilled": 0,
+        "failed": 0,
+        "benchmark_ok": False,
+        "as_of": as_of.isoformat(),
+        "benchmark_code": settings.benchmark_code,
+        "benchmark_source": None,
+        "benchmark_attempts": [],
+        "benchmark_error": None,
     }
     if not pending:
         summary["benchmark_ok"] = True
@@ -154,8 +215,10 @@ def collect(session: Session, *, as_of: dt.date | None = None, limit: int = 500,
     frames: dict[str, list[Any]] = {}
     completed = {}
     for shadow_id, horizon in session.execute(
-            select(ShadowOutcome.shadow_id, ShadowOutcome.horizon_sessions)
-            .where(ShadowOutcome.shadow_id.in_([row.id for row in pending]))):
+        select(ShadowOutcome.shadow_id, ShadowOutcome.horizon_sessions).where(
+            ShadowOutcome.shadow_id.in_([row.id for row in pending])
+        )
+    ):
         completed.setdefault(int(shadow_id), set()).add(int(horizon))
     for row in pending:
         summary["checked"] += 1
@@ -168,8 +231,9 @@ def collect(session: Session, *, as_of: dt.date | None = None, limit: int = 500,
                 "reference_close": float(row.reference_close) if row.reference_close is not None else None,
                 "completed_horizons": completed.get(row.id, set()),
             }
-            outcomes = evaluate_decision(payload, code_bars=frames[row.code],
-                                         benchmark_bars=benchmark, as_of=as_of, settings=settings)
+            outcomes = evaluate_decision(
+                payload, code_bars=frames[row.code], benchmark_bars=benchmark, as_of=as_of, settings=settings
+            )
             if not outcomes:
                 summary["not_mature"] += 1
                 continue
@@ -185,9 +249,16 @@ def summary(session: Session) -> dict[str, Any]:
     samples = session.scalar(select(func.count()).select_from(ShadowSignal)) or 0
     outcomes = session.scalar(select(func.count()).select_from(ShadowOutcome)) or 0
     last = session.scalar(select(func.max(ShadowSignal.decision_date)))
-    last_outcome = session.scalar(
-        select(func.max(ShadowSignal.decision_date))
-        .join(ShadowOutcome, ShadowOutcome.shadow_id == ShadowSignal.id)) if outcomes else None
-    return {"samples": int(samples), "outcomes": int(outcomes),
-            "last_sample_date": last.isoformat() if last else None,
-            "last_outcome_date": last_outcome.isoformat() if last_outcome else None}
+    last_outcome = (
+        session.scalar(
+            select(func.max(ShadowSignal.decision_date)).join(ShadowOutcome, ShadowOutcome.shadow_id == ShadowSignal.id)
+        )
+        if outcomes
+        else None
+    )
+    return {
+        "samples": int(samples),
+        "outcomes": int(outcomes),
+        "last_sample_date": last.isoformat() if last else None,
+        "last_outcome_date": last_outcome.isoformat() if last_outcome else None,
+    }

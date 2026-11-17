@@ -1,5 +1,6 @@
 """M4 signals jobs (SHADOW). Writes only to db qp schema ``signals``; no notification and no
 legacy state file is touched. Deployment of the timer stays gated on M3 PASS."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -22,8 +23,11 @@ from qp.signals.repair import run_repair
 from qp.signals.watchdog import latest_retryable_run, run_watchdog
 
 
-@job("signals.eod", "Swing EOD: 40-ETF trend scan + macro-risk gate -> signals.*",
-     schedule_hint="Mon-Fri 15:30 CST (legacy 15:30; notifications live since 2026-11-13)")
+@job(
+    "signals.eod",
+    "Swing EOD: 40-ETF trend scan + macro-risk gate -> signals.*",
+    schedule_hint="Mon-Fri 15:30 CST (legacy 15:30; notifications live since 2026-11-13)",
+)
 def eod_job(ctx: JobContext) -> dict:
     today = now_cst().date()
     with Session(ctx.engine) as session:
@@ -42,26 +46,30 @@ def eod_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.eod_retry",
-     "Same-day EOD retry only after data_unavailable with zero signals (legacy 15:48 gate)",
-     schedule_hint="Mon-Fri 15:48 CST (ExecCondition equivalent; never starts a first run)")
+@job(
+    "signals.eod_retry",
+    "Same-day EOD retry only after data_unavailable with zero signals (legacy 15:48 gate)",
+    schedule_hint="Mon-Fri 15:48 CST (ExecCondition equivalent; never starts a first run)",
+)
 def eod_retry_job(ctx: JobContext) -> dict:
     today = now_cst().date()
     with Session(ctx.engine) as session:
         is_open, calendar_source = trading_day_status(session, today)
         if not is_open:
-            return {"ok": True, "retried": False, "reason": "non_trading_day",
-                    "calendar_source": calendar_source}
+            return {"ok": True, "retried": False, "reason": "non_trading_day", "calendar_source": calendar_source}
         latest, retryable = latest_retryable_run(session, today)
         if not retryable:
-            return {"ok": True, "retried": False, "reason": "not_retryable",
-                    "latest_status": getattr(latest, "status", None),
-                    "latest_outcome": getattr(latest, "decision_outcome", None)}
+            return {
+                "ok": True,
+                "retried": False,
+                "reason": "not_retryable",
+                "latest_status": getattr(latest, "status", None),
+                "latest_outcome": getattr(latest, "decision_outcome", None),
+            }
         previous = previous_open_day(session, today)
         out = run_eod(session, decision_date=today, previous_session=previous)
         session.commit()
-    out.update({"ok": out["status"] != "failed", "retried": True,
-                "calendar_source": calendar_source})
+    out.update({"ok": out["status"] != "failed", "retried": True, "calendar_source": calendar_source})
     return out
 
 
@@ -69,15 +77,17 @@ def eod_for_date(ctx: JobContext, decision_date: dt.date) -> dict:
     """Manual/backfill helper: one explicit attempt (still shadow-only)."""
     with Session(ctx.engine) as session:
         previous = previous_open_day(session, decision_date)
-        out = run_eod(session, decision_date=decision_date, previous_session=previous,
-                      batch_source="manual")
+        out = run_eod(session, decision_date=decision_date, previous_session=previous, batch_source="manual")
         session.commit()
     out["ok"] = out["status"] != "failed"
     return out
 
 
-@job("signals.watchdog", "Swing EOD terminal audit 15:40/15:50; shadow outbox only",
-     schedule_hint="Mon-Fri 15:40,15:50 CST")
+@job(
+    "signals.watchdog",
+    "Swing EOD terminal audit 15:40/15:50; shadow outbox only",
+    schedule_hint="Mon-Fri 15:40,15:50 CST",
+)
 def watchdog_job(ctx: JobContext) -> dict:
     with Session(ctx.engine) as session:
         out = run_watchdog(session, source_job_run_id=ctx.run_id)
@@ -88,9 +98,11 @@ def watchdog_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.total_amount_repair",
-     "Fill an empty same-day total_amount after partial/macro_data_partial (15:45-16:00)",
-     schedule_hint="Mon-Fri 15:47,15:57 CST")
+@job(
+    "signals.total_amount_repair",
+    "Fill an empty same-day total_amount after partial/macro_data_partial (15:45-16:00)",
+    schedule_hint="Mon-Fri 15:47,15:57 CST",
+)
 def total_amount_repair_job(ctx: JobContext) -> dict:
     with Session(ctx.engine) as session:
         out = run_repair(session)
@@ -99,11 +111,14 @@ def total_amount_repair_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.chain_snapshot",
-     "ETF record-chain snapshot for the business day (after EOD window)",
-     schedule_hint="Mon-Fri 15:55 CST (record chain; no-op unless QP_RECORD_CHAIN=1)")
+@job(
+    "signals.chain_snapshot",
+    "ETF record-chain snapshot for the business day (after EOD window)",
+    schedule_hint="Mon-Fri 15:55 CST (record chain; no-op unless QP_RECORD_CHAIN=1)",
+)
 def chain_snapshot_job(ctx: JobContext) -> dict:
     from qp.signals import chain
+
     if not chain.enabled():
         return {"ok": True, "skipped": "record_chain_disabled"}
     today = now_cst().date()
@@ -111,6 +126,7 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
         out = chain.build_snapshot(session, business_date=today)
         if out.get("ok"):
             from qp.signals import chain_compare
+
             out["compare"] = chain_compare.compare(session, today)
         session.commit()
     if out.get("reason") == "no_batch":
@@ -119,22 +135,28 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.chain_window",
-     "Record-chain shadow window table (first 5 native sessions) for the daily check",
-     schedule_hint="Mon-Fri 16:12 CST (after snapshot 15:55 and compare 16:05)")
+@job(
+    "signals.chain_window",
+    "Record-chain shadow window table (first 5 native sessions) for the daily check",
+    schedule_hint="Mon-Fri 16:12 CST (after snapshot 15:55 and compare 16:05)",
+)
 def chain_window_job(ctx: JobContext) -> dict:
     from qp.signals import chain_window
+
     with Session(ctx.engine) as session:
         out = chain_window.report(session, end=now_cst().date())
     out["ok"] = out.get("verdict") != "FAIL"
     return out
 
 
-@job("signals.chain_import_history",
-     "One-off: import existing target_decision/decision_outcome rows as legacy.v0 chain history",
-     schedule_hint="manual only (record chain history import)")
+@job(
+    "signals.chain_import_history",
+    "One-off: import existing target_decision/decision_outcome rows as legacy.v0 chain history",
+    schedule_hint="manual only (record chain history import)",
+)
 def chain_import_history_job(ctx: JobContext) -> dict:
     from qp.signals import chain, chain_import
+
     if not chain.enabled():
         return {"ok": True, "skipped": "record_chain_disabled"}
     with Session(ctx.engine) as session:
@@ -144,8 +166,11 @@ def chain_import_history_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.outcomes", "Collect matured 1/3/5/10/20-session outcomes for swing decisions",
-     schedule_hint="Mon-Fri 16:10 CST")
+@job(
+    "signals.outcomes",
+    "Collect matured 1/3/5/10/20-session outcomes for swing decisions",
+    schedule_hint="Mon-Fri 16:10 CST",
+)
 def outcomes_job(ctx: JobContext) -> dict:
     with Session(ctx.engine) as session:
         out = evaluate_pending(session, as_of=now_cst().date())
@@ -154,11 +179,14 @@ def outcomes_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.shadow_record",
-     "Copy risk-blocked triggered entries into the shadow sample channel (validation only)",
-     schedule_hint="Mon-Fri 15:36 CST (after EOD; no notification)")
+@job(
+    "signals.shadow_record",
+    "Copy risk-blocked triggered entries into the shadow sample channel (validation only)",
+    schedule_hint="Mon-Fri 15:36 CST (after EOD; no notification)",
+)
 def shadow_record_job(ctx: JobContext) -> dict:
     from qp.signals import shadow
+
     with Session(ctx.engine) as session:
         # every date: a late EOD is picked up by the next run instead of being skipped
         out = shadow.record(session)
@@ -167,16 +195,24 @@ def shadow_record_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.rule_shadow",
-     "Experimental rule qp-swing.v2 signals (2x volume breakout); shadow tables only",
-     schedule_hint="Mon-Fri 15:37 CST (after EOD; never live, never notified)")
+@job(
+    "signals.rule_shadow",
+    "Experimental rule qp-swing.v2 signals (2x volume breakout); shadow tables only",
+    schedule_hint="Mon-Fri 15:37 CST (after EOD; never live, never notified)",
+)
 def rule_shadow_job(ctx: JobContext) -> dict:
     from qp.signals import rule_shadow
+
     today = now_cst().date()
     with Session(ctx.engine) as session:
-        is_open = session.scalar(select(func.count()).select_from(TradingDay).where(
-            TradingDay.origin == "qp", TradingDay.is_open.is_(True),
-            TradingDay.date == today)) or 0
+        is_open = (
+            session.scalar(
+                select(func.count())
+                .select_from(TradingDay)
+                .where(TradingDay.origin == "qp", TradingDay.is_open.is_(True), TradingDay.date == today)
+            )
+            or 0
+        )
         if not is_open:
             return {"ok": True, "skipped": "non_trading_day", "day": today.isoformat()}
         out = rule_shadow.generate(session, day=today)
@@ -185,11 +221,14 @@ def rule_shadow_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.rule_shadow_outcomes",
-     "Forward returns for the experimental rule signals (1/3/5/10/20 sessions)",
-     schedule_hint="Mon-Fri 16:17 CST (after shadow outcomes)")
+@job(
+    "signals.rule_shadow_outcomes",
+    "Forward returns for the experimental rule signals (1/3/5/10/20 sessions)",
+    schedule_hint="Mon-Fri 16:17 CST (after shadow outcomes)",
+)
 def rule_shadow_outcomes_job(ctx: JobContext) -> dict:
     from qp.signals import rule_shadow
+
     with Session(ctx.engine) as session:
         out = rule_shadow.collect(session, as_of=now_cst().date())
         session.commit()
@@ -197,15 +236,17 @@ def rule_shadow_outcomes_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.rotation_shadow",
-     "C13 cross-sectional ETF rotation shadow (250d Top8, 20-session rebalance); shadow tables only",
-     schedule_hint="Mon-Fri 15:50, 16:40 CST (idempotent publication-lag retry; no live/notify)")
+@job(
+    "signals.rotation_shadow",
+    "C13 cross-sectional ETF rotation shadow (250d Top8, 20-session rebalance); shadow tables only",
+    schedule_hint="Mon-Fri 15:50, 16:40 CST (idempotent publication-lag retry; no live/notify)",
+)
 def rotation_shadow_job(ctx: JobContext) -> dict:
     from qp.signals import rotation_shadow
+
     today = now_cst().date()
     with Session(ctx.engine) as session:
-        is_open = session.scalar(select(TradingDay.is_open).where(
-            TradingDay.origin == "qp", TradingDay.date == today))
+        is_open = session.scalar(select(TradingDay.is_open).where(TradingDay.origin == "qp", TradingDay.date == today))
         if is_open is None:
             return {"ok": False, "error": "calendar_day_unknown", "day": today.isoformat()}
         if not is_open:
@@ -216,11 +257,14 @@ def rotation_shadow_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.shadow_outcomes",
-     "Forward returns for shadow allowed samples (1/3/5/10/20 sessions)",
-     schedule_hint="Mon-Fri 16:15 CST (after outcomes 16:10)")
+@job(
+    "signals.shadow_outcomes",
+    "Forward returns for shadow allowed samples (1/3/5/10/20 sessions)",
+    schedule_hint="Mon-Fri 16:15 CST (after outcomes 16:10)",
+)
 def shadow_outcomes_job(ctx: JobContext) -> dict:
     from qp.signals import shadow
+
     with Session(ctx.engine) as session:
         out = shadow.collect(session, as_of=now_cst().date())
         session.commit()
@@ -228,11 +272,14 @@ def shadow_outcomes_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.acceptance",
-     "M4 live acceptance invariants for the latest decision day (replaces legacy compare)",
-     schedule_hint="Mon-Fri 16:50 CST (after outcomes 16:10 and index_close 16:30)")
+@job(
+    "signals.acceptance",
+    "M4 live acceptance invariants for the latest decision day (replaces legacy compare)",
+    schedule_hint="Mon-Fri 16:50 CST (after outcomes 16:10 and index_close 16:30)",
+)
 def acceptance_job(ctx: JobContext) -> dict:
     from qp.signals import acceptance
+
     today = now_cst().date()
     with Session(ctx.engine) as session:
         day = acceptance.latest_decision_date(session, today)
@@ -243,9 +290,11 @@ def acceptance_job(ctx: JobContext) -> dict:
     return out
 
 
-@job("signals.execution_digest",
-     "Previous-day approved-signal digest; write files + shadow row, never POST",
-     schedule_hint="manual only (digest timer removed 2026-11-13)")
+@job(
+    "signals.execution_digest",
+    "Previous-day approved-signal digest; write files + shadow row, never POST",
+    schedule_hint="manual only (digest timer removed 2026-11-13)",
+)
 def execution_digest_job(ctx: JobContext) -> dict:
     with Session(ctx.engine) as session:
         out = build_previous_day_digest(session, now=now_cst())

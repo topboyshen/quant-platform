@@ -4,6 +4,7 @@ Collects the legacy units, timers, containers and data paths that will be
 stopped/archived at decommission time.  The tool never stops, disables or
 deletes anything; it only records what exists with a stable manifest hash.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -13,8 +14,7 @@ import subprocess
 from collections.abc import Callable, Iterable
 from typing import Any
 
-LEGACY_PREFIXES = ("trading-radar", "astock", "quant-", "research-", "signal-bus",
-                   "qd-", "radar-", "nng8-")
+LEGACY_PREFIXES = ("trading-radar", "astock", "quant-", "research-", "signal-bus", "qd-", "radar-", "nng8-")
 
 DEFAULT_PATHS = (
     "/home/ubuntu/trading-radar",
@@ -32,9 +32,13 @@ def is_legacy_unit(name: str) -> bool:
 
 
 def _timer(row: dict[str, Any]) -> dict[str, Any]:
-    return {"unit": row.get("unit"), "activates": row.get("activates"),
-            "next": row.get("next"), "last": row.get("last"),
-            "persistent": row.get("persistent")}
+    return {
+        "unit": row.get("unit"),
+        "activates": row.get("activates"),
+        "next": row.get("next"),
+        "last": row.get("last"),
+        "persistent": row.get("persistent"),
+    }
 
 
 def parse_timers(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -47,8 +51,13 @@ def parse_containers(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         name = str(row.get("Names") or row.get("name") or "")
         if not name.startswith("radar-"):
             continue
-        out.append({"name": name, "image": row.get("Image") or row.get("image"),
-                    "status": row.get("Status") or row.get("status")})
+        out.append(
+            {
+                "name": name,
+                "image": row.get("Image") or row.get("image"),
+                "status": row.get("Status") or row.get("status"),
+            }
+        )
     return sorted(out, key=lambda item: item["name"])
 
 
@@ -61,20 +70,31 @@ def parse_du(output: str) -> dict[str, int]:
     return sizes
 
 
-def build_manifest(*, timers: Iterable[dict[str, Any]], user_timers: Iterable[dict[str, Any]],
-                   containers: Iterable[dict[str, Any]], paths: dict[str, int],
-                   generated_at: dt.datetime | None = None) -> dict[str, Any]:
+def build_manifest(
+    *,
+    timers: Iterable[dict[str, Any]],
+    user_timers: Iterable[dict[str, Any]],
+    containers: Iterable[dict[str, Any]],
+    paths: dict[str, int],
+    generated_at: dt.datetime | None = None,
+) -> dict[str, Any]:
     now = generated_at or dt.datetime.now(dt.UTC)
     timers_list = sorted(parse_timers(timers), key=lambda item: item["unit"] or "")
     user_list = sorted(parse_timers(user_timers), key=lambda item: item["unit"] or "")
     path_list = [{"path": path, "bytes": int(size)} for path, size in sorted(paths.items())]
-    return {"schema_version": 1,
-            "generated_at": now.isoformat(timespec="seconds"),
-            "timers": timers_list, "user_timers": user_list,
-            "containers": parse_containers(containers), "paths": path_list,
-            "totals": {"timers": len(timers_list) + len(user_list),
-                       "containers": len(parse_containers(containers)),
-                       "path_bytes": sum(item["bytes"] for item in path_list)}}
+    return {
+        "schema_version": 1,
+        "generated_at": now.isoformat(timespec="seconds"),
+        "timers": timers_list,
+        "user_timers": user_list,
+        "containers": parse_containers(containers),
+        "paths": path_list,
+        "totals": {
+            "timers": len(timers_list) + len(user_list),
+            "containers": len(parse_containers(containers)),
+            "path_bytes": sum(item["bytes"] for item in path_list),
+        },
+    }
 
 
 def manifest_sha256(manifest: dict[str, Any]) -> str:
@@ -85,8 +105,9 @@ def manifest_sha256(manifest: dict[str, Any]) -> str:
 
 def classify_paths(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     """Everything is archive-only; deletion requires separate consent and is never planned here."""
-    return [{"path": item["path"], "bytes": item["bytes"], "action": "archive_only"}
-            for item in manifest.get("paths", [])]
+    return [
+        {"path": item["path"], "bytes": item["bytes"], "action": "archive_only"} for item in manifest.get("paths", [])
+    ]
 
 
 def _run(cmd: list[str], runner: Callable[..., subprocess.CompletedProcess]) -> str:
@@ -124,17 +145,23 @@ def _json_rows(text: str) -> list[dict[str, Any]]:
     return []
 
 
-def collect(*, paths: Iterable[str] | None = None,
-            runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
-            generated_at: dt.datetime | None = None) -> dict[str, Any]:
+def collect(
+    *,
+    paths: Iterable[str] | None = None,
+    runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+    generated_at: dt.datetime | None = None,
+) -> dict[str, Any]:
     """Read-only collection via systemctl/docker/du; never mutates state."""
     timers_text = _run(["systemctl", "list-timers", "--all", "--no-pager", "--output=json"], runner)
-    user_text = _run(["systemctl", "--user", "list-timers", "--all", "--no-pager",
-                      "--output=json"], runner)
+    user_text = _run(["systemctl", "--user", "list-timers", "--all", "--no-pager", "--output=json"], runner)
     containers_text = _run(["docker", "ps", "--format", "{{json .}}"], runner)
     sizes: dict[str, int] = {}
-    for path in (DEFAULT_PATHS if paths is None else paths):
+    for path in DEFAULT_PATHS if paths is None else paths:
         sizes.update(parse_du(_run(["du", "-sb", str(path)], runner)))
-    return build_manifest(timers=_json_rows(timers_text), user_timers=_json_rows(user_text),
-                          containers=_json_rows(containers_text), paths=sizes,
-                          generated_at=generated_at)
+    return build_manifest(
+        timers=_json_rows(timers_text),
+        user_timers=_json_rows(user_text),
+        containers=_json_rows(containers_text),
+        paths=sizes,
+        generated_at=generated_at,
+    )

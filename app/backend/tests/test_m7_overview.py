@@ -1,4 +1,5 @@
 """M7.1 overview API: authenticated read model for the home page."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -28,21 +29,42 @@ def seed(engine) -> None:
     with Session(engine) as session:
         for check, status in (("db", "ok"), ("qlib", "warning")):
             session.add(HealthResult(run_at=now, check=check, status=status, summary=""))
-        session.add(EodRun(run_id=1, decision_date=DAY, attempt_no=1, status="success",
-                           decision_outcome="emitted", target_count=40, evaluated_count=40,
-                           failed_count=0, signal_count=3, allowed_signal_count=2,
-                           blocked_signal_count=1))
-        session.add(Report(kind="daily_research_summary", business_date=DAY, version=1,
-                           status="frozen", content_sha256="a" * 64, payload={"text": "x"}))
+        session.add(
+            EodRun(
+                run_id=1,
+                decision_date=DAY,
+                attempt_no=1,
+                status="success",
+                decision_outcome="emitted",
+                target_count=40,
+                evaluated_count=40,
+                failed_count=0,
+                signal_count=3,
+                allowed_signal_count=2,
+                blocked_signal_count=1,
+            )
+        )
+        session.add(
+            Report(
+                kind="daily_research_summary",
+                business_date=DAY,
+                version=1,
+                status="frozen",
+                content_sha256="a" * 64,
+                payload={"text": "x"},
+            )
+        )
         session.add(JobRun(job_name="signals.eod", status="succeeded", started_at=now))
         session.add(JobRun(job_name="signals.outcomes", status="failed", started_at=now))
-        session.add(Outbox(channel="telegram", recipient="ops", dedup_key="m7-1", body="x",
-                           mode="shadow", status="pending"))
+        session.add(
+            Outbox(channel="telegram", recipient="ops", dedup_key="m7-1", body="x", mode="shadow", status="pending")
+        )
         session.commit()
 
 
 def _token(engine) -> str:
     from qp.auth.sessions import create_service_token
+
     with Session(engine) as s:
         tok = create_service_token(s, "m7-probe", ["ops:read"])
         s.commit()

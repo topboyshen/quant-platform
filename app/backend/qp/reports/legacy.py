@@ -4,6 +4,7 @@ Mirrors the hashes used by the legacy ``report_binding`` module so qp can prove 
 legacy file is internally consistent before archiving it.  qp never writes the
 legacy directory.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -15,13 +16,11 @@ from typing import Any
 PRESENTATION_SCHEMA = "quant.daily-readable.v1"
 BINDING_SCHEMA = "quant.daily-report-evidence-binding.v1"
 CONTRACT = "daily-research-summary.v1"
-SOURCE_FIELDS = ("executionId", "runId", "marketDate", "generatedAt", "status",
-                 "releaseSha256", "resultSha256")
+SOURCE_FIELDS = ("executionId", "runId", "marketDate", "generatedAt", "status", "releaseSha256", "resultSha256")
 
 
 def canonical_json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-                      allow_nan=False)
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
 def digest(value: Any) -> str:
@@ -34,9 +33,11 @@ def file_sha256(path: str | Path) -> str:
 
 def is_readable_daily(summary: Any) -> bool:
     """Operational-failure records share the directory but are not readable reports."""
-    return (isinstance(summary, dict)
-            and summary.get("presentationSchema") == PRESENTATION_SCHEMA
-            and summary.get("version") == CONTRACT)
+    return (
+        isinstance(summary, dict)
+        and summary.get("presentationSchema") == PRESENTATION_SCHEMA
+        and summary.get("version") == CONTRACT
+    )
 
 
 def legacy_daily_path(root: str | Path, day: dt.date) -> Path | None:

@@ -1,4 +1,5 @@
 """M6.1 report archive: immutability, idempotency, delivery vs receipt separation."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -39,15 +40,19 @@ def test_freeze_is_idempotent_and_records_sources(engine):
     try:
         with Session(engine) as session:
             report, created = freeze_report(
-                session, kind="daily_research_summary", business_date=DAY, payload=PAYLOAD,
-                sources=[SourceRef(source="legacy_state", locator="2026-11-13-v1.json",
-                                   sha256="a" * 64)])
+                session,
+                kind="daily_research_summary",
+                business_date=DAY,
+                payload=PAYLOAD,
+                sources=[SourceRef(source="legacy_state", locator="2026-11-13-v1.json", sha256="a" * 64)],
+            )
             session.commit()
             assert created is True and report.id is not None
             assert report.content_sha256 == payload_sha256(PAYLOAD)
 
             same, created_again = freeze_report(
-                session, kind="daily_research_summary", business_date=DAY, payload=PAYLOAD)
+                session, kind="daily_research_summary", business_date=DAY, payload=PAYLOAD
+            )
             session.commit()
             assert created_again is False and same.id == report.id
         assert count(engine, Report) == 1
@@ -60,16 +65,15 @@ def test_frozen_report_cannot_be_replaced(engine):
     cleanup(engine)
     try:
         with Session(engine) as session:
-            freeze_report(session, kind="daily_research_summary", business_date=DAY,
-                          payload=PAYLOAD)
+            freeze_report(session, kind="daily_research_summary", business_date=DAY, payload=PAYLOAD)
             session.commit()
             changed = {**PAYLOAD, "title": "changed"}
             with pytest.raises(ReportConflict):
-                freeze_report(session, kind="daily_research_summary", business_date=DAY,
-                              payload=changed)
+                freeze_report(session, kind="daily_research_summary", business_date=DAY, payload=changed)
             # A new version is the only way to publish changed content.
-            report, created = freeze_report(session, kind="daily_research_summary",
-                                            business_date=DAY, payload=changed, version=2)
+            report, created = freeze_report(
+                session, kind="daily_research_summary", business_date=DAY, payload=changed, version=2
+            )
             session.commit()
             assert created is True and report.version == 2
         assert count(engine, Report) == 2
@@ -81,18 +85,15 @@ def test_delivery_and_receipt_are_separate(engine):
     cleanup(engine)
     try:
         with Session(engine) as session:
-            report, _ = freeze_report(session, kind="daily_research_summary",
-                                      business_date=DAY, payload=PAYLOAD)
+            report, _ = freeze_report(session, kind="daily_research_summary", business_date=DAY, payload=PAYLOAD)
             delivery = record_delivery(session, report, channel="telegram", target="ops")
             assert delivery.mode == "shadow" and delivery.status == "pending"
-            mark_delivery(session, delivery, status="shadowed",
-                          send_result={"note": "shadow mode: not sent"})
+            mark_delivery(session, delivery, status="shadowed", send_result={"note": "shadow mode: not sent"})
             session.commit()
             assert delivery.sent_at is not None
             assert delivery.send_result == {"note": "shadow mode: not sent"}
 
-            receipt = record_receipt(session, delivery, status="received",
-                                     evidence={"source": "relay"})
+            receipt = record_receipt(session, delivery, status="received", evidence={"source": "relay"})
             session.commit()
             assert receipt.received_at is not None
             # Receipt must not rewrite the sender-side result.
@@ -106,8 +107,7 @@ def test_delivery_dedup_key_is_stable(engine):
     cleanup(engine)
     try:
         with Session(engine) as session:
-            report, _ = freeze_report(session, kind="daily_research_summary",
-                                      business_date=DAY, payload=PAYLOAD)
+            report, _ = freeze_report(session, kind="daily_research_summary", business_date=DAY, payload=PAYLOAD)
             first = record_delivery(session, report, channel="telegram", target="ops")
             second = record_delivery(session, report, channel="telegram", target="ops")
             session.commit()

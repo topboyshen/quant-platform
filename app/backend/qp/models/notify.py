@@ -31,7 +31,9 @@ class DeliveryAttempt(Base):
     __tablename__ = "delivery_attempt"
     __table_args__ = {"schema": "notify"}
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    outbox_id: Mapped[int] = mapped_column(ForeignKey("notify.outbox.id", ondelete="CASCADE"), nullable=False, index=True)
+    outbox_id: Mapped[int] = mapped_column(
+        ForeignKey("notify.outbox.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     mode: Mapped[str] = mapped_column(String(16), nullable=False)
     ok: Mapped[bool | None] = mapped_column()

@@ -1,4 +1,5 @@
 """M7.3 signals read APIs and shadow compare file reader."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -23,25 +24,62 @@ def cleanup(engine) -> None:
 
 def seed(engine) -> None:
     with Session(engine) as session:
-        run = EodRun(run_id=11, decision_date=DAY, attempt_no=1, status="success",
-                     decision_outcome="emitted", target_count=40, evaluated_count=40,
-                     failed_count=0, signal_count=2, allowed_signal_count=1,
-                     blocked_signal_count=1, started_at=NOW)
+        run = EodRun(
+            run_id=11,
+            decision_date=DAY,
+            attempt_no=1,
+            status="success",
+            decision_outcome="emitted",
+            target_count=40,
+            evaluated_count=40,
+            failed_count=0,
+            signal_count=2,
+            allowed_signal_count=1,
+            blocked_signal_count=1,
+            started_at=NOW,
+        )
         session.add(run)
-        decision = TargetDecision(run_id=11, decision_date=DAY, code="510300", name="沪深300ETF",
-                                  sector="宽基", data_status="ok", decision_state="allowed",
-                                  risk_action="allowed", risk_level="growth_ok",
-                                  reason_code="trigger", reference_close=4.12,
-                                  raw_trigger_count=1)
+        decision = TargetDecision(
+            run_id=11,
+            decision_date=DAY,
+            code="510300",
+            name="沪深300ETF",
+            sector="宽基",
+            data_status="ok",
+            decision_state="allowed",
+            risk_action="allowed",
+            risk_level="growth_ok",
+            reason_code="trigger",
+            reference_close=4.12,
+            raw_trigger_count=1,
+        )
         session.add(decision)
         session.flush()
-        session.add(TrendSignal(decision_date=DAY, code="510300", name="沪深300ETF",
-                                signal_type="volume_breakout_ma60", period="D", data_date=DAY,
-                                title="放量突破", detail={"close": 4.12}, confidence=0.55))
-        session.add(DecisionOutcome(decision_id=decision.id, horizon_sessions=5,
-                                    entry_date=DAY, exit_date=DAY, net_return=0.01,
-                                    benchmark_return=0.005, excess_return=0.005,
-                                    fill_status="filled"))
+        session.add(
+            TrendSignal(
+                decision_date=DAY,
+                code="510300",
+                name="沪深300ETF",
+                signal_type="volume_breakout_ma60",
+                period="D",
+                data_date=DAY,
+                title="放量突破",
+                detail={"close": 4.12},
+                confidence=0.55,
+            )
+        )
+        session.add(
+            DecisionOutcome(
+                decision_id=decision.id,
+                horizon_sessions=5,
+                entry_date=DAY,
+                exit_date=DAY,
+                net_return=0.01,
+                benchmark_return=0.005,
+                excess_return=0.005,
+                fill_status="filled",
+            )
+        )
         session.commit()
 
 
@@ -49,6 +87,7 @@ def _token(engine) -> str:
     import uuid
 
     from qp.auth.sessions import create_service_token
+
     with Session(engine) as s:
         tok = create_service_token(s, f"m7-signals-{uuid.uuid4().hex[:8]}", ["signals:read"])
         s.commit()

@@ -1,4 +1,5 @@
 """17:40 ETF research shadow report: read-only payload, renderer and timer."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -33,30 +34,48 @@ def payload() -> dict:
         "read_only": True,
         "is_trade_signal": False,
         "scores": {
-            "20": {"run_id": 2, "model_version": "qp-etf-lgbm20-v1-test",
-                   "data_cutoff": "2026-11-16", "stale": False, "eligible": 40,
-                   "top8": [{"code": "515050", "name": "5G通信ETF", "rank": 1,
-                              "score": 0.0686}]},
-            "5": {"run_id": 3, "model_version": "qp-etf-lgbm5-v1-test",
-                  "data_cutoff": "2026-11-16", "stale": False, "eligible": 40,
-                  "top8": [{"code": "515050", "name": "5G通信ETF", "rank": 1,
-                             "score": 0.0393}]},
+            "20": {
+                "run_id": 2,
+                "model_version": "qp-etf-lgbm20-v1-test",
+                "data_cutoff": "2026-11-16",
+                "stale": False,
+                "eligible": 40,
+                "top8": [{"code": "515050", "name": "5G通信ETF", "rank": 1, "score": 0.0686}],
+            },
+            "5": {
+                "run_id": 3,
+                "model_version": "qp-etf-lgbm5-v1-test",
+                "data_cutoff": "2026-11-16",
+                "stale": False,
+                "eligible": 40,
+                "top8": [{"code": "515050", "name": "5G通信ETF", "rank": 1, "score": 0.0393}],
+            },
         },
-        "rotation": {"rule_version": "qp-rotation.v1", "trade_date": "2026-11-16",
-                     "signal_date": "2026-11-13", "execute_date": "2026-11-16",
-                     "nav": 994561.87, "nav_return": -0.0054,
-                     "benchmark_return": -0.0042, "ew_return": -0.0122,
-                     "positions": [{"code": "159941", "name": "纳指ETF"},
-                                   {"code": "512480", "name": "半导体ETF"}]},
+        "rotation": {
+            "rule_version": "qp-rotation.v1",
+            "trade_date": "2026-11-16",
+            "signal_date": "2026-11-13",
+            "execute_date": "2026-11-16",
+            "nav": 994561.87,
+            "nav_return": -0.0054,
+            "benchmark_return": -0.0042,
+            "ew_return": -0.0122,
+            "positions": [{"code": "159941", "name": "纳指ETF"}, {"code": "512480", "name": "半导体ETF"}],
+        },
         "data_quality": {"missing": [], "stale": [], "note": "5d/20d 均为当日快照，40/40 可评分"},
         "conclusion": "研究影子，不构成推荐；5d 仍不晋级。",
     }
 
 
 def test_render_etf_shadow_report():
-    row = Outbox(channel="telegram", recipient="signals", dedup_key="etf-shadow:render",
-                 subject="ETF 研究影子 2026-11-16", body=json.dumps(
-                     payload(), ensure_ascii=False), mode="live")
+    row = Outbox(
+        channel="telegram",
+        recipient="signals",
+        dedup_key="etf-shadow:render",
+        subject="ETF 研究影子 2026-11-16",
+        body=json.dumps(payload(), ensure_ascii=False),
+        mode="live",
+    )
     text = render_outbox(row)
     assert "ETF 研究影子 2026-11-16" in text
     assert "ETF 研究观察（不是买卖建议）" in text
@@ -68,20 +87,30 @@ def test_render_etf_shadow_report():
 
 
 def test_render_daily_includes_market_risk_and_funnel():
-    body = json.dumps({
-        "report_type": "eod_daily_report", "trade_date": "2026-11-16",
-        "terminal_ok": True, "terminal_reason": "success",
-        "market": {"text": "上证 3,602.57（-0.87%） | 创业板指 2,320.02（-4.37%）"},
-        "macro_text": "宏观：成交额 14,845 亿；涨停 32 / 跌停 62",
-        "risk_text": "风险闸门：critical（VIX=19.30 > 17.5）；VIX 19.30",
-        "funnel": "信号漏斗：评估 40/40 · 触发 0 · allowed 0 · 数据失败 0",
-        "reading": {"market_data": "标的行情：40/40 合格",
-                    "research_eligibility": "研究资格：批次成功"},
-        "today_trend_signals": 0,
-        "conclusion": "今日无 allowed 信号；描述性结果，不支持推荐。",
-    }, ensure_ascii=False)
-    row = Outbox(channel="telegram", recipient="signals", dedup_key="eod:render",
-                 subject="EOD 日报 2026-11-16", body=body, mode="live")
+    body = json.dumps(
+        {
+            "report_type": "eod_daily_report",
+            "trade_date": "2026-11-16",
+            "terminal_ok": True,
+            "terminal_reason": "success",
+            "market": {"text": "上证 3,602.57（-0.87%） | 创业板指 2,320.02（-4.37%）"},
+            "macro_text": "宏观：成交额 14,845 亿；涨停 32 / 跌停 62",
+            "risk_text": "风险闸门：critical（VIX=19.30 > 17.5）；VIX 19.30",
+            "funnel": "信号漏斗：评估 40/40 · 触发 0 · allowed 0 · 数据失败 0",
+            "reading": {"market_data": "标的行情：40/40 合格", "research_eligibility": "研究资格：批次成功"},
+            "today_trend_signals": 0,
+            "conclusion": "今日无 allowed 信号；描述性结果，不支持推荐。",
+        },
+        ensure_ascii=False,
+    )
+    row = Outbox(
+        channel="telegram",
+        recipient="signals",
+        dedup_key="eod:render",
+        subject="EOD 日报 2026-11-16",
+        body=body,
+        mode="live",
+    )
     text = render_outbox(row)
     assert "市场：上证 3,602.57" in text
     assert "宏观：成交额 14,845 亿" in text
@@ -94,31 +123,60 @@ def test_daily_builder_exposes_market_risk_and_funnel(engine):
     day = dt.date(2031, 4, 7)
     try:
         with Session(engine) as s:
-            s.add_all([
-                IndexClose(origin="qp", symbol="sh000001", trade_date=day, close=3602.57,
-                           source="test"),
-                IndexClose(origin="qp", symbol="sh000001", trade_date=day - dt.timedelta(days=3),
-                           close=3634.35, source="test"),
-                MacroSlice(decision_date=day, total_amount=14844.9, margin_balance=22791.12,
-                           margin_growth_pct=-0.708, limit_up=32, limit_down=62,
-                           limit_ratio=0.508, source="test", collect_status={}),
-                RiskState(observed_at=dt.datetime(2031, 4, 7, 15, 30, tzinfo=dt.UTC),
-                          level="critical", message="VIX=19.30 > 17.5",
-                          values={"vix": 19.3, "us_10y": 5.154}, raw={}),
-            ])
+            s.add_all(
+                [
+                    IndexClose(origin="qp", symbol="sh000001", trade_date=day, close=3602.57, source="test"),
+                    IndexClose(
+                        origin="qp",
+                        symbol="sh000001",
+                        trade_date=day - dt.timedelta(days=3),
+                        close=3634.35,
+                        source="test",
+                    ),
+                    MacroSlice(
+                        decision_date=day,
+                        total_amount=14844.9,
+                        margin_balance=22791.12,
+                        margin_growth_pct=-0.708,
+                        limit_up=32,
+                        limit_down=62,
+                        limit_ratio=0.508,
+                        source="test",
+                        collect_status={},
+                    ),
+                    RiskState(
+                        observed_at=dt.datetime(2031, 4, 7, 15, 30, tzinfo=dt.UTC),
+                        level="critical",
+                        message="VIX=19.30 > 17.5",
+                        values={"vix": 19.3, "us_10y": 5.154},
+                        raw={},
+                    ),
+                ]
+            )
             s.commit()
             out = build_daily_report(
-                s, result={"ok": True, "reason": "success",
-                           "run": {"run_id": 999, "status": "success", "target_count": 40,
-                                   "evaluated_count": 40, "failed_count": 0, "signal_count": 0,
-                                   "allowed_signal_count": 0, "blocked_signal_count": 0}},
-                now=dt.datetime(2031, 4, 7, 15, 50, tzinfo=dt.UTC))
+                s,
+                result={
+                    "ok": True,
+                    "reason": "success",
+                    "run": {
+                        "run_id": 999,
+                        "status": "success",
+                        "target_count": 40,
+                        "evaluated_count": 40,
+                        "failed_count": 0,
+                        "signal_count": 0,
+                        "allowed_signal_count": 0,
+                        "blocked_signal_count": 0,
+                    },
+                },
+                now=dt.datetime(2031, 4, 7, 15, 50, tzinfo=dt.UTC),
+            )
     finally:
         with Session(engine) as s:
             s.execute(delete(IndexClose).where(IndexClose.source == "test"))
             s.execute(delete(MacroSlice).where(MacroSlice.decision_date == day))
-            s.execute(delete(RiskState).where(
-                RiskState.observed_at == dt.datetime(2031, 4, 7, 15, 30, tzinfo=dt.UTC)))
+            s.execute(delete(RiskState).where(RiskState.observed_at == dt.datetime(2031, 4, 7, 15, 30, tzinfo=dt.UTC)))
             s.commit()
     assert out["market"]["text"].startswith("上证 3,602.57")
     assert out["market"]["indices"][0]["change"] < 0
@@ -130,8 +188,7 @@ def test_daily_builder_exposes_market_risk_and_funnel(engine):
 
 
 def test_combined_renderer_contains_both_sections():
-    body = {"report_type": "daily_combined_report", "trade_date": "2026-11-16",
-            "etf_shadow": payload()}
+    body = {"report_type": "daily_combined_report", "trade_date": "2026-11-16", "etf_shadow": payload()}
     body["terminal_ok"] = True
     body["market"] = {"text": "上证 3,602.57（-0.87%）"}
     body["macro_text"] = "宏观：成交额 14,845 亿"
@@ -139,9 +196,14 @@ def test_combined_renderer_contains_both_sections():
     body["funnel"] = "信号漏斗：评估 40/40 · 触发 0 · allowed 0"
     body["reading"] = {"market_data": "标的行情：40/40 合格"}
     body["conclusion"] = "今日无 allowed 信号；不支持推荐。"
-    row = Outbox(channel="telegram", recipient="signals", dedup_key="combined:render",
-                 subject="每日报告 2026-11-16", body=json.dumps(body, ensure_ascii=False),
-                 mode="live")
+    row = Outbox(
+        channel="telegram",
+        recipient="signals",
+        dedup_key="combined:render",
+        subject="每日报告 2026-11-16",
+        body=json.dumps(body, ensure_ascii=False),
+        mode="live",
+    )
     text = render_outbox(row)
     assert "市场：上证 3,602.57" in text
     assert "风险闸门：critical" in text
@@ -156,8 +218,7 @@ def test_job_is_shadow_only_when_combined_disabled(engine, monkeypatch):
     with Session(engine) as s:
         s.execute(delete(Outbox).where(Outbox.dedup_key == key))
         s.commit()
-    out = etf_shadow_report_job(JobContext(engine=engine, run_id=0,
-                                          name="research.etf_shadow_report"))
+    out = etf_shadow_report_job(JobContext(engine=engine, run_id=0, name="research.etf_shadow_report"))
     assert out["combined"] is False
     with Session(engine) as s:
         row = s.scalar(select(Outbox).where(Outbox.dedup_key == key))

@@ -24,12 +24,14 @@ def test_passwords():
         scheme_of,
         verify_password,
     )
+
     h = hash_password(PW)
     assert scheme_of(h) == "argon2" and verify_password(PW, h) and not verify_password("x", h)
     assert not needs_rehash(h)
     b = bcrypt.hashpw(PW.encode(), bcrypt.gensalt(rounds=4)).decode()
     assert scheme_of(b) == "legacy_bcrypt" and verify_password(PW, b) and needs_rehash(b)
     import hashlib
+
     legacy = "sha256$abc$" + hashlib.sha256((PW + "abc").encode()).hexdigest()
     assert verify_password(PW, legacy) and not verify_password("y", legacy)
     assert not verify_password(PW, "garbage")
@@ -38,6 +40,7 @@ def test_passwords():
 @pytest.fixture()
 def seeded(engine, monkeypatch):
     from qp.cli import main
+
     b = bcrypt.hashpw(PW.encode(), bcrypt.gensalt(rounds=4)).decode()
     monkeypatch.setattr(sys, "stdin", io.StringIO(f"admin\t{b}\n"))
     assert main(["user", "import-legacy", "--stdin", "--force"]) == 0
@@ -49,6 +52,7 @@ def client(engine):  # noqa: F811
     from fastapi.testclient import TestClient
 
     from qp.api.main import app
+
     return TestClient(app, base_url="https://testserver")
 
 
@@ -64,6 +68,7 @@ def test_unauth_401(client):
 
 def test_login_rehash_logout(seeded, client, engine):
     from qp.models.core import User
+
     r = client.post("/api/auth/login", json={"username": "admin", "password": PW})
     assert r.status_code == 200, r.text
     sc = r.headers["set-cookie"].lower()
@@ -83,8 +88,9 @@ def test_login_rehash_logout(seeded, client, engine):
 
 
 def test_cross_origin_login_rejected(seeded, client):
-    r = client.post("/api/auth/login", json={"username": "admin", "password": PW},
-                    headers={"origin": "https://evil.example"})
+    r = client.post(
+        "/api/auth/login", json={"username": "admin", "password": PW}, headers={"origin": "https://evil.example"}
+    )
     assert r.status_code == 403
 
 
@@ -96,6 +102,7 @@ def test_lockout(engine, client):
 
 def test_service_token(engine, client):
     from qp.auth.sessions import create_service_token
+
     with Session(engine) as s:
         tok = create_service_token(s, "test-svc", ["ops:read"])
         s.commit()
@@ -105,9 +112,11 @@ def test_service_token(engine, client):
 
 def test_healthcheck_failure_goes_to_shadow_outbox(engine, monkeypatch):
     from qp.jobs import builtin, run_job
+
     monkeypatch.setattr(builtin, "API_PROBE_ATTEMPTS", 1)
     monkeypatch.setattr(builtin, "API_PROBE_DELAY_SEC", 0)
     from qp.models.notify import DeliveryAttempt, Outbox
+
     run = run_job(engine, "ops.healthcheck", trigger="test")
     assert run.status == "failed"  # api url unreachable in tests
     assert run.result["checks"]["db"]["ok"] is True
@@ -142,26 +151,36 @@ def test_login_commits_session_before_returning(engine):
             pass
 
     with Session(engine) as s:
-        s.execute(delete(DbSession).where(DbSession.user_id.in_(
-            select(User.id).where(User.username == "commitprobe"))))
+        s.execute(delete(DbSession).where(DbSession.user_id.in_(select(User.id).where(User.username == "commitprobe"))))
         s.execute(delete(AuditEvent).where(AuditEvent.actor == "commitprobe"))
         s.execute(delete(User).where(User.username == "commitprobe"))
-        s.add(User(username="commitprobe", password_hash=hash_password(PW),
-                   hash_scheme="argon2", role="admin", source="test"))
+        s.add(
+            User(
+                username="commitprobe",
+                password_hash=hash_password(PW),
+                hash_scheme="argon2",
+                role="admin",
+                source="test",
+            )
+        )
         s.commit()
     try:
         with Session(engine) as s:
             login(LoginIn(username="commitprobe", password=PW), Req(), Resp(), db=s)
             # no commit here: another connection must already see the session row
             with engine.connect() as c:
-                count = c.execute(text(
-                    "select count(*) from core.session s join core.user u on u.id = s.user_id "
-                    "where u.username = 'commitprobe'")).scalar()
+                count = c.execute(
+                    text(
+                        "select count(*) from core.session s join core.user u on u.id = s.user_id "
+                        "where u.username = 'commitprobe'"
+                    )
+                ).scalar()
             assert count == 1
     finally:
         with Session(engine) as s:
-            s.execute(delete(DbSession).where(DbSession.user_id.in_(
-                select(User.id).where(User.username == "commitprobe"))))
+            s.execute(
+                delete(DbSession).where(DbSession.user_id.in_(select(User.id).where(User.username == "commitprobe")))
+            )
             s.execute(delete(AuditEvent).where(AuditEvent.actor == "commitprobe"))
             s.execute(delete(User).where(User.username == "commitprobe"))
             s.commit()
@@ -172,6 +191,7 @@ def test_healthcheck_backup_freshness(engine, monkeypatch, tmp_path):
     import time
 
     from qp.jobs import builtin, run_job
+
     monkeypatch.setattr(builtin, "API_PROBE_ATTEMPTS", 1)
     monkeypatch.setattr(builtin, "API_PROBE_DELAY_SEC", 0)
     monkeypatch.setenv("QP_BACKUP_DIR", str(tmp_path))
@@ -196,6 +216,7 @@ def test_dedup_and_lock(engine):
     @job("test.noop", "noop")
     def _noop(ctx):
         return {"ok": True}
+
     a = run_job(engine, "test.noop", dedup_key="k1")
     b = run_job(engine, "test.noop", dedup_key="k1")
     assert a.status == "succeeded" and b.status == "skipped_dup"
@@ -210,6 +231,7 @@ def test_dedup_and_lock(engine):
 
 def test_unknown_job(engine):
     from qp.jobs import run_job
+
     with pytest.raises(KeyError):
         run_job(engine, "nope")
 
@@ -217,6 +239,7 @@ def test_unknown_job(engine):
 @pytest.mark.skipif(shutil.which("pg_dump") is None, reason="pg_dump not on PATH")
 def test_backup(engine):
     from qp.jobs import run_job
+
     r = run_job(engine, "ops.backup", trigger="test", dedup_key="test-day")
     assert r.status == "succeeded", r.error
     assert r.result["bytes"] > 0 and len(r.result["sha256"]) == 64
@@ -225,8 +248,12 @@ def test_backup(engine):
 
 def test_single_account_guard(seeded, monkeypatch):
     from qp.cli import main
-    monkeypatch.setattr(sys, "stdin", io.StringIO("someoneelse\t$2b$04$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyzABCDE\n"))
+
+    monkeypatch.setattr(
+        sys, "stdin", io.StringIO("someoneelse\t$2b$04$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyzABCDE\n")
+    )
     assert main(["user", "import-legacy", "--stdin"]) == 3
+
 
 def test_probe_api_retries_a_deploy_restart(monkeypatch):
     import urllib.error

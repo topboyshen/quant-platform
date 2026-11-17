@@ -1,4 +1,5 @@
 """Dolt probe budget/retry behavior and Eastmoney name fallback."""
+
 from __future__ import annotations
 
 import pytest
@@ -88,7 +89,10 @@ def test_tencent_names_parses_gbk_in_batches(monkeypatch):
 
     monkeypatch.setattr(sources, "fetch", fake)
     assert sources.tencent_names(["SH600000", "SZ000001", "BJ430017", "bad"], batch_size=2) == {
-        "SH600000": "浦发银行", "SZ000001": "平安银行", "BJ430017": "星昊医药"}
+        "SH600000": "浦发银行",
+        "SZ000001": "平安银行",
+        "BJ430017": "星昊医药",
+    }
     assert calls == [sources.TENCENT_QUOTE + "sh600000,sz000001", sources.TENCENT_QUOTE + "bj430017"]
 
 
@@ -118,7 +122,7 @@ def test_tencent_names_fails_after_last_transient_error(monkeypatch):
 
 
 def test_tencent_names_empty_response_is_an_error(monkeypatch):
-    monkeypatch.setattr(sources, "fetch", lambda url, **kw: _Resp("v_sh600000=\"\";"))
+    monkeypatch.setattr(sources, "fetch", lambda url, **kw: _Resp('v_sh600000="";'))
     with pytest.raises(sources.FetchError, match="tencent_names_empty"):
         sources.tencent_names(["SH600000"])
 

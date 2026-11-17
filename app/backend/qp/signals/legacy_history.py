@@ -4,6 +4,7 @@ The legacy SQLite database is opened with ``mode=ro``; qp only inserts into its 
 ``signals`` schema.  Dates that already have a qp run (for example today's live EOD)
 are skipped, so the import can never overwrite a natural run.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -54,13 +55,15 @@ def _json(value: Any, default: Any) -> Any:
         return default
 
 
-def import_legacy_history(session: Session, db_path: str | Path, *,
-                          before: dt.date | None = None) -> dict[str, list[str]]:
+def import_legacy_history(
+    session: Session, db_path: str | Path, *, before: dt.date | None = None
+) -> dict[str, list[str]]:
     """Import every legacy decision date older than ``before`` that qp does not have yet."""
     con = _connect_ro(db_path)
     try:
-        dates = [row[0] for row in con.execute(
-            "SELECT DISTINCT decision_date FROM swing_eod_run ORDER BY decision_date")]
+        dates = [
+            row[0] for row in con.execute("SELECT DISTINCT decision_date FROM swing_eod_run ORDER BY decision_date")
+        ]
         existing = set(session.scalars(select(EodRun.decision_date).distinct()))
         imported: list[str] = []
         skipped: list[str] = []
@@ -71,47 +74,65 @@ def import_legacy_history(session: Session, db_path: str | Path, *,
             if (before is not None and day >= before) or day in existing:
                 skipped.append(date_text)
                 continue
-            runs = con.execute("SELECT * FROM swing_eod_run WHERE decision_date=? ORDER BY id",
-                               (date_text,)).fetchall()
+            runs = con.execute("SELECT * FROM swing_eod_run WHERE decision_date=? ORDER BY id", (date_text,)).fetchall()
             if not runs:
                 continue
             run_row = runs[-1]
-            decisions = con.execute("SELECT * FROM eod_target_decision WHERE run_id=? ORDER BY code",
-                                    (run_row["run_id"],)).fetchall()
-            run = EodRun(decision_date=day, attempt_no=1,
-                         data_date=_date(run_row["data_date"]),
-                         status=run_row["status"] or "success",
-                         decision_outcome=run_row["decision_outcome"],
-                         target_count=int(run_row["target_count"] or 0),
-                         evaluated_count=int(run_row["evaluated_count"] or 0),
-                         failed_count=int(run_row["failed_count"] or 0),
-                         signal_count=int(run_row["signal_count"] or 0),
-                         allowed_signal_count=int(run_row["allowed_signal_count"] or 0),
-                         blocked_signal_count=int(run_row["blocked_signal_count"] or 0),
-                         reason_codes=_json(run_row["reason_codes"], []),
-                         details={"imported_from": "legacy_swing_macro", "legacy_run_id": run_row["run_id"]},
-                         legacy_run_id=run_row["run_id"],
-                         started_at=_dt(run_row["started_at"]) or dt.datetime.now(CST),
-                         finished_at=_dt(run_row["completed_at"]))
+            decisions = con.execute(
+                "SELECT * FROM eod_target_decision WHERE run_id=? ORDER BY code", (run_row["run_id"],)
+            ).fetchall()
+            run = EodRun(
+                decision_date=day,
+                attempt_no=1,
+                data_date=_date(run_row["data_date"]),
+                status=run_row["status"] or "success",
+                decision_outcome=run_row["decision_outcome"],
+                target_count=int(run_row["target_count"] or 0),
+                evaluated_count=int(run_row["evaluated_count"] or 0),
+                failed_count=int(run_row["failed_count"] or 0),
+                signal_count=int(run_row["signal_count"] or 0),
+                allowed_signal_count=int(run_row["allowed_signal_count"] or 0),
+                blocked_signal_count=int(run_row["blocked_signal_count"] or 0),
+                reason_codes=_json(run_row["reason_codes"], []),
+                details={"imported_from": "legacy_swing_macro", "legacy_run_id": run_row["run_id"]},
+                legacy_run_id=run_row["run_id"],
+                started_at=_dt(run_row["started_at"]) or dt.datetime.now(CST),
+                finished_at=_dt(run_row["completed_at"]),
+            )
             session.add(run)
             session.flush()
             for row in decisions:
-                session.add(TargetDecision(
-                    run_id=run.run_id, decision_date=day, code=row["code"],
-                    name=row["name"] or "", sector=row["sector"] or "",
-                    data_status=row["data_status"], decision_state=row["decision_state"],
-                    risk_action=row["risk_action"], risk_level=row["risk_level"],
-                    reason_code=row["reason_code"] or "",
-                    reference_close=row["reference_close"],
-                    raw_trigger_count=int(row["raw_trigger_count"] or 0)))
-            for row in con.execute("SELECT * FROM trend_signal WHERE date=? ORDER BY id",
-                                   (date_text,)).fetchall():
-                session.add(TrendSignal(
-                    decision_date=day, code=row["code"], name=row["name"] or "",
-                    signal_type=row["signal_type"], period=row["period"],
-                    data_date=_date(row["data_date"]), title=row["title"] or "",
-                    detail=_json(row["detail"], {}), confidence=row["confidence"] or 0,
-                    notified_at=_dt(row["notified_at"])))
+                session.add(
+                    TargetDecision(
+                        run_id=run.run_id,
+                        decision_date=day,
+                        code=row["code"],
+                        name=row["name"] or "",
+                        sector=row["sector"] or "",
+                        data_status=row["data_status"],
+                        decision_state=row["decision_state"],
+                        risk_action=row["risk_action"],
+                        risk_level=row["risk_level"],
+                        reason_code=row["reason_code"] or "",
+                        reference_close=row["reference_close"],
+                        raw_trigger_count=int(row["raw_trigger_count"] or 0),
+                    )
+                )
+            for row in con.execute("SELECT * FROM trend_signal WHERE date=? ORDER BY id", (date_text,)).fetchall():
+                session.add(
+                    TrendSignal(
+                        decision_date=day,
+                        code=row["code"],
+                        name=row["name"] or "",
+                        signal_type=row["signal_type"],
+                        period=row["period"],
+                        data_date=_date(row["data_date"]),
+                        title=row["title"] or "",
+                        detail=_json(row["detail"], {}),
+                        confidence=row["confidence"] or 0,
+                        notified_at=_dt(row["notified_at"]),
+                    )
+                )
             session.flush()
             imported.append(date_text)
         return {"imported": imported, "skipped": skipped}

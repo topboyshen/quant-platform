@@ -1,4 +1,5 @@
 """M5.3 AI record import and replay-only LLM entry point."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -36,27 +37,59 @@ class FakeReader:
 def ai_tables() -> dict[str, list[dict]]:
     now = dt.datetime(2026, 8, 20, 10, 0)
     return {
-        "qd_analysis_tasks": [{
-            "id": 1, "user_id": 1, "market": "cn", "symbol": "510300", "model": "kimi-k3",
-            "language": "zh", "status": "completed",
-            "result_json": '{"decision": "buy", "confidence": 72}',
-            "error_message": None, "created_at": now, "completed_at": now,
-        }],
-        "qd_analysis_memory": [{
-            "id": 1, "user_id": 1, "market": "cn", "symbol": "510300", "decision": "buy",
-            "confidence": 72, "price_at_analysis": 4.1, "summary": "trend",
-            "reasons": '["ma20", "volume"]', "scores": '{"trend": 8}',
-            "indicators_snapshot": '{"ma20": 4.0}', "raw_result": '{"ok": true}',
-            "created_at": now, "updated_at": now,
-        }],
-        "ai_chat_sessions": [{
-            "id": "sess-1", "user_id": 1, "title": "chat", "market": "cn",
-            "symbol": "510300", "created_at": now, "updated_at": now,
-        }],
-        "ai_chat_messages": [{
-            "id": 1, "session_id": "sess-1", "role": "user", "content": "hi",
-            "created_at": now,
-        }],
+        "qd_analysis_tasks": [
+            {
+                "id": 1,
+                "user_id": 1,
+                "market": "cn",
+                "symbol": "510300",
+                "model": "kimi-k3",
+                "language": "zh",
+                "status": "completed",
+                "result_json": '{"decision": "buy", "confidence": 72}',
+                "error_message": None,
+                "created_at": now,
+                "completed_at": now,
+            }
+        ],
+        "qd_analysis_memory": [
+            {
+                "id": 1,
+                "user_id": 1,
+                "market": "cn",
+                "symbol": "510300",
+                "decision": "buy",
+                "confidence": 72,
+                "price_at_analysis": 4.1,
+                "summary": "trend",
+                "reasons": '["ma20", "volume"]',
+                "scores": '{"trend": 8}',
+                "indicators_snapshot": '{"ma20": 4.0}',
+                "raw_result": '{"ok": true}',
+                "created_at": now,
+                "updated_at": now,
+            }
+        ],
+        "ai_chat_sessions": [
+            {
+                "id": "sess-1",
+                "user_id": 1,
+                "title": "chat",
+                "market": "cn",
+                "symbol": "510300",
+                "created_at": now,
+                "updated_at": now,
+            }
+        ],
+        "ai_chat_messages": [
+            {
+                "id": 1,
+                "session_id": "sess-1",
+                "role": "user",
+                "content": "hi",
+                "created_at": now,
+            }
+        ],
     }
 
 
@@ -95,8 +128,7 @@ def test_replay_completion_uses_imported_task_and_audits(engine):
     try:
         import_ai(engine, FakeReader(ai_tables()))
         with Session(engine) as session:
-            response = complete(session, LLMRequest(
-                prompt="analyze 510300", metadata={"replay_task_id": 1}))
+            response = complete(session, LLMRequest(prompt="analyze 510300", metadata={"replay_task_id": 1}))
             session.commit()
             assert response.mode == "replay" and response.status == "replayed"
             assert response.model == "kimi-k3"
