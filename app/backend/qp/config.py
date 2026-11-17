@@ -33,6 +33,7 @@ class Settings:
     execution_digest_output_dir: str
     record_chain: bool  # M10 ETF record-chain dual-write switch
     chain_reads: bool  # P7 read switch: page/API read the record chain instead of target_decision
+    job_gates: bool  # P1: downstream jobs require same-day upstream success
     chain_reads_fallback: bool  # fall back to target_decision when the chain has no snapshot
 
 
@@ -64,5 +65,6 @@ def get_settings() -> Settings:
         execution_digest_output_dir=os.getenv("QP_EXECUTION_DIGEST_DIR", "/var/lib/qp/signals/digests"),
         record_chain=os.getenv("QP_RECORD_CHAIN", "0").strip().lower() in {"1", "true", "yes", "on"},
         chain_reads=os.getenv("QP_CHAIN_READS", "0").strip().lower() in {"1", "true", "yes", "on"},
+        job_gates=os.getenv("QP_JOB_GATES", "0").strip().lower() in {"1", "true", "yes", "on"},
         chain_reads_fallback=os.getenv("QP_CHAIN_READS_FALLBACK", "1").strip().lower() in {"1", "true", "yes", "on"},
     )

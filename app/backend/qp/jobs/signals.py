@@ -8,6 +8,7 @@ import datetime as dt
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from qp.jobs.gates import require_job_success
 from qp.jobs.registry import JobContext, job
 from qp.models.market import TradingDay
 from qp.signals.approved import build_previous_day_digest
@@ -21,6 +22,13 @@ from qp.signals.eod import (
 from qp.signals.outcomes import evaluate_pending
 from qp.signals.repair import run_repair
 from qp.signals.watchdog import latest_retryable_run, run_watchdog
+
+
+def _gate(ctx: JobContext, upstream: str, *, max_age_hours: float = 8.0) -> dict | None:
+    gate = require_job_success(ctx.engine, upstream, max_age_hours=max_age_hours)
+    if gate["ok"]:
+        return None
+    return {"ok": False, "blocked": "upstream_gate", "gate": gate}
 
 
 @job(
@@ -121,6 +129,9 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
 
     if not chain.enabled():
         return {"ok": True, "skipped": "record_chain_disabled"}
+    blocked = _gate(ctx, "signals.eod")
+    if blocked:
+        return blocked
     today = now_cst().date()
     with Session(ctx.engine) as session:
         out = chain.build_snapshot(session, business_date=today)
@@ -143,6 +154,9 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
 def chain_window_job(ctx: JobContext) -> dict:
     from qp.signals import chain_window
 
+    blocked = _gate(ctx, "signals.chain_snapshot")
+    if blocked:
+        return blocked
     with Session(ctx.engine) as session:
         out = chain_window.report(session, end=now_cst().date())
     out["ok"] = out.get("verdict") != "FAIL"
@@ -215,6 +229,9 @@ def rule_shadow_job(ctx: JobContext) -> dict:
         )
         if not is_open:
             return {"ok": True, "skipped": "non_trading_day", "day": today.isoformat()}
+        blocked = _gate(ctx, "signals.eod")
+        if blocked:
+            return blocked
         out = rule_shadow.generate(session, day=today)
         session.commit()
     out["ok"] = True
@@ -282,6 +299,9 @@ def acceptance_job(ctx: JobContext) -> dict:
 
     today = now_cst().date()
     with Session(ctx.engine) as session:
+        blocked = _gate(ctx, "signals.outcomes")
+        if blocked:
+            return blocked
         day = acceptance.latest_decision_date(session, today)
         if day is None:
             return {"ok": False, "reason": "no_runs"}

@@ -20,6 +20,7 @@ from qp.models.market import IndexClose
 from qp.models.notify import Outbox
 from qp.models.signals import MacroSlice, RiskState
 from qp.notify.render import render_outbox
+from qp.signals.eod import now_cst
 from qp.signals.watchdog import build_daily_report
 
 DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
@@ -214,7 +215,7 @@ def test_combined_renderer_contains_both_sections():
 
 def test_job_is_shadow_only_when_combined_disabled(engine, monkeypatch):
     monkeypatch.setenv("QP_SIGNALS_COMBINED_REPORT", "0")
-    key = "etf-shadow:2026-11-17"
+    key = f"etf-shadow:{now_cst().date().isoformat()}"
     with Session(engine) as s:
         s.execute(delete(Outbox).where(Outbox.dedup_key == key))
         s.commit()

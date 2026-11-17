@@ -110,7 +110,7 @@ def run_job(engine: Engine, name: str, trigger: str = "manual", dedup_key: str |
             try:
                 result = spec.func(JobContext(engine, run_id, name)) or {}
                 if result.get("ok") is False:
-                    status = "failed"
+                    status = "blocked" if result.get("blocked") else "failed"
             except Exception as e:  # record, don't crash the timer silently
                 status, error = "failed", f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=5)}"
             with Session(engine, expire_on_commit=False) as s:

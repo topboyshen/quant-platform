@@ -50,7 +50,11 @@ def overview(p: Principal = Depends(require_auth), db: Session = Depends(get_db)
 
     since = utcnow() - dt.timedelta(hours=24)
     failed = (
-        db.scalar(select(func.count()).select_from(JobRun).where(JobRun.status == "failed", JobRun.started_at >= since))
+        db.scalar(
+            select(func.count())
+            .select_from(JobRun)
+            .where(JobRun.status.in_(("failed", "blocked")), JobRun.started_at >= since)
+        )
         or 0
     )
     recent = db.execute(
@@ -58,7 +62,7 @@ def overview(p: Principal = Depends(require_auth), db: Session = Depends(get_db)
     ).all()
     failed_rows = db.execute(
         select(JobRun.id, JobRun.job_name, JobRun.started_at, JobRun.error)
-        .where(JobRun.status == "failed", JobRun.started_at >= since)
+        .where(JobRun.status.in_(("failed", "blocked")), JobRun.started_at >= since)
         .order_by(JobRun.id.desc())
         .limit(10)
     ).all()
