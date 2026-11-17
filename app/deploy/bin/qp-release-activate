@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# Atomically activate a qp release with health/smoke gating and automatic rollback.
+#
+#   sudo app/deploy/bin/qp-release-activate \
+#       --release /opt/qp/releases/<new> \
+#       --previous /opt/qp/releases/<prev> \
+#       [--current /opt/qp/current] \
+#       [--service qp-api] \
+#       [--health-url http://127.0.0.1:18800/api/health] \
+#       [--smoke 'cd ... && npm run smoke'] \
+#       [--dry-run]
+#
+# The caller owns DB backup/migration.  This script never migrates, never writes
+# business tables, and never runs a job.
+set -Eeuo pipefail
+
+RELEASE=""
+PREVIOUS=""
+CURRENT="/opt/qp/current"
+SERVICE="qp-api"
+HEALTH_URL="http://127.0.0.1:18800/api/health"
+SMOKE_CMD=""
+DRY_RUN=0
+HEALTH_RETRIES=30
+HEALTH_DELAY=0.5
+
+usage() {
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --release) RELEASE=${2:?}; shift 2 ;;
+    --previous) PREVIOUS=${2:?}; shift 2 ;;
+    --current) CURRENT=${2:?}; shift 2 ;;
+    --service) SERVICE=${2:?}; shift 2 ;;
+    --health-url) HEALTH_URL=${2:?}; shift 2 ;;
+    --smoke) SMOKE_CMD=${2:?}; shift 2 ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+[ -n "$RELEASE" ] && [ -n "$PREVIOUS" ] || { echo "release and previous are required" >&2; exit 2; }
+[ -d "$RELEASE" ] || { echo "release missing: $RELEASE" >&2; exit 2; }
+[ -d "$PREVIOUS" ] || { echo "previous missing: $PREVIOUS" >&2; exit 2; }
+[ -x "$RELEASE/venv/bin/qp" ] || { echo "release venv missing: $RELEASE/venv/bin/qp" >&2; exit 2; }
+[ -x "$PREVIOUS/venv/bin/qp" ] || { echo "previous venv missing: $PREVIOUS/venv/bin/qp" >&2; exit 2; }
+
+current_target=$(readlink -f "$CURRENT" 2>/dev/null || true)
+if [ "$current_target" != "$(readlink -f "$PREVIOUS")" ]; then
+  echo "current release is not the declared previous: ${current_target:-<missing>} != $(readlink -f "$PREVIOUS")" >&2
+  exit 2
+fi
+
+if [ "$DRY_RUN" = 1 ]; then
+  echo "DRY_RUN OK release=$RELEASE previous=$PREVIOUS current=$CURRENT service=$SERVICE health=$HEALTH_URL"
+  exit 0
+fi
+
+[ "$(id -u)" = 0 ] || { echo "activation must run as root" >&2; exit 2; }
+command -v curl >/dev/null || { echo "curl is required" >&2; exit 2; }
+command -v systemctl >/dev/null || { echo "systemctl is required" >&2; exit 2; }
+"$RELEASE/venv/bin/qp" --help >/dev/null
+
+switch_to() {
+  ln -sfn "$1" "$CURRENT.tmp"
+  mv -T "$CURRENT.tmp" "$CURRENT"
+}
+
+health_ok() {
+  local i
+  for i in $(seq 1 "$HEALTH_RETRIES"); do
+    if curl -fsS -o /dev/null --max-time 3 "$HEALTH_URL"; then
+      return 0
+    fi
+    sleep "$HEALTH_DELAY"
+  done
+  return 1
+}
+
+rollback() {
+  local reason=${1:-activation_failed}
+  echo "ROLLBACK_START reason=$reason previous=$PREVIOUS"
+  set +e
+  switch_to "$PREVIOUS"
+  systemctl restart "$SERVICE"
+  health_ok
+  local rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    echo "ROLLBACK_OK previous=$PREVIOUS"
+  else
+    echo "ROLLBACK_HEALTH_FAILED previous=$PREVIOUS" >&2
+  fi
+  exit 1
+}
+
+echo "ACTIVATE_START release=$RELEASE previous=$PREVIOUS"
+switch_to "$RELEASE"
+systemctl restart "$SERVICE" || rollback "restart_failed"
+health_ok || rollback "health_failed"
+if [ -n "$SMOKE_CMD" ]; then
+  bash -lc "$SMOKE_CMD" || rollback "smoke_failed"
+fi
+echo "ACTIVATE_OK release=$RELEASE health=$HEALTH_URL"
