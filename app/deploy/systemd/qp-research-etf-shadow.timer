@@ -1,5 +1,5 @@
 [Unit]
-Description=quant-platform 17:40 combined daily: EOD market/risk/signal + ETF shadow
+Description=quant-platform 17:40 ETF research shadow (combined only when enabled)
 
 [Timer]
 OnCalendar=Mon..Fri *-*-* 17:40:00 Asia/Shanghai

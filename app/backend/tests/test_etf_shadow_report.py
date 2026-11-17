@@ -9,9 +9,11 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from qp.jobs import JOBS
-from qp.jobs.research import build_combined_report, build_etf_shadow_report
+from qp.jobs.research import build_combined_report, build_etf_shadow_report, etf_shadow_report_job
 from qp.models.market import IndexClose
 from qp.models.notify import Outbox
+from qp.jobs.registry import JobContext
+from sqlalchemy import delete, select
 from qp.models.signals import MacroSlice, RiskState
 from qp.notify.render import render_outbox
 from qp.signals.watchdog import build_daily_report
@@ -143,6 +145,23 @@ def test_combined_renderer_contains_both_sections():
     assert "ETF 研究观察（不是买卖建议）" in text
     assert "纸面轮动" in text
     assert "不支持推荐" in text
+
+
+def test_job_is_shadow_only_when_combined_disabled(engine, monkeypatch):
+    monkeypatch.setenv("QP_SIGNALS_COMBINED_REPORT", "0")
+    key = "etf-shadow:2026-11-17"
+    with Session(engine) as s:
+        s.execute(delete(Outbox).where(Outbox.dedup_key == key))
+        s.commit()
+    out = etf_shadow_report_job(JobContext(engine=engine, run_id=0,
+                                          name="research.etf_shadow_report"))
+    assert out["combined"] is False
+    with Session(engine) as s:
+        row = s.scalar(select(Outbox).where(Outbox.dedup_key == key))
+        assert row is not None and row.subject.startswith("ETF 研究观察")
+        assert json.loads(row.body)["report_type"] == "etf_shadow_report"
+        s.execute(delete(Outbox).where(Outbox.dedup_key == key))
+        s.commit()
 
 
 def test_combined_builder_has_shadow(engine):
