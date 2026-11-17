@@ -36,7 +36,7 @@ def payload(*, horizon: int = 20, version: str = "qp-etf-test-v1", cutoff: dt.da
         "model_sha256": "a" * 64,
         "model_text_sha256": "b" * 64,
         "universe": "fixed_40_current_pool",
-        "data_cutoff": (cutoff or dt.date.today() - dt.timedelta(days=1)).isoformat(),
+        "data_cutoff": (cutoff or etf_score.now_cst().date() - dt.timedelta(days=1)).isoformat(),
         "generated_at": dt.datetime.now(dt.UTC).isoformat(),
         "label_horizon": horizon,
         "train_start": "2020-01-01",
@@ -100,7 +100,7 @@ def test_validation_rejects_bad_payloads(engine):
     with pytest.raises(etf_score.ScorePayloadError, match="duplicate_rank"):
         etf_score.validate(bad)
     bad = payload()
-    bad["data_cutoff"] = (dt.date.today() + dt.timedelta(days=1)).isoformat()
+    bad["data_cutoff"] = (etf_score.now_cst().date() + dt.timedelta(days=1)).isoformat()
     with pytest.raises(etf_score.ScorePayloadError, match="future"):
         etf_score.validate(bad)
     bad = payload()
@@ -134,7 +134,7 @@ def test_strict_evidence_fields(engine):
     with pytest.raises(etf_score.ScorePayloadError, match="generated_at_naive"):
         etf_score.validate(bad)
     bad = payload()
-    bad["train_end"] = (dt.date.today() + dt.timedelta(days=1)).isoformat()
+    bad["train_end"] = (etf_score.now_cst().date() + dt.timedelta(days=1)).isoformat()
     with pytest.raises(etf_score.ScorePayloadError, match="train_end_after_cutoff"):
         etf_score.validate(bad)
     bad = payload()
