@@ -1,4 +1,4 @@
-# quant-platform architecture (2026-11-16)
+# quant-platform architecture (2026-11-18)
 
 This repository is a monorepo that imports the nnG8 trading-radar / QuantDinger /
 research stacks as historical snapshots **and** carries the new unified kernel in
@@ -54,6 +54,8 @@ Migrations are Alembic (`qp db upgrade`); the current production head is `0017`.
 - Job registry (`qp.jobs.registry`) writes one `ops.job_run` per invocation.
 - Per-job PostgreSQL advisory locks prevent overlapping runs; optional dedup
   keys make retries idempotent.
+- `QP_JOB_GATES=1` adds same-day upstream checks for the signal chain; a
+  missing/failed/stale upstream records status `blocked`. Default is off.
 - systemd timers live in `app/deploy/systemd`; the full production list is
   `systemctl list-timers --all` on nnG8.
 
@@ -101,8 +103,11 @@ None of these writes an order, notification or formal decision by itself.
 
 ### 2.5 Reports and notifications
 
-- 17:40 combined daily report: market/risk/signal from the watchdog plus the
-  20d/5d ETF shadow and C13 block.
+- 15:50 EOD report: market context, risk gate, signal funnel and research
+  eligibility from `signals.watchdog`.
+- 17:40 ETF research observation: 20d/5d score names, C13 NAV/positions and
+  data quality. It is explicitly research-only and separate from the EOD
+  operational report.
 - Delivery goes through `notify.outbox`; `QP_SIGNALS_NOTIFY_MODE=shadow|live`
   controls live sends, `QP_NOTIFY_KILL_SWITCH` and the disabled file are hard
   stops.
@@ -130,11 +135,11 @@ offline scorer (16:45, separate venv; frozen joblib + trading calendar)
   → /api/research/etf-score + /next/research/etf-score
 ```
 
-### 3.3 Daily report
+### 3.3 Daily reports
 
 ```
-signals.watchdog + market compare + chain window
-  + ETF 20d/5d shadow + C13 rotation
+signals.watchdog (15:50) → EOD report → notify.outbox → Telegram
+ETF 20d/5d shadow + C13 rotation
   → research.etf_shadow_report (17:40)
   → notify.outbox → Telegram (shadow or live per switch)
 ```
@@ -150,8 +155,9 @@ signals.watchdog + market compare + chain window
 | 15:40 | `qp-signals-watchdog.timer` | market/risk/signal audit |
 | 15:47 | `qp-signals-repair.timer` | turnover repair |
 | 15:48 | `qp-signals-eod-retry.timer` | EOD retry |
+| 15:50 | `qp-signals-watchdog.timer` (second slot) | EOD report |
 | 15:50 | `qp-signals-rotation-shadow.timer` | C13 rotation |
-| 15:55 | `qp-signals-chain-snapshot.timer` + export + index close | chain snapshot |
+| 15:55 | `qp-signals-chain-snapshot.timer` + export | chain snapshot |
 | 16:10 | `qp-signals-outcomes.timer` | outcome collection |
 | 16:12 | `qp-signals-chain-window.timer` | 5-day window table |
 | 16:15 / 16:17 | shadow/rule outcomes | shadow maturity |
@@ -160,7 +166,7 @@ signals.watchdog + market compare + chain window
 | 16:45 | `qp-etf-score-daily.timer` | 20d/5d offline score |
 | 16:55 | `qp-research-etf-score.timer` | score import |
 | 17:30–18:10 | research backtests/AI/profit/projects/compare | read-only imports |
-| 17:40 | `qp-research-etf-shadow.timer` | combined daily report |
+| 17:40 | `qp-research-etf-shadow.timer` | ETF research observation |
 
 A failed run is retried by the next slot; failures are recorded in
 `ops.job_run` and are not removed from the observation denominator.
@@ -180,17 +186,43 @@ A failed run is retried by the next slot; failures are recorded in
 
 ## 6. Testing and CI
 
-- Backend: `pytest` with an embedded PostgreSQL 16 (`pgserver`); 434 passed,
-  1 skipped on 2026-11-16.
+- Backend: `pytest` with an embedded PostgreSQL 16 (`pgserver`); **451 passed,
+  1 skipped** on 2026-11-18. Coverage floor is 80% (measured 85%).
 - Dependencies: `app/backend/requirements.lock` (test extra) is the CI source;
   `app/backend/requirements-runtime.lock` is the release source, installed by
   `app/deploy/bin/qp-release-venv`. The runtime pins are a subset of the test
   lock (`tests/test_lockfiles.py`).
 - Frontend: Vitest + `vue-tsc` + Vite build; Playwright smoke logs in and walks
   the top-level pages against a real migrated database.
-- Security: ruff `E9/F63/F7/F82` + Gitleaks full-history scan.
+- Security: ruff `E/F/I/UP/B` + `ruff format --check` + Gitleaks full-history
+  scan; dependency audit is advisory. mypy on jobs/signals/models is
+  report-only (existing baseline).
 
-## 7. Documentation index
+## 7. Recovery and RTO
+
+The recovery drill restores a nightly custom-format dump into a scratch database,
+replays `qp db upgrade`, checks schema/table/trigger/FK invariants, prints the
+recovery point and runs M4 acceptance. It never writes live data and drops the
+scratch DB.
+
+**Measured 2026-11-18 07:06 CST** (same host, scratch DB, no DNS/TLS/network
+rebuild):
+
+| Step | Measured |
+|---|---:|
+| dump | `qp-20261118T035002.dump`, 4,821,024 bytes, sha256 `358dbefc…` |
+| restore | 4 s |
+| migration replay | 1 s |
+| total drill | **7 s** |
+| schema/tables/triggers | 100 tables, 10 signals triggers, live=restored |
+| recovery point | EOD 2026-11-17, 1,240 decisions / 3,700 outcomes / 1,240 chain |
+| acceptance | WARN (known A8 historical notification check), drill PASS |
+
+This is **database recovery RTO**, not full-host RTO. A full-host rebuild also
+needs OS/release venv, env/secrets, TLS, timers and smoke; measure that separately
+before claiming a host-level RTO. Report: `/home/ubuntu/qp-restore-drill-20261118/report.txt`.
+
+## 8. Documentation index
 
 - `app/README.md` — kernel quick start.
 - `app/deploy/*-RUNBOOK.md` — M4–M15 operations.
@@ -199,4 +231,6 @@ A failed run is retried by the next slot; failures are recorded in
 - `app/deploy/DEPLOY-LOCK.md` — runtime/test locks and release venv install.
 - `app/deploy/KNOWN-LIMITATIONS.md` — accepted limitations and monitoring.
 - `app/deploy/DECOMMISSION-ROADMAP.md` — legacy retirement.
+- `app/deploy/JOB-GATES.md` — same-day upstream gates and rollback.
+- `app/deploy/RELEASE-ACTIVATION.md` — health/smoke-gated release switch.
 - `archive/README.md` — archive policy.

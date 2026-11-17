@@ -1,6 +1,6 @@
 # 备份与恢复 Runbook
 
-状态：**已执行恢复演练（2026-11-14 22:40 CST，PASS）**；异地副本已启用（Mac 每日拉取）。
+状态：**已执行恢复演练（2026-11-18 07:06 CST，PASS，总 RTO 7s）**；异地副本已启用（Mac 每日拉取）。
 
 ## 1. 备份
 
@@ -47,8 +47,11 @@ sudo /usr/local/sbin/qp-restore-drill \
 |---|---|---|---|
 | 22:37 | `qp-20261114T035002.dump`（03:50 夜间） | 结构 PASS / 发现差异 | 该 dump 在 `0011` 迁移之前：`db upgrade` 可正常补到 0011；链数据为空（当日导入发生在其后） |
 | 22:40 | `qp-20261114T223756.dump`（22:37 手工） | **PASS** | 0011 + 1,160 决策 / 3,700 结果 / 1,160 链；恢复 4s、升级 1s；acceptance 11-13 = WARN（仅 A8 历史 shadow） |
+| 2026-11-18 07:06 | `qp-20261118T035002.dump`（4.8MB，sha256 `358dbefc…`） | **PASS** | 0017；恢复 4s、升级 1s、总 **7s**；100 表/10 触发器/0 孤儿；恢复点 11-17，1,240 决策 / 3,700 结果 / 1,240 链；acceptance WARN（A8 历史通知） |
 
-报告：`/home/ubuntu/qp-restore-drill-20261114/report-20261114T2240.txt`。
+报告：`/home/ubuntu/qp-restore-drill-20261118/report.txt`（2026-11-18）。
+
+RTO 口径：这里是同机 scratch 库的**数据库恢复 RTO**（dump→restore→migrate→acceptance），不是整机重建 RTO；整机还需 OS/release venv、env/secrets、TLS、timers 与 smoke。
 
 结论：夜间 dump 在迁移之后需要先 `qp db upgrade` 再切流量；这是恢复流程的固定一步，已写入 §4。
 
