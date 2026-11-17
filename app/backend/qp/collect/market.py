@@ -274,7 +274,7 @@ def cninfo_staging(work: Path) -> dict:
         try:
             st = os.stat(p)
             files.append({"name": os.path.basename(p), "bytes": st.st_size,
-                          "mtime": dt.datetime.fromtimestamp(st.st_mtime, dt.timezone.utc).isoformat()})
+                          "mtime": dt.datetime.fromtimestamp(st.st_mtime, dt.UTC).isoformat()})
         except OSError:
             pass
     return {"ok": True, "files": files}
@@ -282,7 +282,7 @@ def cninfo_staging(work: Path) -> dict:
 
 def collect(paths: dict, summary_dates: list[str] | None = None) -> dict:
     t0 = time.monotonic()
-    snap: dict = {"schema": "qp.market-legacy.v1", "collected_at": dt.datetime.now(dt.timezone.utc).isoformat()}
+    snap: dict = {"schema": "qp.market-legacy.v1", "collected_at": dt.datetime.now(dt.UTC).isoformat()}
     for name, fn in (("calendar", lambda: legacy_calendar(paths["calendar"])),
                      ("index_close", lambda: legacy_index_close(paths["index_close"])),
                      ("qlib", lambda: qlib_catalog(paths["qlib"], paths["qlib_status"])),

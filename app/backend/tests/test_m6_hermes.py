@@ -77,7 +77,7 @@ def test_envelope_discovery_and_body_verification(tmp_path: Path, engine):
 def test_retry_with_new_body_bumps_version(tmp_path: Path, engine):
     cleanup(engine)
     try:
-        path = write_envelope(tmp_path, PROFIT_JOB, "profit", "first body")
+        write_envelope(tmp_path, PROFIT_JOB, "profit", "first body")
         envelope = find_envelope(tmp_path, PROFIT_JOB, dt.date(2026, 11, 12))
         with Session(engine) as session:
             report, created = import_hermes_summary(session, envelope)

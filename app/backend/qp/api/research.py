@@ -1,7 +1,6 @@
 """M7 API: read-only research views over the research schema."""
 from __future__ import annotations
 
-import datetime as dt
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,9 +8,20 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from qp.api.main import Principal, get_db, require_auth, require_scope
-from qp.models.research import (AiMessage, AiSession, AiTask, BacktestEquity, BacktestRun,
-                                BacktestTrade, Branch, ProfitObservation, ProfitPick, ProfitRun,
-                                ProfitRunAttempt, Project)
+from qp.models.research import (
+    AiMessage,
+    AiSession,
+    AiTask,
+    BacktestEquity,
+    BacktestRun,
+    BacktestTrade,
+    Branch,
+    ProfitObservation,
+    ProfitPick,
+    ProfitRun,
+    ProfitRunAttempt,
+    Project,
+)
 
 router = APIRouter(prefix="/api/research", dependencies=[Depends(require_scope("research:read"))])
 

@@ -8,8 +8,8 @@ target_decision, the record chain or notifications; they exist so a candidate
 rule (for example qp-swing.v2 = daily volume breakout above MA60 at 2x volume)
 can accumulate forward returns under the same execution model.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = '0015'

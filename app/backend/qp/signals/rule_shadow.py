@@ -9,7 +9,8 @@ be compared later.
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -17,11 +18,16 @@ from sqlalchemy.orm import Session
 
 from qp.market.kline import KlineFetcher
 from qp.models.market import TradingDay
-from qp.models.signals import (RuleShadowOutcome, RuleShadowSignal, TargetDecision)
+from qp.models.signals import RuleShadowOutcome, RuleShadowSignal, TargetDecision
 from qp.signals.eod import now_cst
 from qp.signals.indicators import Bar, volume_breakout
-from qp.signals.outcomes import (DEFAULT_HISTORY_DAYS, HORIZONS, OutcomeSettings,
-                                 evaluate_decision, normalise_bars)
+from qp.signals.outcomes import (
+    DEFAULT_HISTORY_DAYS,
+    HORIZONS,
+    OutcomeSettings,
+    evaluate_decision,
+    normalise_bars,
+)
 from qp.signals.universe import TARGETS, Target
 
 V2_RULE = "qp-swing.v2"

@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from qp.models.notify import DeliveryAttempt, Outbox
 from qp.models.reports import Report, ReportDelivery, ReportReceipt, ReportSource
 from qp.models.signals import ExecutionDigest
-from qp.reports.archive import freeze_report
 from qp.reports.compare import compare_reports
 from qp.reports.daily import import_daily_summary
 from qp.reports.delivery import shadow_deliver
@@ -104,7 +103,7 @@ def seed(engine, tmp_path: Path) -> dict:
         for report in reports:
             shadow_deliver(session, report)
         session.commit()
-        deliver = session.query(ReportDelivery).first()
+        session.query(ReportDelivery).first()
         attach_receipts(session, [{
             "execution_id": "exec-1", "job_id": PROFIT_JOB, "kind": "profit_summary",
             "created_at": "2026-11-12T15:10:23+08:00",

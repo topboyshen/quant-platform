@@ -18,7 +18,12 @@ def test_schemas(engine):
 
 
 def test_passwords():
-    from qp.auth.passwords import hash_password, needs_rehash, scheme_of, verify_password
+    from qp.auth.passwords import (
+        hash_password,
+        needs_rehash,
+        scheme_of,
+        verify_password,
+    )
     h = hash_password(PW)
     assert scheme_of(h) == "argon2" and verify_password(PW, h) and not verify_password("x", h)
     assert not needs_rehash(h)
@@ -42,6 +47,7 @@ def seeded(engine, monkeypatch):
 @pytest.fixture()
 def client(engine):  # noqa: F811
     from fastapi.testclient import TestClient
+
     from qp.api.main import app
     return TestClient(app, base_url="https://testserver")
 
@@ -83,7 +89,6 @@ def test_cross_origin_login_rejected(seeded, client):
 
 
 def test_lockout(engine, client):
-    from qp.models.core import AuditEvent
     for _ in range(5):
         assert client.post("/api/auth/login", json={"username": "nobody", "password": "x"}).status_code == 401
     assert client.post("/api/auth/login", json={"username": "nobody", "password": "x"}).status_code == 429
@@ -124,7 +129,8 @@ def test_login_commits_session_before_returning(engine):
     """The SPA calls /api/auth/me right after login; the session row must already be visible."""
     from qp.api.main import LoginIn, login
     from qp.auth.passwords import hash_password
-    from qp.models.core import AuditEvent, Session as DbSession, User
+    from qp.models.core import AuditEvent, User
+    from qp.models.core import Session as DbSession
 
     class Req:
         headers: dict = {}

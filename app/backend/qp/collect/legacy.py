@@ -16,7 +16,7 @@ import tempfile
 import time
 import urllib.request
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 PROXY = os.getenv("QP_EGRESS_PROXY", "http://127.0.0.1:7890")
@@ -47,7 +47,7 @@ def us_to_iso(us) -> str | None:
         return None
     if us <= 0:
         return None
-    return datetime.fromtimestamp(us / 1e6, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(us / 1e6, tz=UTC).isoformat()
 
 
 def systemd_scope(user: bool) -> dict:
@@ -88,7 +88,7 @@ def _unix_ts(v: str | None) -> str | None:
     if not v or not v.startswith("@"):
         return None
     try:
-        return datetime.fromtimestamp(int(v[1:]), tz=timezone.utc).isoformat()
+        return datetime.fromtimestamp(int(v[1:]), tz=UTC).isoformat()
     except ValueError:
         return None
 
@@ -136,9 +136,9 @@ def certs() -> list[dict]:
                 rc, txt = run(["openssl", "x509", "-inform", "DER", "-in", f.name, "-noout", "-enddate", "-issuer"])
             m = re.search(r"notAfter=(.+)", txt)
             if m:
-                exp = datetime.strptime(m.group(1).strip(), "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
+                exp = datetime.strptime(m.group(1).strip(), "%b %d %H:%M:%S %Y %Z").replace(tzinfo=UTC)
                 item.update(ok=True, not_after=exp.isoformat(),
-                            hours_left=round((exp - datetime.now(timezone.utc)).total_seconds() / 3600, 1),
+                            hours_left=round((exp - datetime.now(UTC)).total_seconds() / 3600, 1),
                             issuer=(re.search(r"issuer=(.+)", txt) or [None, ""])[1].strip())
         except Exception as e:
             item["error"] = type(e).__name__
@@ -210,7 +210,7 @@ def host() -> dict:
 
 def collect() -> dict:
     t0 = time.monotonic()
-    snap = {"schema": "qp.legacy.v1", "collected_at": datetime.now(timezone.utc).isoformat(), "host": socket.gethostname()}
+    snap = {"schema": "qp.legacy.v1", "collected_at": datetime.now(UTC).isoformat(), "host": socket.gethostname()}
     for key, fn in (("systemd_system", lambda: systemd_scope(False)), ("systemd_user", lambda: systemd_scope(True)),
                     ("containers", containers), ("ports", ports), ("certs", certs), ("egress", egress),
                     ("logs", log_errors), ("host", host)):

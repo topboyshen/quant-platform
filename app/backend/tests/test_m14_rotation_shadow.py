@@ -12,8 +12,12 @@ from sqlalchemy.orm import Session
 
 from qp.market.kline import DailyBar, KlineResult
 from qp.models.market import TradingDay
-from qp.models.signals import (RotationShadowAccount, RotationShadowBar,
-                               RotationShadowDay, RotationShadowRun)
+from qp.models.signals import (
+    RotationShadowAccount,
+    RotationShadowBar,
+    RotationShadowDay,
+    RotationShadowRun,
+)
 from qp.signals import rotation_shadow as rot
 
 CODES = tuple(rot.CODES[:10])
@@ -70,8 +74,8 @@ def book(engine, monkeypatch):
 
 
 def init(s, *, phase="forward", rule=rot.RULE):
-    from zoneinfo import ZoneInfo
     from unittest.mock import patch
+    from zoneinfo import ZoneInfo
     stamp = dt.datetime.combine(BASE, dt.time(16), ZoneInfo("Asia/Shanghai"))
     with _INIT_LOCK, patch.object(rot, "now_cst", return_value=stamp):
         return rot.initialize(s, start_date=START, phase=phase, rule_version=rule, codes=CODES)
@@ -288,6 +292,7 @@ def test_registration_and_advance_serialized_across_sessions(book):
 
 def test_api_auth_scope_phase_and_empty(book):
     from fastapi.testclient import TestClient
+
     from qp.api.main import app
     from qp.auth.sessions import create_service_token
     engine, _ = book
@@ -396,9 +401,10 @@ def test_warmup_gap_not_stretched_to_older_momentum_anchor(book):
 
 
 def test_job_cli_and_timer_registration():
+    from pathlib import Path
+
     from qp.cli import main
     from qp.jobs.registry import JOBS
-    from pathlib import Path
     assert JOBS["signals.rotation_shadow"].schedule_hint.startswith("Mon-Fri 15:50, 16:40")
     timer = Path(__file__).resolve().parents[2] / "deploy/systemd/qp-signals-rotation-shadow.timer"
     assert "15:50:00 Asia/Shanghai" in timer.read_text()

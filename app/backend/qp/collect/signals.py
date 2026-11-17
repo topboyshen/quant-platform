@@ -52,9 +52,9 @@ SENSITIVE_RE = re.compile(
 def resolve_date(value: str, *, now: dt.datetime | None = None) -> dt.date:
     """Resolve ``YYYY-MM-DD``, ``today`` or ``yesterday`` in Asia/Shanghai."""
     if value in {"today", "yesterday"}:
-        current = now or dt.datetime.now(dt.timezone.utc)
+        current = now or dt.datetime.now(dt.UTC)
         if current.tzinfo is None:
-            current = current.replace(tzinfo=dt.timezone.utc)
+            current = current.replace(tzinfo=dt.UTC)
         day = current.astimezone(CST).date()
         return day - dt.timedelta(days=1) if value == "yesterday" else day
     return dt.date.fromisoformat(value)
@@ -63,7 +63,7 @@ def resolve_date(value: str, *, now: dt.datetime | None = None) -> dt.date:
 def _iso(ts: float | None) -> str | None:
     if ts is None:
         return None
-    return dt.datetime.fromtimestamp(float(ts), tz=dt.timezone.utc).isoformat(timespec="seconds")
+    return dt.datetime.fromtimestamp(float(ts), tz=dt.UTC).isoformat(timespec="seconds")
 
 
 def _mtime(path: Path) -> float | None:
@@ -170,9 +170,10 @@ def collect_raw(legacy_root: Path, decision_date: str) -> dict[str, Any]:
                 "ON d.decision_id=o.decision_id WHERE d.run_id=? "
                 "ORDER BY d.code, o.horizon_sessions", (latest_run_id,))
             run_ids = [row["run_id"] for row in runs]
+            placeholders = ",".join("?" * len(run_ids))
             raw["snapshots"] = _rows(
-                conn, "SELECT * FROM eod_risk_snapshot WHERE run_id IN (%s) ORDER BY rowid"
-                % ",".join("?" * len(run_ids)), tuple(run_ids))
+                conn, f"SELECT * FROM eod_risk_snapshot WHERE run_id IN ({placeholders}) ORDER BY rowid",
+                tuple(run_ids))
         raw["signals"] = _rows(conn, "SELECT * FROM trend_signal WHERE date=? ORDER BY id",
                                (decision_date,))
         macro = _rows(conn, "SELECT * FROM macro_slice WHERE date=? LIMIT 1", (decision_date,))
@@ -191,10 +192,10 @@ def collect_raw(legacy_root: Path, decision_date: str) -> dict[str, Any]:
                 (f"%{decision_date}%", f"%{decision_date}%"))
             dispatch_ids = [row["id"] for row in raw["dispatch"]]
             if dispatch_ids:
+                placeholders = ",".join("?" * len(dispatch_ids))
                 raw["attempts"] = _rows(
-                    conn, "SELECT * FROM notification_attempt WHERE dispatch_id IN (%s) "
-                          "ORDER BY dispatch_id, attempt_no"
-                    % ",".join("?" * len(dispatch_ids)), tuple(dispatch_ids))
+                    conn, "SELECT * FROM notification_attempt WHERE dispatch_id IN "
+                          f"({placeholders}) ORDER BY dispatch_id, attempt_no", tuple(dispatch_ids))
     if intake_db.is_file():
         with _connect_ro(intake_db) as conn:
             raw["intake"] = _rows(
@@ -325,7 +326,7 @@ def write_export(out_root: Path, decision_date: str, raw: dict[str, Any],
 def export_day(legacy_root: str | os.PathLike[str], decision_date: str,
                out_root: str | os.PathLike[str], *,
                now: dt.datetime | None = None) -> dict[str, Any]:
-    now = now or dt.datetime.now(dt.timezone.utc)
+    now = now or dt.datetime.now(dt.UTC)
     raw = collect_raw(Path(legacy_root), decision_date)
     return write_export(Path(out_root), decision_date, raw, now.isoformat(timespec="seconds"))
 

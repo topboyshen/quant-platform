@@ -23,8 +23,9 @@ import json
 import os
 import re
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -35,7 +36,7 @@ from qp.models.base import utcnow
 from qp.models.signals import ApprovedIntake, ExecutionDigest
 
 CST = dt.timezone(dt.timedelta(hours=8))
-UTC = dt.timezone.utc
+UTC = dt.UTC
 MAX_SKEW_SEC = 300
 REQUIRED_FIELDS = ("idempotency_key", "signal_type", "symbol", "confidence", "expires_at",
                    "provenance", "decision")
@@ -96,7 +97,7 @@ def load_hmac_secret(path: str | os.PathLike[str]) -> bytes | None:
 
 
 def expected_signature(secret: bytes, timestamp: str, raw: bytes) -> str:
-    digest = hmac.new(secret, f"{timestamp}.".encode("utf-8") + raw, hashlib.sha256).hexdigest()
+    digest = hmac.new(secret, f"{timestamp}.".encode() + raw, hashlib.sha256).hexdigest()
     return "sha256=" + digest
 
 

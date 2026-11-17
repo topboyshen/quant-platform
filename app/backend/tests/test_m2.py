@@ -1,8 +1,7 @@
-import copy
 import io
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import pytest
@@ -13,9 +12,9 @@ PW = "m2 password"
 
 
 def snap(now=None, **over):
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     s = {
-        "schema": "qp.legacy.v1", "collected_at": now.isoformat(), "duration_s": 3.2, "host": "nnG8",
+        "schema": "qp.legacy.v1", "collected_at": now.isoformat(), "duration_s": 3.2,
         "systemd_system": {"ok": True, "units": [
             {"name": "stock-radar-swing-eod.service", "load": "loaded", "active": "inactive", "sub": "dead",
              "description": "EOD", "result": "success", "exit_status": "0", "last_exit": now.isoformat()},
@@ -110,7 +109,7 @@ def test_inventory_stale_and_missing(engine, inbox):
     from qp.jobs import run_job
     from qp.models.ops import Alert
     assert run_job(engine, "ops.inventory").status == "failed"  # no file yet
-    old = datetime.now(timezone.utc) - timedelta(hours=2)
+    old = datetime.now(UTC) - timedelta(hours=2)
     inbox.write_text(json.dumps(snap(now=old)))
     assert run_job(engine, "ops.inventory").status == "succeeded"
     with Session(engine) as s:
@@ -123,7 +122,7 @@ def _seed_alerts(engine, keys):
         s.execute(delete(Alert).where(Alert.key.in_(keys)))
         for key in keys:
             s.add(Alert(key=key, severity="warning", state="firing", summary="old fault",
-                        last_seen_at=datetime.now(timezone.utc)))
+                        last_seen_at=datetime.now(UTC)))
         s.commit()
 
 
@@ -173,6 +172,7 @@ def test_inventory_absent_records_keep_old_alerts(engine, inbox):
 @pytest.fixture()
 def authed(engine, monkeypatch):
     from fastapi.testclient import TestClient
+
     from qp.api.main import app
     from qp.cli import main
     b = bcrypt.hashpw(PW.encode(), bcrypt.gensalt(rounds=4)).decode()
@@ -241,7 +241,7 @@ def test_ops_jobs_and_health(authed, engine, inbox):
     run_job(engine, "ops.inventory")
     with Session(engine) as s:
         s.add(JobRun(job_name="ops.inventory", status="skipped_locked", trigger="manual",
-                     started_at=datetime.now(timezone.utc)))
+                     started_at=datetime.now(UTC)))
         s.commit()
     jobs = {j["name"]: j for j in authed.get("/api/ops/jobs").json()}
     # a no-op attempt must not mask the real outcome
@@ -256,6 +256,7 @@ def test_ops_jobs_and_health(authed, engine, inbox):
 
 def test_tokens(authed):
     from fastapi.testclient import TestClient
+
     from qp.api.main import app
     r = authed.post("/api/ops/tokens", json={"name": "probe-m2", "scopes": ["ops:read"]})
     assert r.status_code == 200 and r.json()["token"].startswith("qpst_") and isinstance(r.json()["id"], int)

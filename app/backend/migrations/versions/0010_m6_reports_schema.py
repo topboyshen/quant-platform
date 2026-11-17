@@ -7,8 +7,8 @@ Frozen reports, their evidence bindings, delivery attempts and independent
 recipient receipts.  Reports are immutable once frozen; a changed body needs a
 new version.  Shadow delivery never sends.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = '0010'

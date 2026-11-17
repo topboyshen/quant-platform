@@ -7,8 +7,8 @@ Creates the research schema tables for the M5 shadow module:
 ledger mirror (forecast / batch / outcome / source / audit / calibration / artifacts /
 lineage), phase2 lineage, and importer bookkeeping.  All additive.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = '0005'

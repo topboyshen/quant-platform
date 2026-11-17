@@ -7,11 +7,16 @@ import uuid
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from qp.models.research import (ImportRun, ProfitObservation, ProfitPick, ProfitRun,
-                                ProfitRunAttempt)
+from qp.models.research import (
+    ImportRun,
+    ProfitObservation,
+    ProfitPick,
+    ProfitRun,
+    ProfitRunAttempt,
+)
 from qp.research.importer import import_profit
 
-NOW = dt.datetime(2026, 11, 2, 15, 10, tzinfo=dt.timezone.utc)
+NOW = dt.datetime(2026, 11, 2, 15, 10, tzinfo=dt.UTC)
 EXECUTION = str(uuid.uuid4())
 
 

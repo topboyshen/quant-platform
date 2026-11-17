@@ -59,7 +59,7 @@ class TelegramSender:
         self._opener = urllib.request.build_opener(*handlers)
 
     @classmethod
-    def from_settings(cls, st: Settings) -> "TelegramSender":
+    def from_settings(cls, st: Settings) -> TelegramSender:
         token = _read_secret(st.telegram_bot_token_file, "telegram_token")
         chat_id = _read_secret(st.telegram_chat_id_file, "telegram_chat_id")
         return cls(token=token, chat_id=chat_id, api_base=st.telegram_api_base,

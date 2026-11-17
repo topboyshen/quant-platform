@@ -13,8 +13,11 @@ from qp.jobs.registry import JobContext
 from qp.models.reports import Report, ReportDelivery, ReportReceipt, ReportSource
 from qp.models.signals import ExecutionDigest
 from qp.reports.archive import ReportConflict
-from qp.reports.digests import (import_execution_digest, import_research_digest,
-                                research_digest_date)
+from qp.reports.digests import (
+    import_execution_digest,
+    import_research_digest,
+    research_digest_date,
+)
 
 DAY = dt.date(2026, 11, 13)
 
@@ -103,7 +106,10 @@ def test_jobs_skip_without_sources(engine, tmp_path: Path, monkeypatch):
     try:
         monkeypatch.setenv("QP_RESEARCH_DIGEST_JSON", str(tmp_path / "missing.json"))
         monkeypatch.setenv("QP_REPORT_DATE", DAY.isoformat())
-        from qp.jobs.reports import import_execution_digest_job, import_research_digest_job
+        from qp.jobs.reports import (
+            import_execution_digest_job,
+            import_research_digest_job,
+        )
         assert import_research_digest_job(JobContext(engine=engine, run_id=0,
                                                      name="reports.import_research_digest"))["skipped"]
         assert import_execution_digest_job(JobContext(engine=engine, run_id=0,

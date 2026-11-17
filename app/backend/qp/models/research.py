@@ -9,8 +9,23 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
-from sqlalchemy import (BigInteger, Boolean, Date, DateTime, Double, ForeignKey, Identity, Index,
-                        Integer, Numeric, String, Text, UniqueConstraint, func, text)
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    Double,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 

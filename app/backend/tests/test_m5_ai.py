@@ -7,10 +7,22 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from qp.models.research import (AiMemory, AiMessage, AiSession, AiTask, ImportRun, LlmCall)
+from qp.models.research import (
+    AiMemory,
+    AiMessage,
+    AiSession,
+    AiTask,
+    ImportRun,
+    LlmCall,
+)
 from qp.research.importer import import_ai
-from qp.research.llm import (LLMLiveDisabledError, LLMRequest, LLMShadowError, complete,
-                             request_sha256)
+from qp.research.llm import (
+    LLMLiveDisabledError,
+    LLMRequest,
+    LLMShadowError,
+    complete,
+    request_sha256,
+)
 
 
 class FakeReader:

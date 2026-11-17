@@ -13,10 +13,23 @@ from sqlalchemy.orm import Session
 
 from qp.api.main import Principal, get_db, require_auth, require_scope
 from qp.config import get_settings
-from qp.models.chain import (ChainDecision, ChainEligibility, ChainSnapshot, ChainState,
-                             ChainUniverseMember)
-from qp.models.signals import (DecisionOutcome, EodRun, RuleShadowOutcome, RuleShadowSignal,
-                               ShadowOutcome, ShadowSignal, TargetDecision, TrendSignal)
+from qp.models.chain import (
+    ChainDecision,
+    ChainEligibility,
+    ChainSnapshot,
+    ChainState,
+    ChainUniverseMember,
+)
+from qp.models.signals import (
+    DecisionOutcome,
+    EodRun,
+    RuleShadowOutcome,
+    RuleShadowSignal,
+    ShadowOutcome,
+    ShadowSignal,
+    TargetDecision,
+    TrendSignal,
+)
 from qp.signals.universe import TARGETS
 
 router = APIRouter(prefix="/api/signals", dependencies=[Depends(require_scope("signals:read"))])

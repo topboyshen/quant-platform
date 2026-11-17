@@ -10,16 +10,28 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from qp.config import get_settings
-from qp.models.chain import (ChainAttempt, ChainBatch, ChainDecision, ChainEligibility, ChainEvidenceLink,
-                             ChainOutcome, ChainPolicy, ChainSnapshot, ChainSnapshotItem, ChainState,
-                             ChainUniverse, ChainUniverseMember)
+from qp.models.chain import (
+    ChainAttempt,
+    ChainBatch,
+    ChainDecision,
+    ChainEligibility,
+    ChainEvidenceLink,
+    ChainOutcome,
+    ChainPolicy,
+    ChainSnapshot,
+    ChainSnapshotItem,
+    ChainState,
+    ChainUniverse,
+    ChainUniverseMember,
+)
 from qp.models.market import TradingDay
 from qp.models.signals import EodRun, TargetDecision
 
@@ -297,7 +309,7 @@ def register_run(session: Session, *, run: EodRun, decisions: Sequence[dict[str,
     """Dual-write one EOD attempt into the chain. Idempotent per ``run_id``."""
     if not enabled():
         return {"enabled": False}
-    now = now or dt.datetime.now(dt.timezone.utc)
+    now = now or dt.datetime.now(dt.UTC)
     # Serialise concurrent writers for the same EOD run.  The chain helper is
     # called directly by tests/jobs as well as the timer, so the job-level lock
     # alone is not enough to keep decisions and evidence links unique.
@@ -373,7 +385,7 @@ def append_outcome_revision(session: Session, *, decision_uid: str, horizon: int
                             row: dict[str, Any], expected: dt.date | None,
                             as_of: dt.date, now: dt.datetime | None = None) -> bool:
     """Append the result revision for one horizon; the pending row is never updated."""
-    now = now or dt.datetime.now(dt.timezone.utc)
+    now = now or dt.datetime.now(dt.UTC)
     latest = session.scalar(select(func.max(ChainOutcome.revision)).where(
         ChainOutcome.decision_uid == decision_uid,
         ChainOutcome.horizon_sessions == horizon)) or 0
@@ -405,7 +417,7 @@ def reconcile_expired(session: Session, *, as_of: dt.date,
     """Mark unverified outcomes past their maturity date as expired (append-only)."""
     if not enabled():
         return 0
-    now = now or dt.datetime.now(dt.timezone.utc)
+    now = now or dt.datetime.now(dt.UTC)
     rows = session.execute(select(ChainOutcome.decision_uid, ChainOutcome.horizon_sessions,
                                   ChainOutcome.expected_maturity_date, ChainOutcome.revision)
                            .where(ChainOutcome.expected_maturity_date < as_of,
@@ -635,7 +647,7 @@ def _snapshot_body(session: Session, business_date: dt.date, batch: ChainBatch,
 def build_snapshot(session: Session, *, business_date: dt.date,
                    now: dt.datetime | None = None) -> dict[str, Any]:
     """Generate (or reuse) the single snapshot for a business day."""
-    now = now or dt.datetime.now(dt.timezone.utc)
+    now = now or dt.datetime.now(dt.UTC)
     batch = session.scalar(select(ChainBatch).where(
         ChainBatch.trade_date == business_date, ChainBatch.source == "timer")
         .order_by(ChainBatch.scheduled_at.desc()).limit(1))

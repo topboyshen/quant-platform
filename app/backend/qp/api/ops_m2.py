@@ -10,7 +10,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from qp.api.main import Principal, check_same_origin, get_db, require_auth, require_scope
+from qp.api.main import (
+    Principal,
+    check_same_origin,
+    get_db,
+    require_auth,
+    require_scope,
+)
 from qp.auth.sessions import create_service_token
 from qp.models.base import utcnow
 from qp.models.core import AuditEvent, ServiceToken

@@ -8,8 +8,15 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from qp.models.reports import Report, ReportDelivery, ReportReceipt, ReportSource
-from qp.reports.archive import (ReportConflict, SourceRef, freeze_report, mark_delivery,
-                                payload_sha256, record_delivery, record_receipt)
+from qp.reports.archive import (
+    ReportConflict,
+    SourceRef,
+    freeze_report,
+    mark_delivery,
+    payload_sha256,
+    record_delivery,
+    record_receipt,
+)
 
 DAY = dt.date(2026, 11, 13)
 PAYLOAD = {"title": "日报", "sections": [{"name": "signals", "n": 3}], "version": 1}

@@ -6,10 +6,17 @@ import datetime as dt
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from qp.models.research import (Admission, AdmissionAudit, Branch, Draft, ImportRun, Project)
+from qp.models.research import (
+    Admission,
+    AdmissionAudit,
+    Branch,
+    Draft,
+    ImportRun,
+    Project,
+)
 from qp.research.importer import import_projects
 
-NOW = dt.datetime(2026, 11, 13, 9, 0, tzinfo=dt.timezone.utc)
+NOW = dt.datetime(2026, 11, 13, 9, 0, tzinfo=dt.UTC)
 
 
 class FakeReader:

@@ -10,8 +10,12 @@ from sqlalchemy.orm import Session
 from qp.jobs.registry import JOBS
 from qp.market.kline import DailyBar, KlineResult
 from qp.models.signals import DecisionOutcome, EodRun, TargetDecision
-from qp.signals.outcomes import (OutcomeSettings, evaluate_decision, evaluate_pending,
-                                 normalise_bars)
+from qp.signals.outcomes import (
+    OutcomeSettings,
+    evaluate_decision,
+    evaluate_pending,
+    normalise_bars,
+)
 
 DAY = dt.date(2027, 3, 1)  # Monday, outside the test calendar fixtures
 CODE = "159915"

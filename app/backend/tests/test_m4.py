@@ -7,14 +7,23 @@ from sqlalchemy import delete, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from qp.models.signals import (ApprovedIntake, DecisionOutcome, EodRun, ExecutionDigest, MacroSlice, RiskSnapshot,
-                               RiskState, TargetDecision, TrendSignal)
+from qp.models.signals import (
+    ApprovedIntake,
+    DecisionOutcome,
+    EodRun,
+    ExecutionDigest,
+    MacroSlice,
+    RiskSnapshot,
+    RiskState,
+    TargetDecision,
+    TrendSignal,
+)
 
 TABLES = {
     "eod_run", "risk_snapshot", "target_decision", "trend_signal", "decision_outcome",
     "macro_slice", "risk_state", "approved_intake", "execution_digest",
 }
-RUN = dt.datetime(2026, 11, 12, 7, 30, tzinfo=dt.timezone.utc)
+RUN = dt.datetime(2026, 11, 12, 7, 30, tzinfo=dt.UTC)
 
 
 def test_signals_tables_exist(engine):

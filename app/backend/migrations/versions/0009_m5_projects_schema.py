@@ -7,8 +7,8 @@ Mirror of the QuantDinger research-lab structures: projects, branches, admission
 switches, admission audit and drafts.  Read-only import; qp does not take over
 writes during the shadow window.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = '0009'

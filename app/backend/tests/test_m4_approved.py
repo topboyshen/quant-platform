@@ -13,11 +13,19 @@ from sqlalchemy.orm import Session
 
 from qp.jobs.registry import JOBS
 from qp.models.signals import ApprovedIntake, ExecutionDigest
-from qp.signals.approved import (build_digest_body, build_previous_day_digest, canonical_body,
-                                 canonical_payload_sha256, expected_signature, load_hmac_secret,
-                                 record_intake, risk_check, sign_digest)
+from qp.signals.approved import (
+    build_digest_body,
+    build_previous_day_digest,
+    canonical_body,
+    canonical_payload_sha256,
+    expected_signature,
+    load_hmac_secret,
+    record_intake,
+    risk_check,
+    sign_digest,
+)
 
-UTC = dt.timezone.utc
+UTC = dt.UTC
 CST = dt.timezone(dt.timedelta(hours=8))
 NOW = dt.datetime(2027, 4, 6, 12, 0, tzinfo=UTC)
 DIGEST_NOW = dt.datetime(2027, 4, 7, 8, 35, tzinfo=CST)

@@ -3,9 +3,10 @@
 Revision ID: 0003
 Revises: 0002
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
+
 revision = '0003'
 down_revision = '0002'
 branch_labels = None

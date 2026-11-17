@@ -11,7 +11,12 @@ from sqlalchemy.orm import Session
 
 from qp import __version__
 from qp.auth.passwords import hash_password, needs_rehash, verify_password
-from qp.auth.sessions import create_session, resolve_service_token, resolve_session, revoke_session
+from qp.auth.sessions import (
+    create_session,
+    resolve_service_token,
+    resolve_session,
+    revoke_session,
+)
 from qp.config import get_settings
 from qp.db import get_engine, session_factory
 from qp.models.base import utcnow

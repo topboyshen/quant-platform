@@ -5,15 +5,18 @@ import datetime as dt
 import json
 from pathlib import Path
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from qp.jobs import JOBS
-from qp.jobs.research import build_combined_report, build_etf_shadow_report, etf_shadow_report_job
+from qp.jobs.registry import JobContext
+from qp.jobs.research import (
+    build_combined_report,
+    build_etf_shadow_report,
+    etf_shadow_report_job,
+)
 from qp.models.market import IndexClose
 from qp.models.notify import Outbox
-from qp.jobs.registry import JobContext
-from sqlalchemy import delete, select
 from qp.models.signals import MacroSlice, RiskState
 from qp.notify.render import render_outbox
 from qp.signals.watchdog import build_daily_report
@@ -99,7 +102,7 @@ def test_daily_builder_exposes_market_risk_and_funnel(engine):
                 MacroSlice(decision_date=day, total_amount=14844.9, margin_balance=22791.12,
                            margin_growth_pct=-0.708, limit_up=32, limit_down=62,
                            limit_ratio=0.508, source="test", collect_status={}),
-                RiskState(observed_at=dt.datetime(2031, 4, 7, 15, 30, tzinfo=dt.timezone.utc),
+                RiskState(observed_at=dt.datetime(2031, 4, 7, 15, 30, tzinfo=dt.UTC),
                           level="critical", message="VIX=19.30 > 17.5",
                           values={"vix": 19.3, "us_10y": 5.154}, raw={}),
             ])
@@ -109,13 +112,13 @@ def test_daily_builder_exposes_market_risk_and_funnel(engine):
                            "run": {"run_id": 999, "status": "success", "target_count": 40,
                                    "evaluated_count": 40, "failed_count": 0, "signal_count": 0,
                                    "allowed_signal_count": 0, "blocked_signal_count": 0}},
-                now=dt.datetime(2031, 4, 7, 15, 50, tzinfo=dt.timezone.utc))
+                now=dt.datetime(2031, 4, 7, 15, 50, tzinfo=dt.UTC))
     finally:
         with Session(engine) as s:
             s.execute(delete(IndexClose).where(IndexClose.source == "test"))
             s.execute(delete(MacroSlice).where(MacroSlice.decision_date == day))
             s.execute(delete(RiskState).where(
-                RiskState.observed_at == dt.datetime(2031, 4, 7, 15, 30, tzinfo=dt.timezone.utc)))
+                RiskState.observed_at == dt.datetime(2031, 4, 7, 15, 30, tzinfo=dt.UTC)))
             s.commit()
     assert out["market"]["text"].startswith("上证 3,602.57")
     assert out["market"]["indices"][0]["change"] < 0

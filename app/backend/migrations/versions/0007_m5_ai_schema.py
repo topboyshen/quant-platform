@@ -7,8 +7,8 @@ Mirror of the QuantDinger AI analysis/chat records plus the LLM call audit table
 The M5 LLM entry point is replay-only: live provider calls are not implemented and
 must not be enabled in the shadow window.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = '0007'

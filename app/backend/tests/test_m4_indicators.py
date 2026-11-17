@@ -3,7 +3,15 @@ import datetime as dt
 
 import pytest
 
-from qp.signals.indicators import Bar, ema, is_golden_cross, macd, volume_breakout, weekly_bars, weekly_golden_cross
+from qp.signals.indicators import (
+    Bar,
+    ema,
+    is_golden_cross,
+    macd,
+    volume_breakout,
+    weekly_bars,
+    weekly_golden_cross,
+)
 
 
 def test_ema_matches_adjust_false():

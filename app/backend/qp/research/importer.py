@@ -8,8 +8,9 @@ and upstream status transitions are mirrored.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -17,14 +18,43 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from qp.models.base import utcnow
-from qp.models.research import (Admission, AdmissionAudit, AiMemory, AiMessage, AiSession, AiTask,
-                                BacktestAccountPoint, BacktestEquity, BacktestFill, BacktestOrder,
-                                BacktestRun, BacktestTrade, Branch, CalibrationSnapshot, Draft,
-                                Forecast, ForecastBatch, ForecastOutcome, ForecastProtocol,
-                                ImportLineage, ImportRun, LedgerAudit, ModelArtifact, Phase2Audit,
-                                Phase2Batch, Phase2Exclusion, Phase2Protocol, Phase2RunState,
-                                Phase2SourceSnapshot, ProfitObservation, ProfitPick, ProfitRun,
-                                ProfitRunAttempt, Project, SourceRecord)
+from qp.models.research import (
+    Admission,
+    AdmissionAudit,
+    AiMemory,
+    AiMessage,
+    AiSession,
+    AiTask,
+    BacktestAccountPoint,
+    BacktestEquity,
+    BacktestFill,
+    BacktestOrder,
+    BacktestRun,
+    BacktestTrade,
+    Branch,
+    CalibrationSnapshot,
+    Draft,
+    Forecast,
+    ForecastBatch,
+    ForecastOutcome,
+    ForecastProtocol,
+    ImportLineage,
+    ImportRun,
+    LedgerAudit,
+    ModelArtifact,
+    Phase2Audit,
+    Phase2Batch,
+    Phase2Exclusion,
+    Phase2Protocol,
+    Phase2RunState,
+    Phase2SourceSnapshot,
+    ProfitObservation,
+    ProfitPick,
+    ProfitRun,
+    ProfitRunAttempt,
+    Project,
+    SourceRecord,
+)
 
 
 @dataclass(frozen=True)

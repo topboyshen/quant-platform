@@ -165,6 +165,7 @@ def cmd_user_import_legacy(a) -> int:
     """Read one line '<username>\\t<password_hash>' from stdin (e.g. piped from a read-only QD query).
     Never prints the hash. Creates/updates the single core.user."""
     from sqlalchemy import select
+
     from qp.auth.passwords import scheme_of
     from qp.db import session_scope
     from qp.models.core import AuditEvent, User
@@ -199,6 +200,7 @@ def cmd_user_import_legacy(a) -> int:
 def cmd_chain_import_history(a) -> int:
     """Dry-run by default; --apply requires QP_RECORD_CHAIN=1."""
     import datetime as dt
+
     from qp.db import session_scope
     from qp.signals import chain, chain_import
     if a.apply and not chain.enabled():
@@ -232,6 +234,7 @@ def cmd_chain_window(a) -> int:
 def cmd_chain_compare(a) -> int:
     """Shadow comparison of the chain snapshot against the legacy signals tables."""
     import datetime as dt
+
     from qp.db import session_scope
     from qp.signals import chain_compare
     day = dt.date.fromisoformat(a.date)
@@ -297,6 +300,7 @@ def cmd_signals_rotation_shadow(a) -> int:
 def cmd_signals_shadow_record(a) -> int:
     """Backfill the shadow sample channel from blocked-but-triggered decisions."""
     import datetime as dt
+
     from qp.db import session_scope
     from qp.signals import shadow
     since = dt.date.fromisoformat(a.since) if a.since else None
@@ -310,6 +314,7 @@ def cmd_signals_shadow_record(a) -> int:
 def cmd_signals_shadow_outcomes(a) -> int:
     """Collect matured forward returns for shadow samples."""
     import datetime as dt
+
     from qp.db import session_scope
     from qp.signals import shadow
     as_of = dt.date.fromisoformat(a.as_of) if a.as_of else None
@@ -323,6 +328,7 @@ def cmd_signals_shadow_outcomes(a) -> int:
 def cmd_signals_acceptance(a) -> int:
     """M4 live acceptance invariants for one decision date (default: latest run)."""
     import datetime as dt
+
     from qp.db import session_scope
     from qp.signals import acceptance
     today = dt.date.fromisoformat(a.today) if a.today else dt.date.today()

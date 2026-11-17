@@ -10,8 +10,8 @@ regime.  These two tables record the blocked-but-triggered entries and their
 forward returns.  Validation only: no notification, no effect on the production
 decision, chain or statistics.
 """
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = '0012'

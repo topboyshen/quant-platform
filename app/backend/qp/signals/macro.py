@@ -18,8 +18,9 @@ import math
 import os
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import quote as urlquote
 
 from qp.market import http
@@ -411,7 +412,7 @@ def fetch_cboe_vix(fetch_fn: Callable[..., Any] = http.fetch, *, now: float | No
     data = payload["data"]
     value = float(data["current_price"])
     source_ts = dt.datetime.strptime(str(payload["timestamp"]), "%Y-%m-%d %H:%M:%S").replace(
-        tzinfo=dt.timezone.utc).timestamp()
+        tzinfo=dt.UTC).timestamp()
     age = now - source_ts
     if not _finite(value, low=0.0, high=200.0, strict=True) or age < -300 or age > 4 * 86400:
         raise ValueError("stale_or_out_of_range")
@@ -421,7 +422,7 @@ def fetch_cboe_vix(fetch_fn: Callable[..., Any] = http.fetch, *, now: float | No
 def fetch_fred_value(series_id: str, fetch_fn: Callable[..., Any] = http.fetch,
                      *, now: float | None = None) -> tuple[float, dict[str, Any]]:
     now = time.time() if now is None else now
-    start = dt.datetime.fromtimestamp(now - 14 * 86400, tz=dt.timezone.utc).date().isoformat()
+    start = dt.datetime.fromtimestamp(now - 14 * 86400, tz=dt.UTC).date().isoformat()
     resp = fetch_fn(FRED_URL, params={"id": series_id, "cosd": start},
                     headers={"User-Agent": UA}, proxy=False, timeout=8)
     latest: tuple[float, float] | None = None
@@ -435,7 +436,7 @@ def fetch_fred_value(series_id: str, fetch_fn: Callable[..., Any] = http.fetch,
         if not _finite(value, low=0.0, high=upper, strict=True):
             continue
         source = dt.date.fromisoformat(date_text)
-        ts = dt.datetime.combine(source, dt.time.min, tzinfo=dt.timezone.utc).timestamp()
+        ts = dt.datetime.combine(source, dt.time.min, tzinfo=dt.UTC).timestamp()
         if ts > now + 300:
             continue
         if latest is None or ts > latest[0]:

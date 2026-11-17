@@ -98,7 +98,7 @@ def report(session: Session, *, end: dt.date | None = None, sessions: int = WIND
             return {"status": "NOT_STARTED", "verdict": "NOT_STARTED",
                     "window_start": None, "window_end": None,
                     "first_native_date": None, "days_total": 0, "days_pass": 0,
-                    "rows": [], "generated_at": dt.datetime.now(dt.timezone.utc).isoformat()}
+                    "rows": [], "generated_at": dt.datetime.now(dt.UTC).isoformat()}
         days = _open_days(session, first_native, end)[:max(1, sessions)]
         if not days:  # calendar gaps: fall back to the native batch dates
             days = list(session.scalars(
@@ -116,7 +116,7 @@ def report(session: Session, *, end: dt.date | None = None, sessions: int = WIND
             "first_native_date": first_native.isoformat() if first_native else None,
             "days_total": len(rows), "days_pass": passed, "sessions": sessions,
             "rows": rows,
-            "generated_at": dt.datetime.now(dt.timezone.utc).isoformat()}
+            "generated_at": dt.datetime.now(dt.UTC).isoformat()}
 
 
 def markdown(report_data: dict[str, Any]) -> str:
@@ -127,7 +127,6 @@ def markdown(report_data: dict[str, Any]) -> str:
              "| 日期 | EOD | 快照 | 一致 | 决策 | 放行 | 拦截 | 样本/结果 | 说明 |",
              "|---|---|---|---|---:|---:|---:|---:|---|"]
     for row in report_data.get("rows") or []:
-        funnel = row.get("funnel") or {}
         lines.append(
             f"| {row['date']} | {row.get('run_status') or '-'} | "
             f"{row.get('snapshot_status') or '-'} | "

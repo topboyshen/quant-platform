@@ -8,12 +8,18 @@ import sqlite3
 
 import pytest
 
-from qp.collect.signals import (canonical_payload_sha256, export_day, main,
-                                render_file, resolve_date, write_export)
+from qp.collect.signals import (
+    canonical_payload_sha256,
+    export_day,
+    main,
+    render_file,
+    resolve_date,
+    write_export,
+)
 
 DAY = "2027-05-04"
 RUN_ID = "legacy-run-1"
-UTC = dt.timezone.utc
+UTC = dt.UTC
 
 
 def _schema(db) -> None:

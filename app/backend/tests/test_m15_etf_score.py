@@ -31,7 +31,7 @@ def payload(*, horizon: int = 20, version: str = "qp-etf-test-v1",
         "model_text_sha256": "b" * 64,
         "universe": "fixed_40_current_pool",
         "data_cutoff": (cutoff or dt.date.today() - dt.timedelta(days=1)).isoformat(),
-        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "generated_at": dt.datetime.now(dt.UTC).isoformat(),
         "label_horizon": horizon,
         "train_start": "2020-01-01",
         "train_end": "2025-12-24",
@@ -301,6 +301,7 @@ def test_job_bad_20d_keeps_5d(tmp_path, engine, monkeypatch):
 
 def test_api_auth_scope_and_payload(engine):
     from fastapi.testclient import TestClient
+
     from qp.api.main import app
     from qp.auth.sessions import create_service_token
     cleanup(engine)

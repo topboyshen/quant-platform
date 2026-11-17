@@ -8,9 +8,17 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from qp.models.chain import (ChainAttempt, ChainBatch, ChainDecision, ChainEligibility,
-                             ChainEvidenceLink, ChainImportRegister, ChainOutcome, ChainPolicy,
-                             ChainState)
+from qp.models.chain import (
+    ChainAttempt,
+    ChainBatch,
+    ChainDecision,
+    ChainEligibility,
+    ChainEvidenceLink,
+    ChainImportRegister,
+    ChainOutcome,
+    ChainPolicy,
+    ChainState,
+)
 from qp.models.market import TradingDay
 from qp.models.signals import DecisionOutcome, EodRun, TargetDecision, TrendSignal
 from qp.signals import chain
@@ -42,7 +50,7 @@ def test_chain_tables_and_views_exist(engine):
 
 
 def test_chain_rows_are_append_only(engine):
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     with engine.connect() as conn:
         trans = conn.begin()
         conn.execute(text(
@@ -115,8 +123,14 @@ def _insert_targets(engine, run_id: int, *,
 
 def _cleanup(engine) -> None:
     with Session(engine) as session:
-        from qp.models.chain import (ChainBatch, ChainPolicy, ChainSnapshot, ChainSnapshotItem,
-                                     ChainUniverse, ChainUniverseMember)
+        from qp.models.chain import (
+            ChainBatch,
+            ChainPolicy,
+            ChainSnapshot,
+            ChainSnapshotItem,
+            ChainUniverse,
+            ChainUniverseMember,
+        )
         for model in (ChainEvidenceLink, ChainSnapshotItem, ChainSnapshot, ChainImportRegister,
                       ChainOutcome, ChainState, ChainEligibility, ChainAttempt, ChainDecision,
                       ChainBatch, ChainUniverseMember, ChainUniverse, ChainPolicy):
@@ -585,7 +599,7 @@ def test_chain_compare_matches_legacy_counts(engine, chain_on):
     run_id = _run(engine)
     try:
         with Session(engine) as session:
-            run = session.get(EodRun, run_id)
+            session.get(EodRun, run_id)
             decisions = _decisions()
             for row in decisions:
                 session.add(TargetDecision(
@@ -666,7 +680,7 @@ def test_snapshot_ignores_other_policy_versions(engine, chain_on):
     _cleanup(engine)
     _calendar(engine, DAY)
     run_id = _run(engine)
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     with Session(engine) as session:
         chain.register_run(session, run=session.get(EodRun, run_id),
                            decisions=_decisions(), run_status="success")

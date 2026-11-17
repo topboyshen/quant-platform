@@ -6,8 +6,15 @@ import datetime as dt
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from qp.models.research import (BacktestAccountPoint, BacktestEquity, BacktestFill, BacktestOrder,
-                                BacktestRun, BacktestTrade, ImportRun)
+from qp.models.research import (
+    BacktestAccountPoint,
+    BacktestEquity,
+    BacktestFill,
+    BacktestOrder,
+    BacktestRun,
+    BacktestTrade,
+    ImportRun,
+)
 from qp.research.importer import import_backtests
 
 

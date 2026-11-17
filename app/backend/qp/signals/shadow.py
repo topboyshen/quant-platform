@@ -21,8 +21,13 @@ from qp.market.kline import KlineFetcher
 from qp.models.market import TradingDay
 from qp.models.signals import EodRun, ShadowOutcome, ShadowSignal, TargetDecision
 from qp.signals.eod import now_cst
-from qp.signals.outcomes import (DEFAULT_HISTORY_DAYS, HORIZONS, OutcomeSettings,
-                                 evaluate_decision, normalise_bars)
+from qp.signals.outcomes import (
+    DEFAULT_HISTORY_DAYS,
+    HORIZONS,
+    OutcomeSettings,
+    evaluate_decision,
+    normalise_bars,
+)
 
 _COLUMNS = ["decision_date", "code", "name", "sector", "source_decision_id", "source_run_id",
             "risk_level", "reason_code", "raw_trigger_count", "raw_signals", "reference_close"]

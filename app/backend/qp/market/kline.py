@@ -12,8 +12,8 @@ import json
 import math
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 from qp.market import http
 from qp.market.http import FetchError
@@ -81,8 +81,8 @@ def _num(text, *, positive: bool = False) -> float:
     return value
 
 
-def _bar(date: str, o, h, l, c, v) -> DailyBar:
-    return DailyBar(date=_date(date), open=_num(o), high=_num(h), low=_num(l),
+def _bar(date: str, o, h, low, c, v) -> DailyBar:
+    return DailyBar(date=_date(date), open=_num(o), high=_num(h), low=_num(low),
                     close=_num(c, positive=True), volume=_num(v))
 
 

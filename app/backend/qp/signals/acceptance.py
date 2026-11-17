@@ -16,8 +16,13 @@ from sqlalchemy.orm import Session
 from qp.config import get_settings
 from qp.models.market import IndexClose, TradingDay
 from qp.models.notify import DeliveryAttempt, Outbox
-from qp.models.signals import (DecisionOutcome, EodRun, RiskSnapshot, TargetDecision,
-                               TrendSignal)
+from qp.models.signals import (
+    DecisionOutcome,
+    EodRun,
+    RiskSnapshot,
+    TargetDecision,
+    TrendSignal,
+)
 from qp.signals import shadow as shadow_channel
 from qp.signals.universe import TARGETS
 
@@ -146,7 +151,6 @@ def evaluate(session: Session, day: dt.date, *, today: dt.date | None = None) ->
     for row in decisions:
         by_state[row.decision_state] = by_state.get(row.decision_state, 0) + 1
     triggered = [row for row in decisions if (row.raw_trigger_count or 0) > 0]
-    reviewed = [row for row in decisions if row.data_status == "ok"]
 
     # A1 — the day has a terminal, successful (or explicitly partial) run
     if run is None:
@@ -302,7 +306,7 @@ def evaluate(session: Session, day: dt.date, *, today: dt.date | None = None) ->
     verdict = "FAIL" if failed else ("WARN" if warned else "PASS")
     return {"date": day.isoformat(), "verdict": verdict, "failed": failed, "warned": warned,
             "checks": checks, "strategy": _strategy_summary(session, today),
-            "generated_at": dt.datetime.now(dt.timezone.utc).isoformat()}
+            "generated_at": dt.datetime.now(dt.UTC).isoformat()}
 
 
 def latest_decision_date(session: Session, on_or_before: dt.date) -> dt.date | None:

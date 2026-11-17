@@ -10,7 +10,8 @@ import datetime as dt
 import hashlib
 import json
 import subprocess
-from typing import Any, Callable, Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 LEGACY_PREFIXES = ("trading-radar", "astock", "quant-", "research-", "signal-bus",
                    "qd-", "radar-", "nng8-")
@@ -63,7 +64,7 @@ def parse_du(output: str) -> dict[str, int]:
 def build_manifest(*, timers: Iterable[dict[str, Any]], user_timers: Iterable[dict[str, Any]],
                    containers: Iterable[dict[str, Any]], paths: dict[str, int],
                    generated_at: dt.datetime | None = None) -> dict[str, Any]:
-    now = generated_at or dt.datetime.now(dt.timezone.utc)
+    now = generated_at or dt.datetime.now(dt.UTC)
     timers_list = sorted(parse_timers(timers), key=lambda item: item["unit"] or "")
     user_list = sorted(parse_timers(user_timers), key=lambda item: item["unit"] or "")
     path_list = [{"path": path, "bytes": int(size)} for path, size in sorted(paths.items())]

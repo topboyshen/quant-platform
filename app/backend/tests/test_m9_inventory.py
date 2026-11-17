@@ -5,8 +5,15 @@ import datetime as dt
 import json
 import subprocess
 
-from qp.decommission.inventory import (build_manifest, classify_paths, collect, is_legacy_unit,
-                                       manifest_sha256, parse_containers, parse_du)
+from qp.decommission.inventory import (
+    build_manifest,
+    classify_paths,
+    collect,
+    is_legacy_unit,
+    manifest_sha256,
+    parse_containers,
+    parse_du,
+)
 
 
 def cp(cmd, code=0, stdout=""):
@@ -33,7 +40,7 @@ def test_build_manifest_filters_and_hashes():
     paths = {"/home/ubuntu/trading-radar": 100, "/home/ubuntu/AStock_AI_System": 200}
     manifest = build_manifest(timers=timers, user_timers=user, containers=containers,
                               paths=paths, generated_at=dt.datetime(2026, 11, 13,
-                                                                    tzinfo=dt.timezone.utc))
+                                                                    tzinfo=dt.UTC))
     assert [t["unit"] for t in manifest["timers"]] == ["astock-xhs-source.timer"]
     assert manifest["user_timers"][0]["unit"] == "nng8-research-digest.timer"
     assert [c["name"] for c in manifest["containers"]] == ["radar-quantdinger-postgres"]
@@ -69,7 +76,7 @@ def test_collect_is_read_only_and_parses_outputs():
         raise AssertionError(cmd)
 
     manifest = collect(paths=["/home/ubuntu/trading-radar"], runner=fake,
-                       generated_at=dt.datetime(2026, 11, 13, tzinfo=dt.timezone.utc))
+                       generated_at=dt.datetime(2026, 11, 13, tzinfo=dt.UTC))
     assert manifest["totals"] == {"timers": 2, "containers": 1, "path_bytes": 123}
     # Collection never issues stop/rm/disable commands.
     assert all(True for _ in manifest["timers"])

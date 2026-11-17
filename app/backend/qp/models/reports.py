@@ -8,8 +8,20 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
-from sqlalchemy import (BigInteger, Date, DateTime, ForeignKey, Identity, Index, Integer, String,
-                        Text, UniqueConstraint, func, text)
+from sqlalchemy import (
+    BigInteger,
+    Date,
+    DateTime,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 

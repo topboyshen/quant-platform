@@ -7,11 +7,12 @@ import datetime as dt
 import hashlib
 import json
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, delete, func, select, tuple_
+from sqlalchemy import delete, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -20,8 +21,20 @@ from qp.jobs.registry import JobContext, job
 from qp.market import sources as src
 from qp.market.http import FetchError
 from qp.models.base import utcnow
-from qp.models.market import (AnnouncementCount, CompareResult, HealthResult, ImportLog, IndexClose, IndexMember,
-                              Instrument, LegacySnapshot, MarketSummary, QlibStatus, SourceStatus, TradingDay)
+from qp.models.market import (
+    AnnouncementCount,
+    CompareResult,
+    HealthResult,
+    ImportLog,
+    IndexClose,
+    IndexMember,
+    Instrument,
+    LegacySnapshot,
+    MarketSummary,
+    QlibStatus,
+    SourceStatus,
+    TradingDay,
+)
 from qp.models.ops import JobRun
 
 CST = ZoneInfo("Asia/Shanghai")
@@ -618,7 +631,7 @@ def compare_latest(s: Session, now: dt.datetime) -> tuple[str, str, dict]:
     """
     required = REQUIRED_COMPARE_ITEMS
     expected = len(required)
-    now_utc = now.astimezone(dt.timezone.utc)
+    now_utc = now.astimezone(dt.UTC)
     jr = s.execute(select(JobRun).where(JobRun.job_name == "market.compare")
                    .order_by(JobRun.started_at.desc(), JobRun.id.desc()).limit(1)).scalar_one_or_none()
     base = {"expected": expected, "compared": 0, "missing": expected, "diffs": 0,
