@@ -31,6 +31,7 @@ def cleanup(engine, days=(DAY, *OLD_DAYS)) -> None:
         session.execute(delete(TradingDay).where(TradingDay.origin == "qp", TradingDay.date.in_(days)))
         session.execute(delete(IndexClose).where(IndexClose.origin == "qp", IndexClose.trade_date.in_(days)))
         session.execute(delete(Outbox).where(Outbox.dedup_key.like(f"watchdog:{DAY.isoformat()}:%")))
+        session.execute(delete(Outbox).where(Outbox.dedup_key == f"daily-combined:{DAY.isoformat()}"))
         session.commit()
 
 
@@ -138,12 +139,19 @@ def seed_day(
         return run.run_id
 
 
-def seed_notification(engine, *, mode: str = "live", status: str = "sent", ok_attempt: bool = True) -> int:
+def seed_notification(
+    engine,
+    *,
+    mode: str = "live",
+    status: str = "sent",
+    ok_attempt: bool = True,
+    dedup_key: str | None = None,
+) -> int:
     with Session(engine) as session:
         outbox = Outbox(
             channel="telegram",
             recipient="signals",
-            dedup_key=f"watchdog:{DAY.isoformat()}:daily",
+            dedup_key=dedup_key or f"watchdog:{DAY.isoformat()}:daily",
             subject="daily",
             body=json.dumps({"ok": True}),
             mode=mode,
@@ -188,6 +196,22 @@ def test_full_day_passes(engine, monkeypatch):
             "A9_duplicates",
             "A10_inputs",
         ]
+    finally:
+        cleanup(engine)
+
+
+def test_combined_daily_notification_passes(engine, monkeypatch):
+    monkeypatch.setenv("QP_SIGNALS_NOTIFY_MODE", "live")
+    cleanup(engine)
+    try:
+        seed_calendar(engine, [DAY])
+        seed_index(engine)
+        seed_day(engine)
+        seed_notification(engine, dedup_key=f"daily-combined:{DAY.isoformat()}")
+        out = run_acceptance(engine)
+        check = next(c for c in out["checks"] if c["id"] == "A8_notify")
+        assert check["status"] == "PASS", out
+        assert check["metrics"]["dedup_key"] == f"daily-combined:{DAY.isoformat()}"
     finally:
         cleanup(engine)
 

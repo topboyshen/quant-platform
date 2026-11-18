@@ -158,7 +158,8 @@ def chain_window_job(ctx: JobContext) -> dict:
     if blocked:
         return blocked
     with Session(ctx.engine) as session:
-        out = chain_window.report(session, end=now_cst().date())
+        now = now_cst()
+        out = chain_window.report(session, end=now.date(), now=now)
     out["ok"] = out.get("verdict") != "FAIL"
     return out
 

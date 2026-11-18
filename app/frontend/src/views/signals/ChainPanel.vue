@@ -4,11 +4,12 @@
       <template #header>
         <n-space align="center" :wrap="true">
           <span>记录链 5 日窗口</span>
-          <n-tag v-if="win" size="small" :type="win.verdict === 'PASS' ? 'success' : win.verdict === 'FAIL' ? 'error' : 'default'">
+          <n-tag v-if="win" size="small" :type="win.verdict === 'PASS' ? 'success' : win.verdict === 'FAIL' ? 'error' : win.verdict === 'IN_PROGRESS' ? 'warning' : 'default'">
             {{ WIN_LABEL[win.verdict] || win.verdict }}
           </n-tag>
           <n-text v-if="win && win.days_total" depth="3">
-            {{ win.days_pass }}/{{ win.days_total }} 天 · {{ win.window_start }} → {{ win.window_end }}
+            已通过 {{ win.days_pass }}/{{ win.days_total }} 个计划交易日 · 已评估 {{ win.days_evaluated }}
+            · 待运行/进行中 {{ win.days_pending }} · {{ win.window_start }} → {{ win.window_end }}
           </n-text>
           <n-text v-else depth="3">窗口从首个 native 批次（周一 EOD）开始</n-text>
         </n-space>
@@ -197,20 +198,25 @@ interface Detail { decision: { decision_uid: string; code: string; name: string 
       title: string; detail: Record<string, unknown>; confidence: number | null }[]
   } }
 
-interface WindowRow { date: string; status: string; run_status: string | null;
-  snapshot_status: string | null; compare_ok: boolean | null; decisions: number;
+interface WindowRow { date: string; status: string; status_label?: string;
+  run_status: string | null; run_finished?: string | null; snapshot_status: string | null;
+  snapshot_complete?: boolean; compare_ok: boolean | null; decisions: number;
   allowed: number; blocked: number; shadow_samples: number; shadow_outcomes: number;
-  reason: string }
-interface WindowData { verdict: string; days_total: number; days_pass: number;
-  window_start: string | null; window_end: string | null; rows: WindowRow[] }
+  reason: string; reason_label?: string }
+interface WindowData { verdict: string; verdict_label?: string; days_total: number;
+  days_evaluated: number; days_pass: number; days_failed: number; days_pending: number;
+  final: boolean; window_start: string | null; window_end: string | null; rows: WindowRow[] }
 
-const WIN_LABEL: Record<string, string> = { PASS: '通过', FAIL: '未通过', NOT_STARTED: '未开始' }
+const WIN_LABEL: Record<string, string> = { PASS: '通过', FAIL: '未通过', IN_PROGRESS: '观察中', NOT_STARTED: '未开始' }
+const ROW_LABEL: Record<string, string> = { PASS: '通过', FAIL: '未通过', PENDING: '待运行', RUNNING: '进行中' }
+const rowTagType = (status: string): 'success' | 'error' | 'warning' | 'default' =>
+  status === 'PASS' ? 'success' : status === 'FAIL' ? 'error' : status === 'RUNNING' ? 'warning' : 'default'
 const win = ref<WindowData | null>(null)
 const windowCols = [
   { title: '日期', key: 'date', width: 110 },
   { title: '结果', key: 'status', width: 90,
-    render: (r: WindowRow) => h(NTag, { size: 'small', type: r.status === 'PASS' ? 'success' : 'error' },
-      { default: () => (r.status === 'PASS' ? '通过' : '未通过') }) },
+    render: (r: WindowRow) => h(NTag, { size: 'small', type: rowTagType(r.status) },
+      { default: () => (r.status_label || ROW_LABEL[r.status] || r.status) }) },
   { title: 'EOD', key: 'run_status', width: 90 },
   { title: '快照', key: 'snapshot_status', width: 90 },
   { title: '一致', key: 'compare_ok', width: 70,
