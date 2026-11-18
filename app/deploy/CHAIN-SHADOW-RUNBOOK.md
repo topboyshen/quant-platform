@@ -21,7 +21,7 @@
 ## 2. 每日核对命令
 
 ```bash
-# 窗口表（FAIL 时退出码 1）
+# 窗口表（FAIL 时退出码 1；IN_PROGRESS/待运行退出码 0）
 sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
   /opt/qp/current/venv/bin/qp chain window --markdown'
 
@@ -30,8 +30,10 @@ sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
   /opt/qp/current/venv/bin/qp chain compare --date YYYY-MM-DD'
 ```
 
-PASS 条件：当天有终态 EOD run、有快照、`compare` 无差异、`loss` 三项为 0；
-5 个交易日全部 PASS 后进入 P7。`engineeringLoss` 非零即 FAIL，先定位再补证。
+PASS 条件：当天 EOD run 已到终态（`success`/`partial` 且 `finished_at` 非空）、快照 `status=complete`、
+五项漏斗计数与 `target_decision` 一致、`loss` 三项为 0；未到 16:12 的当天显示“待运行/进行中”，
+不提前给 PASS/FAIL。5 个计划交易日全部评估后才给最终结论；窗口未满 5 日时 `verdict=IN_PROGRESS`，
+页面显示“已通过 x/5 个计划交易日”。`engineeringLoss` 非零即 FAIL，先定位再补证。
 
 ## 3. 验收矩阵
 

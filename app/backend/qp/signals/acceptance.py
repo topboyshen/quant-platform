@@ -312,15 +312,29 @@ def evaluate(session: Session, day: dt.date, *, today: dt.date | None = None) ->
             )
         )
 
-    # A8 — the daily notification for this date was actually sent
-    outbox = session.scalar(select(Outbox).where(Outbox.dedup_key == f"watchdog:{day.isoformat()}:daily").limit(1))
+    # A8 — the daily notification for this date was actually sent.  Depending on
+    # the report mode at the time, the delivery is either the dedicated watchdog
+    # row or the combined 17:40 row; both are valid daily deliveries.
+    daily_keys = (f"watchdog:{day.isoformat()}:daily", f"daily-combined:{day.isoformat()}")
+    candidates = list(
+        session.scalars(select(Outbox).where(Outbox.dedup_key.in_(daily_keys)).order_by(Outbox.id.desc()))
+    )
+    outbox = next(
+        (row for row in candidates if row.status == "sent" and row.mode == "live"),
+        candidates[0] if candidates else None,
+    )
     live_mode = get_settings().signals_notify_mode.strip().lower() == "live"
     if outbox is None:
-        checks.append(_check("A8_notify", "WARN", "no daily watchdog notification row"))
+        checks.append(_check("A8_notify", "WARN", "no daily notification row (watchdog or combined)"))
     elif outbox.mode != "live" or not live_mode:
         checks.append(
             _check(
-                "A8_notify", "WARN", "signal notifications are shadow", mode=outbox.mode, outbox_status=outbox.status
+                "A8_notify",
+                "WARN",
+                "signal notifications are shadow",
+                mode=outbox.mode,
+                outbox_status=outbox.status,
+                dedup_key=outbox.dedup_key,
             )
         )
     elif outbox.status == "sent":
@@ -336,9 +350,10 @@ def evaluate(session: Session, day: dt.date, *, today: dt.date | None = None) ->
             _check(
                 "A8_notify",
                 "PASS" if attempts else "WARN",
-                f"sent, {attempts} successful delivery attempt(s)",
+                f"sent via {outbox.dedup_key}, {attempts} successful delivery attempt(s)",
                 mode=outbox.mode,
                 attempts=attempts,
+                dedup_key=outbox.dedup_key,
             )
         )
     else:
@@ -346,9 +361,10 @@ def evaluate(session: Session, day: dt.date, *, today: dt.date | None = None) ->
             _check(
                 "A8_notify",
                 "FAIL",
-                f"daily notification {outbox.status}",
+                f"daily notification {outbox.status} via {outbox.dedup_key}",
                 mode=outbox.mode,
                 outbox_status=outbox.status,
+                dedup_key=outbox.dedup_key,
             )
         )
 

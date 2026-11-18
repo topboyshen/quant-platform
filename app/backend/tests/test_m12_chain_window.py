@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import json
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from qp.jobs.registry import JOBS
@@ -13,8 +15,13 @@ from qp.models.market import TradingDay
 from qp.models.signals import EodRun, ShadowOutcome, ShadowSignal, TargetDecision
 from qp.signals import chain, chain_window
 
-DAY = dt.date(2027, 6, 7)  # Monday, outside the fixture calendar
+DAY = dt.date(2026, 6, 1)  # Monday, outside the fixture calendar
+DAY2 = dt.date(2026, 6, 2)
 CST = dt.timezone(dt.timedelta(hours=8))
+
+
+def _at(day: dt.date, hour: int, minute: int = 0) -> dt.datetime:
+    return dt.datetime.combine(day, dt.time(hour, minute), tzinfo=CST)
 
 
 @pytest.fixture()
@@ -72,8 +79,13 @@ def _cleanup_day(engine, day: dt.date) -> None:
 
 def _calendar(engine, start: dt.date, days: int = 10) -> None:
     with Session(engine) as session:
-        for i in range(days):
-            session.merge(TradingDay(origin="qp", date=start + dt.timedelta(days=i), is_open=True, source="test"))
+        cursor = start
+        added = 0
+        while added < days:
+            if cursor.weekday() < 5:
+                session.merge(TradingDay(origin="qp", date=cursor, is_open=True, source="test"))
+                added += 1
+            cursor += dt.timedelta(days=1)
         session.commit()
 
 
@@ -124,14 +136,21 @@ def _decisions() -> list[dict]:
     ]
 
 
-def _seed_day(engine, day: dt.date, *, snapshot: bool = True) -> int:
+def _seed_day(
+    engine,
+    day: dt.date,
+    *,
+    snapshot: bool = True,
+    run_status: str = "success",
+    finished: bool = True,
+) -> int:
     decisions = _decisions()
     with Session(engine) as session:
         run = EodRun(
             decision_date=day,
             attempt_no=1,
-            status="success",
-            decision_outcome="emitted",
+            status=run_status,
+            decision_outcome="emitted" if finished else None,
             target_count=3,
             evaluated_count=3,
             failed_count=0,
@@ -140,8 +159,8 @@ def _seed_day(engine, day: dt.date, *, snapshot: bool = True) -> int:
             blocked_signal_count=1,
             reason_codes=[],
         )
-        run.started_at = dt.datetime.combine(day, dt.time(15, 30), tzinfo=CST)
-        run.finished_at = run.started_at + dt.timedelta(minutes=3)
+        run.started_at = _at(day, 15, 30)
+        run.finished_at = _at(day, 15, 33) if finished else None
         session.add(run)
         session.flush()
         for row in decisions:
@@ -164,13 +183,23 @@ def _seed_day(engine, day: dt.date, *, snapshot: bool = True) -> int:
                 )
             )
         session.flush()
-        chain.register_run(session, run=run, decisions=decisions, run_status="success")
+        chain.register_run(session, run=run, decisions=decisions, run_status=run_status)
         session.flush()
         if snapshot:
             out = chain.build_snapshot(session, business_date=day)
             assert out["ok"], out
         session.commit()
         return run.run_id
+
+
+def _finish_run(engine, run_id: int, day: dt.date) -> None:
+    with Session(engine) as session:
+        run = session.get(EodRun, run_id)
+        assert run is not None
+        run.status = "success"
+        run.decision_outcome = "emitted"
+        run.finished_at = _at(day, 15, 33)
+        session.commit()
 
 
 def test_window_not_started_without_native_batch(engine):
@@ -186,13 +215,16 @@ def test_window_passes_for_a_native_day(engine, chain_on):
     try:
         _seed_day(engine, DAY)
         with Session(engine) as session:
-            out = chain_window.report(session, end=DAY, sessions=1)
+            out = chain_window.report(session, end=DAY, sessions=1, now=_at(DAY, 16, 30))
         assert out["verdict"] == "PASS", out
-        assert out["days_pass"] == 1
+        assert out["days_pass"] == 1 and out["days_total"] == 1
+        assert out["days_evaluated"] == 1 and out["days_pending"] == 0
+        assert out["final"] is True
         row = out["rows"][0]
         assert (row["status"], row["compare_ok"], row["reason"]) == ("PASS", True, "ok")
         assert row["decisions"] == 3 and row["allowed"] == 1 and row["blocked"] == 1
         assert row["funnel"]["checked"] == 3 and row["funnel"]["admitted"] == 1
+        assert row["run_finished"] is not None and row["snapshot_complete"] is True
     finally:
         _cleanup_day(engine, DAY)
         _wipe(engine)
@@ -224,7 +256,7 @@ def test_window_fails_on_compare_diff(engine, chain_on):
                 )
             )
             session.commit()
-            out = chain_window.report(session, end=DAY, sessions=1)
+            out = chain_window.report(session, end=DAY, sessions=1, now=_at(DAY, 16, 30))
         assert out["verdict"] == "FAIL"
         assert out["rows"][0]["status"] == "FAIL"
         assert "checked" in out["rows"][0]["diffs"]
@@ -240,11 +272,174 @@ def test_window_fails_without_snapshot(engine, chain_on):
     try:
         _seed_day(engine, DAY, snapshot=False)
         with Session(engine) as session:
-            out = chain_window.report(session, end=DAY, sessions=1)
+            out = chain_window.report(session, end=DAY, sessions=1, now=_at(DAY, 16, 30))
         assert out["verdict"] == "FAIL"
         assert out["rows"][0]["reason"] == "no_snapshot"
     finally:
         _cleanup_day(engine, DAY)
+        _wipe(engine)
+
+
+def _insert_snapshot_with_loss(engine, day: dt.date) -> None:
+    from qp.models.chain import ChainSnapshot
+
+    with Session(engine) as session:
+        base = session.scalar(
+            select(ChainSnapshot)
+            .where(ChainSnapshot.business_date == day)
+            .order_by(ChainSnapshot.generated_at.desc())
+            .limit(1)
+        )
+        assert base is not None
+        body = dict(base.body or {})
+        loss = dict(body.get("loss") or {})
+        loss["universe_members_without_decision"] = 1
+        body["loss"] = loss
+        digest = hashlib.sha256(
+            json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        ).hexdigest()
+        session.add(
+            ChainSnapshot(
+                snapshot_id="snp_" + digest[:32],
+                business_date=day,
+                cutoff_at=base.cutoff_at + dt.timedelta(minutes=1),
+                protocol_version=base.protocol_version,
+                eligibility_policy_version=base.eligibility_policy_version,
+                universe_version=base.universe_version,
+                batch_keys=list(base.batch_keys or []),
+                body=body,
+                digest=digest,
+                generated_at=base.generated_at + dt.timedelta(minutes=1),
+                generator_version=base.generator_version,
+            )
+        )
+        session.commit()
+
+
+def test_window_fails_on_incomplete_snapshot(engine, chain_on):
+    _wipe(engine)
+    _cleanup_day(engine, DAY)
+    _calendar(engine, DAY)
+    try:
+        run_id = _seed_day(engine, DAY, run_status="running", finished=False)
+        _finish_run(engine, run_id, DAY)
+        with Session(engine) as session:
+            out = chain_window.report(session, end=DAY, sessions=1, now=_at(DAY, 16, 30))
+        assert out["verdict"] == "FAIL"
+        assert out["rows"][0]["status"] == "FAIL"
+        assert out["rows"][0]["reason"] == "snapshot_incomplete"
+    finally:
+        _cleanup_day(engine, DAY)
+        _wipe(engine)
+
+
+def test_window_fails_on_engineering_loss(engine, chain_on):
+    _wipe(engine)
+    _cleanup_day(engine, DAY)
+    _calendar(engine, DAY)
+    try:
+        _seed_day(engine, DAY)
+        _insert_snapshot_with_loss(engine, DAY)
+        with Session(engine) as session:
+            out = chain_window.report(session, end=DAY, sessions=1, now=_at(DAY, 16, 30))
+        assert out["verdict"] == "FAIL"
+        assert out["rows"][0]["status"] == "FAIL"
+        assert out["rows"][0]["reason"] == "engineering_loss"
+        assert out["rows"][0]["loss_total"] == 1
+    finally:
+        _cleanup_day(engine, DAY)
+        _wipe(engine)
+
+
+def test_window_pending_before_eod(engine, chain_on):
+    _wipe(engine)
+    _cleanup_day(engine, DAY)
+    _calendar(engine, DAY)
+    try:
+        with Session(engine) as session:
+            out = chain_window.report(session, start=DAY, end=DAY, sessions=1, now=_at(DAY, 15, 0))
+        assert out["verdict"] == "IN_PROGRESS"
+        assert out["days_pending"] == 1 and out["days_pass"] == 0
+        assert out["rows"][0]["status"] == "PENDING"
+        assert out["rows"][0]["reason"] == "before_eod"
+    finally:
+        _cleanup_day(engine, DAY)
+        _wipe(engine)
+
+
+def test_window_running_after_eod_before_due(engine, chain_on):
+    _wipe(engine)
+    _cleanup_day(engine, DAY)
+    _calendar(engine, DAY)
+    try:
+        _seed_day(engine, DAY)
+        with Session(engine) as session:
+            out = chain_window.report(session, end=DAY, sessions=1, now=_at(DAY, 15, 40))
+        assert out["verdict"] == "IN_PROGRESS"
+        assert out["rows"][0]["status"] == "RUNNING"
+        assert out["rows"][0]["reason"] in {"awaiting_snapshot", "eod_window"}
+    finally:
+        _cleanup_day(engine, DAY)
+        _wipe(engine)
+
+
+def test_window_running_when_run_not_terminal(engine, chain_on):
+    _wipe(engine)
+    _cleanup_day(engine, DAY)
+    _calendar(engine, DAY)
+    try:
+        _seed_day(engine, DAY, run_status="running", finished=False)
+        with Session(engine) as session:
+            out = chain_window.report(session, end=DAY, sessions=1, now=_at(DAY, 16, 30))
+        assert out["verdict"] == "IN_PROGRESS"
+        assert out["rows"][0]["status"] == "RUNNING"
+        assert out["rows"][0]["reason"] == "run_running"
+    finally:
+        _cleanup_day(engine, DAY)
+        _wipe(engine)
+
+
+def test_window_terminal_partial_passes(engine, chain_on):
+    _wipe(engine)
+    _cleanup_day(engine, DAY)
+    _calendar(engine, DAY)
+    try:
+        run_id = _seed_day(engine, DAY)
+        with Session(engine) as session:
+            run = session.get(EodRun, run_id)
+            run.status = "partial"
+            session.commit()
+            out = chain_window.report(session, end=DAY, sessions=1, now=_at(DAY, 16, 30))
+        assert out["verdict"] == "PASS"
+        assert out["rows"][0]["run_status"] == "partial"
+    finally:
+        _cleanup_day(engine, DAY)
+        _wipe(engine)
+
+
+def test_window_two_of_five_is_in_progress(engine, chain_on):
+    _wipe(engine)
+    _cleanup_day(engine, DAY)
+    _cleanup_day(engine, DAY2)
+    _calendar(engine, DAY)
+    try:
+        _seed_day(engine, DAY)
+        _seed_day(engine, DAY2)
+        with Session(engine) as session:
+            out = chain_window.report(session, end=DAY2, sessions=5, now=_at(DAY2, 16, 30))
+        assert out["verdict"] == "IN_PROGRESS"
+        assert out["final"] is False
+        assert out["days_total"] == 5
+        assert out["days_pass"] == 2
+        assert out["days_evaluated"] == 2
+        assert out["days_pending"] == 3
+        assert out["days_failed"] == 0
+        assert out["window_start"] == DAY.isoformat()
+        assert out["window_end"] == "2026-06-05"
+        assert [row["status"] for row in out["rows"]] == ["PASS", "PASS", "PENDING", "PENDING", "PENDING"]
+    finally:
+        _cleanup_day(engine, DAY)
+        _cleanup_day(engine, DAY2)
         _wipe(engine)
 
 
@@ -261,7 +456,8 @@ def test_cli_window_markdown_and_exit_codes(engine, chain_on, capsys):
         )
         out = capsys.readouterr().out
         assert code == 0
-        assert "记录链影子窗口" in out and "| 日期 |" in out and "PASS" in out
+        assert "记录链影子窗口" in out and "| 日期 |" in out and "通过" in out
+        assert "已通过 1/1 个计划交易日" in out
     finally:
         _cleanup_day(engine, DAY)
         _wipe(engine)
