@@ -248,3 +248,57 @@ def test_live_runbook_documents_switch_and_emergency_stop():
         "不补发",
     ):
         assert token in text
+
+
+def _daily_row(payload: dict) -> Outbox:
+    return Outbox(
+        channel="telegram",
+        recipient="signals",
+        dedup_key="render:macro",
+        subject="EOD 日报 2026-11-16",
+        body=json.dumps(payload, ensure_ascii=False),
+        mode="live",
+    )
+
+
+def _macro_payload(**macro) -> dict:
+    payload = json.loads(_daily_payload())
+    payload["macro"] = {
+        "date": "2026-11-16",
+        "total_amount": 14844.9,
+        "margin_balance": 22791.12,
+        "margin_growth_pct": -0.708,
+        "limit_up": 32,
+        "limit_down": 62,
+        "limit_ratio": 0.508,
+        "source": "tencent+sse+szse+eastmoney",
+        "total_amount_source": "tencent",
+    }
+    payload["macro"].update(macro)
+    return payload
+
+
+def test_render_daily_report_includes_macro_detail():
+    text = render_outbox(_daily_row(_macro_payload()))
+    assert ("宏观明细：成交额 14,844.9 亿；两融余额 22,791.12 亿（-0.71%）；涨停 32 / 跌停 62") in text
+    assert text.index("宏观数据：完整") < text.index("宏观明细：") < text.index("信号：无触发")
+
+
+def test_render_daily_report_macro_detail_handles_partial_and_missing():
+    partial = render_outbox(
+        _daily_row(_macro_payload(margin_balance=None, margin_growth_pct=None, limit_up=None, limit_down=None))
+    )
+    assert "宏观明细：成交额 14,844.9 亿" in partial
+    assert "两融" not in partial and "涨停" not in partial
+    only_limits = render_outbox(_daily_row(_macro_payload(total_amount=None)))
+    assert "涨停 32 / 跌停 62" in only_limits and "成交额" not in only_limits
+    empty = render_outbox(
+        _daily_row(
+            _macro_payload(
+                total_amount=None, margin_balance=None, margin_growth_pct=None, limit_up=None, limit_down=None
+            )
+        )
+    )
+    assert "宏观明细" not in empty and "宏观数据：完整" in empty
+    no_macro = json.loads(_daily_payload())
+    assert "宏观明细" not in render_outbox(_daily_row(no_macro))

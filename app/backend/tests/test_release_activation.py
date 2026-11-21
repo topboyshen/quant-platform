@@ -42,3 +42,5 @@ def test_script_has_atomic_switch_health_and_rollback():
     assert "health_ok" in text and "ROLLBACK_OK" in text
     assert "systemctl restart" in text
     assert "qp-release-activate" in text
+    assert "DB_CHECK_FAILED" in text and "DB_CHECK_OK" in text
+    assert text.index("DB_CHECK_FAILED") < text.index('echo "ACTIVATE_START')
