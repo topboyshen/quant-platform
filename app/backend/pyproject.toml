@@ -23,6 +23,9 @@ build-backend = "setuptools.build_meta"
 include = ["qp*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "assets: needs repo-level docs, lockfiles, deploy units or frontend source; run with --run-assets",
+]
 
 [tool.ruff]
 target-version = "py312"

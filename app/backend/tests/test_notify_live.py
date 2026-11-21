@@ -230,13 +230,18 @@ def test_watchdog_enqueue_uses_signals_live_mode(engine, monkeypatch, clean_outb
     assert row.mode == "live" and row.recipient == "signals"
 
 
+def test_notify_job_registered():
+    assert "notify.send" in JOBS
+
+
+@pytest.mark.assets
 def test_notify_timer_targets_registered_job_and_never_backfills():
     text = (DEPLOY / "systemd" / "qp-notify.timer").read_text(encoding="utf-8")
     assert "Unit=qp-job@notify.send.service" in text
     assert "Asia/Shanghai" in text and "Persistent=false" in text
-    assert "notify.send" in JOBS
 
 
+@pytest.mark.assets
 def test_live_runbook_documents_switch_and_emergency_stop():
     text = (DEPLOY / "M4-LIVE-RUNBOOK.md").read_text(encoding="utf-8")
     for token in (

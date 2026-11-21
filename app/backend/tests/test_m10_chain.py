@@ -604,6 +604,7 @@ def test_chain_decision_detail_expands_legacy_signals(engine, client, chain_on):
     assert evidence["signals"][0]["detail"] == {"sample": 1}
 
 
+@pytest.mark.assets
 def test_pool_page_has_record_chain_tab():
     from pathlib import Path
 
