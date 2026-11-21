@@ -321,3 +321,21 @@ def chain_decision(
         ],
         "legacy_evidence": legacy_evidence,
     }
+
+
+@router.get("/chain/attribution")
+def chain_attribution(
+    horizon: int = 20,
+    start: dt.date | None = None,
+    end: dt.date | None = None,
+    group_by: str = "eligibility,sector,signal_type",
+    p: Principal = Depends(require_auth),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Read-only performance attribution for matured chain outcomes."""
+    from qp.signals import attribution
+
+    try:
+        return attribution.report(db, horizon=horizon, start=start, end=end, group_by=group_by)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
