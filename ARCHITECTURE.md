@@ -186,8 +186,17 @@ A failed run is retried by the next slot; failures are recorded in
 
 ## 6. Testing and CI
 
-- Backend: `pytest` with an embedded PostgreSQL 16 (`pgserver`); **451 passed,
-  1 skipped** on 2026-11-18. Coverage floor is 80% (measured 85%).
+- Backend: `pytest` with an embedded PostgreSQL 16 (`pgserver`). On 2026-11-21
+  the default unit suite was **425 passed, 45 skipped** (44 repo-asset tests +
+  1 conditional skip); `pytest --run-assets` was **469 passed, 1 skipped**.
+  Coverage floor is 80% (measured 85%).
+- Test isolation: `tests/conftest.py` pins runtime switches to test defaults
+  (`QP_JOB_GATES=0`, shadow notification modes, `QP_RECORD_CHAIN=0`, ...), so a
+  production release tree cannot change assertions through its environment.
+  Tests that read repo-level docs, lockfiles, deploy units or frontend source
+  are marked `assets`; default `pytest` skips them and CI runs
+  `pytest --run-assets -m assets` after the unit suite. A release tree can
+  therefore run `pytest` without carrying docs, frontend source or lockfiles.
 - Dependencies: `app/backend/requirements.lock` (test extra) is the CI source;
   `app/backend/requirements-runtime.lock` is the release source, installed by
   `app/deploy/bin/qp-release-venv`. The runtime pins are a subset of the test

@@ -6,6 +6,10 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.assets
+
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "app" / "deploy" / "bin" / "qp-release-activate"
 

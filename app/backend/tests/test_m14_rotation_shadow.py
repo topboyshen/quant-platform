@@ -459,16 +459,20 @@ def test_warmup_gap_not_stretched_to_older_momentum_anchor(book):
         assert CODES[0] in result["missing_codes"]
 
 
-def test_job_cli_and_timer_registration():
-    from pathlib import Path
-
+def test_job_and_cli_registration():
     from qp.cli import main
     from qp.jobs.registry import JOBS
 
     assert JOBS["signals.rotation_shadow"].schedule_hint.startswith("Mon-Fri 15:50, 16:40")
-    timer = Path(__file__).resolve().parents[2] / "deploy/systemd/qp-signals-rotation-shadow.timer"
-    assert "15:50:00 Asia/Shanghai" in timer.read_text()
-    assert "16:40:00 Asia/Shanghai" in timer.read_text()
     with pytest.raises(SystemExit) as out:
         main(["signals", "rotation-shadow", "--help"])
     assert out.value.code == 0
+
+
+@pytest.mark.assets
+def test_timer_registration():
+    from pathlib import Path
+
+    timer = Path(__file__).resolve().parents[2] / "deploy/systemd/qp-signals-rotation-shadow.timer"
+    assert "15:50:00 Asia/Shanghai" in timer.read_text()
+    assert "16:40:00 Asia/Shanghai" in timer.read_text()

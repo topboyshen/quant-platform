@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from qp.jobs.registry import JOBS
+
+pytestmark = pytest.mark.assets
 
 DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
 HISTORICAL_TIMERS = {

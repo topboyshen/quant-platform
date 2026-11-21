@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
 
 
@@ -18,6 +20,7 @@ def test_cli_inventory_writes_manifest(tmp_path: Path):
     assert "sha256" in data and "totals" in data
 
 
+@pytest.mark.assets
 def test_runbook_documents_stop_archive_rollback_and_consent():
     text = (DEPLOY / "M9-DECOMMISSION-RUNBOOK.md").read_text(encoding="utf-8")
     assert "只停不删" in text

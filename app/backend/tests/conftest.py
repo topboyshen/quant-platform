@@ -5,6 +5,61 @@ import pytest
 
 PGDATA = os.getenv("QP_TEST_PGDATA", "/workspace/qp/pgdata")
 
+# Runtime switches are deployment inputs.  Tests must not inherit the host's
+# production values: a release tree with QP_JOB_GATES=1 / QP_SIGNALS_NOTIFY_MODE=live
+# would otherwise change assertions and make the suite non-reproducible.
+RUNTIME_ENV_DEFAULTS = {
+    "QP_JOB_GATES": "0",
+    "QP_NOTIFY_MODE": "shadow",
+    "QP_SIGNALS_NOTIFY_MODE": "shadow",
+    "QP_SIGNALS_COMBINED_REPORT": "0",
+    "QP_RECORD_CHAIN": "0",
+    "QP_CHAIN_READS": "0",
+    "QP_CHAIN_READS_FALLBACK": "1",
+    "QP_NOTIFY_KILL_SWITCH": "0",
+    "QP_NOTIFY_DISABLED_FILE": "/nonexistent/qp-test-notify.disabled",
+}
+_ORIGINAL_ENV: dict[str, str | None] = {}
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-assets",
+        action="store_true",
+        default=False,
+        help="run tests marked 'assets' (repo docs, lockfiles, deploy units, frontend source)",
+    )
+
+
+def pytest_configure(config):
+    # Runs before test modules import qp, so import-time env reads are covered too.
+    for key, value in RUNTIME_ENV_DEFAULTS.items():
+        _ORIGINAL_ENV[key] = os.environ.get(key)
+        os.environ[key] = value
+
+
+def pytest_unconfigure(config):
+    for key, value in _ORIGINAL_ENV.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-assets"):
+        return
+    skip = pytest.mark.skip(reason="repo asset test; rerun with --run-assets")
+    for item in items:
+        if "assets" in item.keywords:
+            item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def _runtime_env_defaults(monkeypatch):
+    for key, value in RUNTIME_ENV_DEFAULTS.items():
+        monkeypatch.setenv(key, value)
+
 
 @pytest.fixture(scope="session")
 def db_url():

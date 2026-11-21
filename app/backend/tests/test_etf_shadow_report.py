@@ -6,6 +6,7 @@ import datetime as dt
 import json
 from pathlib import Path
 
+import pytest
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -249,9 +250,13 @@ def test_empty_builder_is_explicit(engine):
     assert "不构成推荐" in out["conclusion"]
 
 
-def test_job_and_timer_registered():
+def test_job_registered():
     assert "research.etf_shadow_report" in JOBS
     assert JOBS["research.etf_shadow_report"].schedule_hint.startswith("Mon-Fri 17:40")
+
+
+@pytest.mark.assets
+def test_timer_registered():
     text = (DEPLOY / "systemd" / "qp-research-etf-shadow.timer").read_text(encoding="utf-8")
     assert "17:40:00 Asia/Shanghai" in text
     assert "Unit=qp-job@research.etf_shadow_report.service" in text
