@@ -293,6 +293,24 @@ def cmd_chain_window(a) -> int:
     return 0 if out.get("verdict") != "FAIL" else 1
 
 
+def cmd_chain_attribution(a) -> int:
+    """Read-only performance attribution by eligibility, sector or signal type."""
+    import datetime as dt
+
+    from qp.db import session_scope
+    from qp.signals import attribution
+
+    start = dt.date.fromisoformat(a.start) if a.start else None
+    end = dt.date.fromisoformat(a.end) if a.end else None
+    with session_scope() as s:
+        out = attribution.report(s, horizon=a.horizon, start=start, end=end, group_by=a.group_by)
+    text = attribution.markdown(out) if a.markdown else json.dumps(out, ensure_ascii=False, indent=2, default=str)
+    if a.out:
+        Path(a.out).write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+    print(text)
+    return 0
+
+
 def cmd_chain_compare(a) -> int:
     """Shadow comparison of the chain snapshot against the legacy signals tables."""
     import datetime as dt
@@ -469,6 +487,14 @@ def main(argv: list[str] | None = None) -> int:
     cw.add_argument("--markdown", action="store_true")
     cw.add_argument("--out", default=None)
     cw.set_defaults(fn=cmd_chain_window)
+    ca = ch.add_parser("attribution")
+    ca.add_argument("--horizon", type=int, default=20)
+    ca.add_argument("--start", default=None)
+    ca.add_argument("--end", default=None)
+    ca.add_argument("--group-by", default="eligibility,sector,signal_type")
+    ca.add_argument("--markdown", action="store_true")
+    ca.add_argument("--out", default=None)
+    ca.set_defaults(fn=cmd_chain_attribution)
     sg = sub.add_parser("signals").add_subparsers(dest="sub", required=True)
     sa = sg.add_parser("acceptance")
     sa.add_argument("--date", default=None, help="decision date (default: latest run on/before --today)")

@@ -17,6 +17,42 @@
       <n-data-table v-if="win?.rows?.length" size="small" :columns="windowCols" :data="win?.rows || []" :pagination="false" />
       <n-text v-else depth="3">首份快照生成后，这里逐日显示 PASS/FAIL。</n-text>
     </n-card>
+    <n-card title="绩效归因（20 日）" size="small">
+      <AsyncState :loading="attrLoading" :error="attrError" :empty="!attrLoading && !attrError && !attr"
+                  empty-text="还没有可归因的成熟结果">
+        <template v-if="attr">
+          <n-space size="small" style="margin-bottom: 8px">
+            <n-tag size="small">成熟 {{ attr.sample.matured_filled }}</n-tag>
+            <n-tag size="small">触发 {{ attr.sample.triggered }}</n-tag>
+            <n-tag size="small" :type="attr.sample.eligible_matured >= attr.threshold ? 'success' : 'warning'">
+              合格 {{ attr.sample.eligible_matured }}
+            </n-tag>
+            <n-tag size="small">合格胜率 {{ pct(attr.eligible.win_rate) }}</n-tag>
+            <n-tag size="small">合格净收益 {{ pct(attr.eligible.avg_net_return) }}</n-tag>
+            <n-tag size="small">合格超额 {{ pct(attr.eligible.avg_excess_return) }}</n-tag>
+            <n-tag size="small" :type="attrStatusType(attr.overall.sample_status)">
+              {{ ATTR_STATUS[attr.overall.sample_status] || attr.overall.sample_status }}
+            </n-tag>
+          </n-space>
+          <n-text depth="3" style="display: block; margin-bottom: 8px">
+            全部成熟平均净收益 {{ pct(attr.overall.avg_net_return) }}（含未触发基线）
+            · 触发样本平均净收益 {{ pct(attr.triggered.avg_net_return) }}
+          </n-text>
+          <n-alert v-for="warning in attr.warnings" :key="warning.code" type="warning" :show-icon="true"
+                   style="margin-bottom: 8px">
+            {{ warning.message }}
+          </n-alert>
+          <n-space align="center" style="margin-bottom: 8px">
+            <n-select v-model:value="attrDim" size="small" :options="attrDimensionOptions" style="width: 150px" />
+            <n-text depth="3">
+              信号类型覆盖 {{ attr.sample.signal_type_known }}/{{ attr.sample.matured_filled }}
+              · 多信号决策会在多个类型中重复计数
+            </n-text>
+          </n-space>
+          <n-data-table size="small" :columns="attrCols" :data="attr.groups[attrDim] || []" :pagination="false" />
+        </template>
+      </AsyncState>
+    </n-card>
     <n-space align="center">
       <n-date-picker v-model:value="ts" type="date" clearable placeholder="最新快照" />
       <n-button size="small" @click="load">查询</n-button>
@@ -147,7 +183,7 @@
 </template>
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
-import { NButton, NCard, NDataTable, NDatePicker, NDescriptions, NDescriptionsItem, NDrawer, NDrawerContent,
+import { NAlert, NButton, NCard, NDataTable, NDatePicker, NDescriptions, NDescriptionsItem, NDrawer, NDrawerContent,
   NGi, NGrid, NH4, NSelect, NSpace, NStatistic, NTag, NText } from 'naive-ui'
 import AsyncState from '../../components/AsyncState.vue'
 import { api, ApiError } from '../../api/client'
@@ -207,6 +243,18 @@ interface WindowData { verdict: string; verdict_label?: string; days_total: numb
   days_evaluated: number; days_pass: number; days_failed: number; days_pending: number;
   final: boolean; window_start: string | null; window_end: string | null; rows: WindowRow[] }
 
+interface AttrStats { n: number; eligible_n: number; win_rate: number | null;
+  avg_net_return: number | null; median_net_return: number | null;
+  avg_excess_return: number | null; median_excess_return: number | null;
+  sample_status: string; sample_status_label: string }
+interface AttrGroup extends AttrStats { bucket: string }
+interface AttrReport { as_of: string; horizon: number; threshold: number; start: string | null; end: string | null;
+  group_by: string[]; overall: AttrStats; eligible: AttrStats; triggered: AttrStats;
+  sample: { decisions: number; triggered: number; matured_filled: number; eligible_matured: number;
+    native_matured: number; legacy_matured: number; signal_type_known: number; signal_type_unknown: number };
+  groups: Record<string, AttrGroup[]>; overlap?: Record<string, boolean>;
+  warnings: { code: string; message: string }[] }
+
 const WIN_LABEL: Record<string, string> = { PASS: '通过', FAIL: '未通过', IN_PROGRESS: '观察中', NOT_STARTED: '未开始' }
 const ROW_LABEL: Record<string, string> = { PASS: '通过', FAIL: '未通过', PENDING: '待运行', RUNNING: '进行中' }
 const rowTagType = (status: string): 'success' | 'error' | 'warning' | 'default' =>
@@ -238,6 +286,36 @@ const stateFilter = ref<string | null>(null), eligibilityFilter = ref<string | n
 const show = ref(false), detail = ref<Detail | null>(null)
 const emptyText = '还没有记录链快照（15:55 任务运行后生成；历史导入日没有 native 批次）'
 const lossTotal = computed(() => snap.value ? Object.values(snap.value.body.loss).reduce((a, b) => a + b, 0) : 0)
+
+const ATTR_STATUS: Record<string, string> = { sufficient: '样本达标', insufficient: '样本不足',
+  baseline_only: '仅基线', empty: '无样本' }
+const ATTR_DIMENSIONS: Record<string, string> = { eligibility: '资格', sector: '板块',
+  signal_type: '信号类型', origin: '数据来源', signal_state: '信号状态', risk_state: '风控状态' }
+const attrDimensionOptions = Object.entries(ATTR_DIMENSIONS).map(([value, label]) => ({ value, label }))
+const attr = ref<AttrReport | null>(null)
+const attrDim = ref('eligibility')
+const attrLoading = ref(false), attrError = ref('')
+
+function pct(value: number | null | undefined) {
+  return value === null || value === undefined ? '—' : `${(value * 100).toFixed(2)}%`
+}
+function attrStatusType(status: string): 'success' | 'warning' | 'default' {
+  return status === 'sufficient' ? 'success' : status === 'insufficient' ? 'warning' : 'default'
+}
+const attrCols = [
+  { title: '分组', key: 'bucket', minWidth: 120 },
+  { title: '样本', key: 'n', width: 70 },
+  { title: '合格', key: 'eligible_n', width: 70 },
+  { title: '胜率', key: 'win_rate', width: 90,
+    render: (r: AttrGroup) => pct(r.win_rate) },
+  { title: '平均净收益', key: 'avg_net_return', width: 110,
+    render: (r: AttrGroup) => pct(r.avg_net_return) },
+  { title: '平均超额', key: 'avg_excess_return', width: 110,
+    render: (r: AttrGroup) => pct(r.avg_excess_return) },
+  { title: '状态', key: 'sample_status', width: 100,
+    render: (r: AttrGroup) => h(NTag, { size: 'small', type: attrStatusType(r.sample_status) },
+      { default: () => (ATTR_STATUS[r.sample_status] || r.sample_status) }) },
+]
 
 const stateOptions = [
   { label: '触发', value: 'triggered' }, { label: '未触发', value: 'not_triggered' },
@@ -337,6 +415,14 @@ function rowProps(row: Row) {
 async function loadWindow() {
   try { win.value = await api<WindowData>('/signals/chain/window') } catch { /* 非关键：快照区域仍可用 */ }
 }
+async function loadAttribution() {
+  attrLoading.value = true; attrError.value = ''
+  try {
+    const dims = Object.keys(ATTR_DIMENSIONS).join(',')
+    attr.value = await api<AttrReport>(`/signals/chain/attribution?horizon=20&group_by=${dims}`)
+  } catch (e) { attrError.value = e instanceof ApiError ? `${e.status} ${e.message}` : String(e) }
+  finally { attrLoading.value = false }
+}
 
-onMounted(() => { void loadWindow(); void load() })
+onMounted(() => { void loadWindow(); void load(); void loadAttribution() })
 </script>

@@ -77,6 +77,13 @@ The ETF record chain is a controlled successor to `target_decision`:
   falls back to `target_decision` with `source=legacy_fallback`,
   `fallback=true`, `stale_or_fallback=true`; `QP_CHAIN_READS_FALLBACK=0`
   restores the strict empty response.
+- **Performance attribution**: `GET /api/signals/chain/attribution` and
+  `qp chain attribution` are read-only. They use the latest outcome revision,
+  current eligibility/state, sector and known signal types, report matured vs
+  pending coverage, and withhold a performance claim below the 30-sample
+  threshold. `migrated_v1` rows without `raw_signals` are explicitly
+  `unknown`, never inferred; if they also lack chain state, signal/risk state
+  falls back to `target_decision` and the source is labelled in the payload.
 
 External artifacts (model files, frozen inputs, exported score payloads) are
 not decisions, so they use a separate **artifact evidence manifest** rather than

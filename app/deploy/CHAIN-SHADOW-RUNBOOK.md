@@ -28,6 +28,10 @@ sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
 # 当日快照与对账
 sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
   /opt/qp/current/venv/bin/qp chain compare --date YYYY-MM-DD'
+
+# 绩效归因（20 日成熟结果；只读，不写库、不发通知）
+sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
+  /opt/qp/current/venv/bin/qp chain attribution --horizon 20 --markdown'
 ```
 
 PASS 条件：当天 EOD run 已到终态（`success`/`partial` 且 `finished_at` 非空）、快照 `status=complete`、
