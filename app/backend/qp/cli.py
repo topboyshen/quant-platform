@@ -28,6 +28,24 @@ def cmd_db_upgrade(_a) -> int:
     return 0
 
 
+def cmd_db_check(_a) -> int:
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+
+    from qp.db import get_engine
+
+    cfg = _alembic_cfg()
+    heads = sorted(ScriptDirectory.from_config(cfg).get_heads())
+    with get_engine().connect() as conn:
+        current = MigrationContext.configure(
+            conn,
+            opts={"version_table": "alembic_version", "version_table_schema": "ops"},
+        ).get_current_revision()
+    ok = current in heads
+    print(json.dumps({"ok": ok, "current": current, "heads": heads}, ensure_ascii=False))
+    return 0 if ok else 1
+
+
 def cmd_job_list(_a) -> int:
     from qp.jobs import JOBS
 
@@ -403,6 +421,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     db = sub.add_parser("db").add_subparsers(dest="sub", required=True)
     db.add_parser("upgrade").set_defaults(fn=cmd_db_upgrade)
+    db.add_parser("check").set_defaults(fn=cmd_db_check)
     jb = sub.add_parser("job").add_subparsers(dest="sub", required=True)
     jb.add_parser("list").set_defaults(fn=cmd_job_list)
     r = jb.add_parser("run")

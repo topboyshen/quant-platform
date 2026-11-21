@@ -10,6 +10,8 @@ data. The caller must take the DB backup and run `qp db upgrade` first.
 - Previous release is the current `/opt/qp/current` target.
 - DB is already at the target migration and backed up.
 - New release's runtime lock was installed with `qp-release-venv`.
+- The database is at the release's Alembic head; activation checks this before
+  switching and exits `DB_CHECK_FAILED` without moving `current` if it is not.
 
 ## Command
 
@@ -24,15 +26,20 @@ sudo app/deploy/bin/qp-release-activate \
 The script:
 
 1. validates both releases and the current symlink;
-2. atomically switches `current` with `ln -sfn ... current.tmp` + `mv -T`;
-3. restarts `qp-api`;
-4. polls `/api/health` up to 30 times;
-5. optionally runs the smoke command;
-6. on any failure switches `current` back to the previous release, restarts and
+2. runs `qp db check` as the `qp` user (or `--db-check-cmd`) and refuses to
+   switch on a revision mismatch;
+3. atomically switches `current` with `ln -sfn ... current.tmp` + `mv -T`;
+4. restarts `qp-api`;
+5. polls `/api/health` up to 30 times;
+6. optionally runs the smoke command;
+7. on any failure switches `current` back to the previous release, restarts and
    re-checks health, then exits nonzero.
 
-`--dry-run` validates the two release paths and current symlink without switching
-or restarting anything.
+`--dry-run` validates the two release paths and current symlink without switching,
+checking the DB, or restarting anything.  `--db-check-cmd` overrides the default
+`runuser -u qp -- env QP_APP_DIR=<release>/backend <release>/venv/bin/qp db check`
+for staging or nonstandard database names.  The explicit `QP_APP_DIR` keeps the
+check on the new release's migrations even when the caller's cwd is the old release.
 
 ## Rollback semantics
 

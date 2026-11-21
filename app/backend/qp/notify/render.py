@@ -20,6 +20,43 @@ def _clip(text: str) -> str:
     return text[: MAX_TEXT - 1] + "…"
 
 
+def _number(value, decimals: int = 2, signed: bool = False) -> str | None:
+    """Compact thousands-separated number; ``None`` and junk are omitted."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number == 0:
+        number = 0.0  # drop the sign of -0.0
+    text = f"{('+' if signed and number > 0 else '')}{number:,.{decimals}f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
+
+
+def _macro_detail(payload: dict) -> str | None:
+    """成交额 / 两融 / 涨跌停 detail for the daily card; partial data is fine."""
+    macro = payload.get("macro")
+    if not isinstance(macro, dict):
+        return None
+    parts: list[str] = []
+    total = _number(macro.get("total_amount"))
+    if total:
+        parts.append(f"成交额 {total} 亿")
+    balance = _number(macro.get("margin_balance"))
+    if balance:
+        growth = _number(macro.get("margin_growth_pct"), signed=True)
+        parts.append(f"两融余额 {balance} 亿" + (f"（{growth}%）" if growth else ""))
+    up, down = macro.get("limit_up"), macro.get("limit_down")
+    if up is not None or down is not None:
+        parts.append(
+            "涨停 " + (str(up) if up is not None else "—") + " / 跌停 " + (str(down) if down is not None else "—")
+        )
+    return "；".join(parts) or None
+
+
 def _daily(payload: dict, subject: str | None) -> str:
     day = payload.get("trade_date") or ""
     lines = [f"【qp】{subject or f'EOD 日报 {day}'}", ""]
@@ -35,6 +72,9 @@ def _daily(payload: dict, subject: str | None) -> str:
     macro_text = payload.get("macro_text") or reading.get("macro")
     if macro_text:
         lines.append(str(macro_text) if str(macro_text).startswith("宏观") else "宏观：" + str(macro_text))
+        detail = _macro_detail(payload)
+        if detail:
+            lines.append(f"宏观明细：{detail}")
     risk_text = payload.get("risk_text") or reading.get("risk")
     if risk_text:
         lines.append(str(risk_text))

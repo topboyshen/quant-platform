@@ -8,6 +8,7 @@
 #       [--service qp-api] \
 #       [--health-url http://127.0.0.1:18800/api/health] \
 #       [--smoke 'cd ... && npm run smoke'] \
+#       [--db-check-cmd '...'] \
 #       [--dry-run]
 #
 # The caller owns DB backup/migration.  This script never migrates, never writes
@@ -20,6 +21,7 @@ CURRENT="/opt/qp/current"
 SERVICE="qp-api"
 HEALTH_URL="http://127.0.0.1:18800/api/health"
 SMOKE_CMD=""
+DB_CHECK_CMD=""
 DRY_RUN=0
 HEALTH_RETRIES=30
 HEALTH_DELAY=0.5
@@ -36,6 +38,7 @@ while [ $# -gt 0 ]; do
     --service) SERVICE=${2:?}; shift 2 ;;
     --health-url) HEALTH_URL=${2:?}; shift 2 ;;
     --smoke) SMOKE_CMD=${2:?}; shift 2 ;;
+    --db-check-cmd) DB_CHECK_CMD=${2:?}; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -63,6 +66,24 @@ fi
 command -v curl >/dev/null || { echo "curl is required" >&2; exit 2; }
 command -v systemctl >/dev/null || { echo "systemctl is required" >&2; exit 2; }
 "$RELEASE/venv/bin/qp" --help >/dev/null
+
+# DB release check: the database must already be at this release's migration
+# head before the symlink moves.  Production runs the release's qp CLI as the
+# qp user (peer auth); staging/tests can override with --db-check-cmd.
+if [ -z "$DB_CHECK_CMD" ]; then
+  if command -v runuser >/dev/null && id qp >/dev/null 2>&1; then
+    DB_CHECK_CMD="runuser -u qp -- env QP_APP_DIR=$(printf '%q' "$RELEASE/backend") $(printf '%q' "$RELEASE/venv/bin/qp") db check"
+  else
+    echo "DB_CHECK_UNAVAILABLE release=$RELEASE (no runuser/qp user; pass --db-check-cmd)" >&2
+    exit 2
+  fi
+fi
+echo "DB_CHECK_START command=$DB_CHECK_CMD"
+if ! bash -lc "$DB_CHECK_CMD"; then
+  echo "DB_CHECK_FAILED release=$RELEASE command=$DB_CHECK_CMD" >&2
+  exit 2
+fi
+echo "DB_CHECK_OK release=$RELEASE"
 
 switch_to() {
   ln -sfn "$1" "$CURRENT.tmp"
