@@ -65,6 +65,10 @@ The ETF record chain is a controlled successor to `target_decision`:
 
 - **Dual-write**: `signals.eod` writes `target_decision`, then
   `signals.chain.register_run` appends immutable `chain_*` rows.
+- **Implementation**: `signals/chain.py` is a compatibility facade over
+  `chain_base` (identity/primitives), `chain_writer` (dual-write/outcomes) and
+  `chain_snapshot` (snapshot assembly); the historical `qp.signals.chain`
+  import surface is unchanged.
 - **Identity**: deterministic `decision_uid`, input-evidence digest, universe and
   batch versions.
 - **Snapshots**: `chain_snapshot` is the read envelope; `chain_snapshot_item`
