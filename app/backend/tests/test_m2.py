@@ -129,6 +129,34 @@ def test_collector_helpers():
     assert us_to_iso(0) is None and _unix_ts("@1794376800").startswith("2026") and _unix_ts("") is None
 
 
+def test_egress_probe_uses_proxy_timeout(monkeypatch):
+    from qp.collect import legacy
+
+    class FakeResponse:
+        status = 204
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class FakeOpener:
+        def __init__(self):
+            self.timeouts = []
+
+        def open(self, req, timeout):
+            self.timeouts.append(timeout)
+            return FakeResponse()
+
+    opener = FakeOpener()
+    monkeypatch.setattr(legacy.urllib.request, "build_opener", lambda *args: opener)
+    rows = legacy.egress()
+    assert len(rows) == 4
+    assert opener.timeouts == [legacy.EGRESS_PROXY_TIMEOUT] * 3 + [legacy.EGRESS_DIRECT_TIMEOUT]
+    assert legacy.EGRESS_PROXY_TIMEOUT == 15 and legacy.EGRESS_DIRECT_TIMEOUT == 4
+
+
 def test_inventory_alert_lifecycle(engine, inbox):
     from qp.jobs import run_job
     from qp.models.notify import Outbox
