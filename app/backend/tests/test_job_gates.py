@@ -49,14 +49,15 @@ def test_gate_blocks_missing_failed_stale_and_future(engine, monkeypatch):
         failed = require_job_success(engine, "test.gate.upstream")
         assert failed["ok"] is False and failed["reason"] == "upstream_missing"
         _clean(engine)
-        old = dt.datetime.now(dt.UTC) - dt.timedelta(hours=2)
+        reference = dt.datetime(2026, 11, 10, 12, 0, tzinfo=dt.UTC)
+        old = reference - dt.timedelta(hours=2)
         _run(engine, finished=old)
-        stale = require_job_success(engine, "test.gate.upstream", max_age_hours=1)
+        stale = require_job_success(engine, "test.gate.upstream", now=reference, max_age_hours=1)
         assert stale["ok"] is False and stale["reason"] == "upstream_stale"
         _clean(engine)
-        future = dt.datetime.now(dt.UTC) + dt.timedelta(minutes=10)
+        future = reference + dt.timedelta(minutes=10)
         _run(engine, finished=future)
-        ahead = require_job_success(engine, "test.gate.upstream")
+        ahead = require_job_success(engine, "test.gate.upstream", now=reference)
         assert ahead["ok"] is False and ahead["reason"] == "upstream_in_future"
     finally:
         _clean(engine)

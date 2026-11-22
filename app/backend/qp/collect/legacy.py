@@ -28,6 +28,8 @@ EGRESS_TARGETS = [  # GET only; no bot token, no message - pure reachability
     ("dolthub", "https://www.dolthub.com/", True),
     ("telegram_direct", "https://api.telegram.org/", False),
 ]
+EGRESS_PROXY_TIMEOUT = 15
+EGRESS_DIRECT_TIMEOUT = 4
 USER_ENV = {
     "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}",
     "DBUS_SESSION_BUS_ADDRESS": f"unix:path=/run/user/{os.getuid()}/bus",
@@ -196,7 +198,7 @@ def egress() -> list[dict]:
         item = {"target": name, "via_proxy": via_proxy}
         try:
             req = urllib.request.Request(url, method="GET", headers={"User-Agent": "qp-egress-probe/1"})
-            with opener.open(req, timeout=8 if via_proxy else 4) as r:
+            with opener.open(req, timeout=EGRESS_PROXY_TIMEOUT if via_proxy else EGRESS_DIRECT_TIMEOUT) as r:
                 item.update(ok=True, status=r.status)
         except urllib.error.HTTPError as e:  # an HTTP answer still proves reachability
             item.update(ok=e.code < 500, status=e.code)
