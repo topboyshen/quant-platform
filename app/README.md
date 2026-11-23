@@ -1,9 +1,9 @@
 # app/ — quant-platform application (`qp`)
 
 Current application kernel: FastAPI backend, PostgreSQL 16, Vue 3 frontend at
-`/next/`, and systemd/nginx deployment. The production release on 2026-11-23 is
-`0.3.95`; exact release/backup evidence lives in the deployment receipts, not in
-this file.
+`/next/`, and systemd/nginx deployment. The current production release is
+recorded in the deployment receipts; do not rely on this file for a version
+number.
 
 ## Layout
 
