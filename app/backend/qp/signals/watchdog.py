@@ -288,8 +288,8 @@ def _signal_reading(raw: int, dedup: int, retained: int) -> str:
     if raw <= 0:
         return "信号：无触发"
     if retained <= 0:
-        return f"信号：已有触发，但去重后无新增（原始检测{raw} / 去重{dedup} / 新增留存0）"
-    return f"信号：新增留存{retained} 条（原始检测{raw} / 去重{dedup}）"
+        return f"信号：已有触发，但去重后无新增（原始检测{raw} / 去重丢弃{dedup} / 新增留存0）"
+    return f"信号：新增留存{retained} 条（原始检测{raw} / 去重丢弃{dedup}）"
 
 
 def _outcome_rows(session: Session, state: str) -> list[tuple[float, float]]:
@@ -351,7 +351,17 @@ def validity_card(session: Session) -> dict[str, Any]:
 
 def _counts(session: Session, run: dict[str, Any] | None) -> dict[str, int]:
     counts = {state: 0 for state in DECISION_STATES}
-    counts.update({"evaluated": 0, "failed": 0, "targets": 0, "signals": 0, "allowed_signals": 0, "blocked_signals": 0})
+    counts.update(
+        {
+            "evaluated": 0,
+            "failed": 0,
+            "targets": 0,
+            "signals": 0,
+            "triggered": 0,
+            "allowed_signals": 0,
+            "blocked_signals": 0,
+        }
+    )
     if run:
         counts.update(
             {
@@ -362,6 +372,17 @@ def _counts(session: Session, run: dict[str, Any] | None) -> dict[str, int]:
                 "allowed_signals": int(run.get("allowed_signal_count") or 0),
                 "blocked_signals": int(run.get("blocked_signal_count") or 0),
             }
+        )
+        # The raw trigger count lives on the decision rows, not in run.details; older
+        # runs predate the detail fields and would otherwise render "触发 0" while
+        # still showing retained/blocked signals.
+        counts["triggered"] = int(
+            session.scalar(
+                select(func.coalesce(func.sum(TargetDecision.raw_trigger_count), 0)).where(
+                    TargetDecision.run_id == int(run["run_id"])
+                )
+            )
+            or 0
         )
         for state, count in session.execute(
             select(TargetDecision.decision_state, func.count())
@@ -375,6 +396,19 @@ def _counts(session: Session, run: dict[str, Any] | None) -> dict[str, int]:
 def _details(run: dict[str, Any] | None) -> dict[str, Any]:
     details = (run or {}).get("details")
     return details if isinstance(details, dict) else {}
+
+
+def _detail_count(details: dict[str, Any], *keys: str) -> int | None:
+    """First non-null integer among legacy/current detail field names."""
+    for key in keys:
+        value = details.get(key)
+        if value is None:
+            continue
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 INDEX_LABELS = {"sh000001": "上证", "sh000300": "沪深300", "sz399001": "深证成指", "sz399006": "创业板指"}
@@ -446,10 +480,16 @@ def _macro_line(macro: dict[str, Any] | None) -> str:
     return "宏观：" + ("；".join(parts) if parts else "完整")
 
 
-def _funnel_text(counts: dict[str, int], raw: int, dedup: int) -> str:
+def _funnel_text(counts: dict[str, int], raw: int, dropped: int) -> str:
+    """One consistent funnel line.
+
+    ``raw`` is the number of detected signal instances (sum of per-target
+    ``raw_trigger_count``), ``dropped`` is how many were removed by dedup /
+    already-notified keys, and ``signals`` is the number actually persisted.
+    """
     return (
         f"信号漏斗：评估 {counts.get('evaluated', 0)}/{counts.get('targets', 0)}"
-        f" · 触发 {raw} · 去重 {dedup} · 留存 {counts.get('signals', 0)}"
+        f" · 原始触发 {raw} · 去重丢弃 {dropped} · 留存 {counts.get('signals', 0)}"
         f" · allowed {counts.get('allowed_signals', 0)}"
         f" · blocked {counts.get('blocked_signals', 0)}"
         f" · 数据失败 {counts.get('failed', 0)}"
@@ -487,9 +527,12 @@ def build_daily_report(session: Session, *, result: dict[str, Any], now: dt.date
     status = str((run or {}).get("status") or "")
     reasons = [str(item) for item in ((run or {}).get("reason_codes") or []) if item]
     details = _details(run)
-    raw = int(details.get("raw_detected_signal_count") or 0)
-    dedup = int(details.get("deduplicated_signal_count") or 0)
     retained = int(counts.get("signals") or 0)
+    raw = _detail_count(details, "raw_detected_signal_count", "generated_signals")
+    # Fall back to the decision rows when run.details predates the detail fields.
+    raw = max(raw or 0, int(counts.get("triggered") or 0), retained)
+    dedup = _detail_count(details, "deduplicated_signal_count", "deduplicated_signals")
+    dedup = max(0, raw - retained) if dedup is None else min(dedup, raw)
     market_data_text = f"标的行情：{counts['evaluated']}/{counts['targets']} 合格" + (
         f"，失败 {counts['failed']} 只" if counts["failed"] else ""
     )
