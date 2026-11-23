@@ -164,6 +164,42 @@ def seed_notification(
         return outbox.id
 
 
+def seed_delivery_attempts(
+    engine,
+    attempts: list[tuple[bool, dt.datetime, int]],
+    *,
+    created_at: dt.datetime,
+    mode: str = "live",
+    status: str = "sent",
+    dedup_key: str | None = None,
+) -> int:
+    with Session(engine) as session:
+        outbox = Outbox(
+            channel="telegram",
+            recipient="signals",
+            dedup_key=dedup_key or f"watchdog:{DAY.isoformat()}:daily",
+            subject="daily",
+            body=json.dumps({"ok": True}),
+            mode=mode,
+            status=status,
+            created_at=created_at,
+        )
+        session.add(outbox)
+        session.flush()
+        for ok, at, number in attempts:
+            session.add(
+                DeliveryAttempt(
+                    outbox_id=outbox.id,
+                    at=at,
+                    mode=mode,
+                    ok=ok,
+                    detail={"attempt": number},
+                )
+            )
+        session.commit()
+        return outbox.id
+
+
 def run_acceptance(engine, day: dt.date = DAY, today: dt.date = DAY) -> dict:
     with Session(engine) as session:
         return evaluate(session, day, today=today)
@@ -180,6 +216,8 @@ def test_full_day_passes(engine, monkeypatch):
         out = run_acceptance(engine)
         assert out["verdict"] == "PASS", out
         assert out["failed"] == [] and out["warned"] == []
+        assert out["run_quality"] == "natural" and out["natural_pass"] is True
+        assert out["delivery"]["recovery"] == "natural"
         strategy = out["strategy"]
         assert strategy["last_allowed_date"] == DAY.isoformat()
         assert strategy["sessions_since_allowed"] == 0
@@ -212,6 +250,49 @@ def test_combined_daily_notification_passes(engine, monkeypatch):
         check = next(c for c in out["checks"] if c["id"] == "A8_notify")
         assert check["status"] == "PASS", out
         assert check["metrics"]["dedup_key"] == f"daily-combined:{DAY.isoformat()}"
+    finally:
+        cleanup(engine)
+
+
+def test_retry_recovered_is_not_natural(engine, monkeypatch):
+    monkeypatch.setenv("QP_SIGNALS_NOTIFY_MODE", "live")
+    cleanup(engine)
+    try:
+        seed_calendar(engine, [DAY])
+        seed_index(engine)
+        seed_day(engine)
+        created = dt.datetime(DAY.year, DAY.month, DAY.day, 15, 50, tzinfo=dt.UTC)
+        seed_delivery_attempts(
+            engine,
+            [(False, created, 1), (True, created + dt.timedelta(minutes=2), 2)],
+            created_at=created,
+        )
+        out = run_acceptance(engine)
+        assert out["verdict"] == "PASS"
+        assert out["run_quality"] == "retry_recovered"
+        assert out["natural_pass"] is False
+        assert out["delivery"]["recovery"] == "retry"
+    finally:
+        cleanup(engine)
+
+
+def test_manual_recovery_is_not_natural(engine, monkeypatch):
+    monkeypatch.setenv("QP_SIGNALS_NOTIFY_MODE", "live")
+    cleanup(engine)
+    try:
+        seed_calendar(engine, [DAY])
+        seed_index(engine)
+        seed_day(engine)
+        created = dt.datetime(DAY.year, DAY.month, DAY.day, 15, 50, tzinfo=dt.UTC)
+        failed = [(False, created + dt.timedelta(minutes=2 * i), i + 1) for i in range(5)]
+        recovered = (True, created + dt.timedelta(hours=19, minutes=29), 6)
+        seed_delivery_attempts(engine, [*failed, recovered], created_at=created)
+        out = run_acceptance(engine)
+        assert out["verdict"] == "PASS"
+        assert out["run_quality"] == "manual_recovered"
+        assert out["natural_pass"] is False
+        assert out["delivery"]["recovery"] == "manual"
+        assert out["delivery"]["last_ok_attempt"] == 6
     finally:
         cleanup(engine)
 
@@ -386,6 +467,7 @@ def test_shadow_notification_warns_not_fails(engine, monkeypatch):
         seed_notification(engine, mode="shadow", status="shadowed")
         out = run_acceptance(engine)
         assert out["verdict"] == "WARN"
+        assert out["run_quality"] == "warn" and out["natural_pass"] is False
         assert "A8_notify" in out["warned"]
     finally:
         cleanup(engine)

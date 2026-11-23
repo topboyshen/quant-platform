@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from qp.models.notify import DeliveryAttempt, Outbox
+from qp.models.ops import JobRun
 from qp.models.research import (
     AiMessage,
     BacktestEquity,
@@ -351,19 +352,43 @@ def _check_idempotent(session: Session) -> dict[str, Any]:
     )
 
 
+ALLOWED_LIVE_PREFIXES = ("watchdog:", "daily-combined:", "etf-shadow:", "smoke:")
+ALLOWED_LIVE_JOBS = frozenset({"signals.watchdog", "signals.eod", "signals.eod_retry", "research.etf_shadow_report"})
+
+
 def _check_notify(session: Session) -> dict[str, Any]:
-    rows = session.execute(select(Outbox.mode, Outbox.status, func.count()).group_by(Outbox.mode, Outbox.status)).all()
-    non_shadow = [f"{mode}/{status}={n}" for mode, status, n in rows if mode != "shadow"]
+    """R10: live delivery is allowed only for approved signal/report producers.
+
+    Research imports must stay shadow-only.  The previous rule failed every live
+    row and every delivery attempt, which made the check permanently red after
+    M4/M6 intentionally switched signal and ETF reports to live delivery.
+    """
+    rows = session.execute(
+        select(Outbox, JobRun.job_name)
+        .outerjoin(JobRun, JobRun.id == Outbox.source_job_run_id)
+        .where(Outbox.mode != "shadow")
+    ).all()
+    unexpected: list[str] = []
+    allowed: list[str] = []
+    for outbox, job_name in rows:
+        if job_name is not None:
+            ok = job_name in ALLOWED_LIVE_JOBS
+        else:
+            ok = any(outbox.dedup_key.startswith(prefix) for prefix in ALLOWED_LIVE_PREFIXES)
+        target = f"{outbox.dedup_key} ({outbox.mode}/{outbox.status}, source={job_name or 'none'})"
+        (allowed if ok else unexpected).append(target)
     attempts = session.scalar(select(func.count()).select_from(DeliveryAttempt)) or 0
-    diffs = list(non_shadow)
-    if attempts:
-        diffs.append(f"delivery_attempt_rows={attempts}")
     return _check(
         "R10",
-        "FAIL" if diffs else "PASS",
-        "notifications stay shadow-only" + ("" if not diffs else " violated"),
-        diffs=diffs,
-        details={"outbox": [{"mode": m, "status": s, "n": n} for m, s, n in rows], "delivery_attempt": attempts},
+        "FAIL" if unexpected else "PASS",
+        "live notifications stay within approved producers" + ("" if not unexpected else " violated"),
+        diffs=unexpected,
+        details={
+            "live_rows": len(rows),
+            "allowed_live": allowed,
+            "unexpected_live": unexpected,
+            "delivery_attempt": attempts,
+        },
     )
 
 

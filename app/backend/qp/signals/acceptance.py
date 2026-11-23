@@ -166,6 +166,64 @@ def _outcome_backlog(session: Session, today: dt.date) -> dict[str, Any]:
     }
 
 
+def _delivery_summary(session: Session, outbox: Outbox) -> dict[str, Any]:
+    """Describe how a live notification was delivered, including recovery mode.
+
+    ``natural`` = first attempt succeeded.  ``retry`` = automatic retry recovered.
+    ``manual`` = a later attempt exceeded the configured automatic attempt budget
+    or arrived more than an hour after creation, so it was a manual recovery.
+    """
+    attempts = list(
+        session.scalars(
+            select(DeliveryAttempt)
+            .where(DeliveryAttempt.outbox_id == outbox.id)
+            .order_by(DeliveryAttempt.at, DeliveryAttempt.id)
+        )
+    )
+    max_attempts = get_settings().notify_max_attempts
+
+    def number(attempt: DeliveryAttempt, index: int) -> int:
+        value = (attempt.detail or {}).get("attempt")
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return index
+
+    successes = [attempt for attempt in attempts if attempt.ok is True]
+    failures = [attempt for attempt in attempts if attempt.ok is False]
+    first_attempt_ok = bool(attempts and attempts[0].ok is True)
+    last_ok = successes[-1] if successes else None
+    last_ok_no = number(last_ok, len(attempts)) if last_ok is not None else None
+    gap_hours = None
+    if last_ok is not None and outbox.created_at is not None:
+        gap_hours = round((last_ok.at - outbox.created_at).total_seconds() / 3600, 2)
+    manual = bool(
+        successes
+        and not first_attempt_ok
+        and ((last_ok_no is not None and last_ok_no > max_attempts) or (gap_hours is not None and gap_hours > 1))
+    )
+    if first_attempt_ok:
+        recovery = "natural"
+    elif manual:
+        recovery = "manual"
+    elif successes:
+        recovery = "retry"
+    elif attempts:
+        recovery = "failed"
+    else:
+        recovery = "unknown"
+    return {
+        "attempts": len(attempts),
+        "failed": len(failures),
+        "successful": len(successes),
+        "first_attempt_ok": first_attempt_ok,
+        "last_ok_attempt": last_ok_no,
+        "gap_hours": gap_hours,
+        "max_auto_attempts": max_attempts,
+        "recovery": recovery,
+    }
+
+
 def evaluate(session: Session, day: dt.date, *, today: dt.date | None = None) -> dict[str, Any]:
     today = today or dt.date.today()
     checks: list[dict[str, Any]] = []
@@ -324,6 +382,7 @@ def evaluate(session: Session, day: dt.date, *, today: dt.date | None = None) ->
         candidates[0] if candidates else None,
     )
     live_mode = get_settings().signals_notify_mode.strip().lower() == "live"
+    delivery = _delivery_summary(session, outbox) if outbox is not None else None
     if outbox is None:
         checks.append(_check("A8_notify", "WARN", "no daily notification row (watchdog or combined)"))
     elif outbox.mode != "live" or not live_mode:
@@ -335,25 +394,21 @@ def evaluate(session: Session, day: dt.date, *, today: dt.date | None = None) ->
                 mode=outbox.mode,
                 outbox_status=outbox.status,
                 dedup_key=outbox.dedup_key,
+                delivery=delivery,
             )
         )
     elif outbox.status == "sent":
-        attempts = (
-            session.scalar(
-                select(func.count())
-                .select_from(DeliveryAttempt)
-                .where(DeliveryAttempt.outbox_id == outbox.id, DeliveryAttempt.ok.is_(True))
-            )
-            or 0
-        )
+        attempts = delivery["successful"] if delivery is not None else 0
+        recovery = delivery["recovery"] if delivery is not None else "unknown"
         checks.append(
             _check(
                 "A8_notify",
                 "PASS" if attempts else "WARN",
-                f"sent via {outbox.dedup_key}, {attempts} successful delivery attempt(s)",
+                f"sent via {outbox.dedup_key}, {attempts} successful delivery attempt(s), recovery={recovery}",
                 mode=outbox.mode,
                 attempts=attempts,
                 dedup_key=outbox.dedup_key,
+                delivery=delivery,
             )
         )
     else:
@@ -365,6 +420,7 @@ def evaluate(session: Session, day: dt.date, *, today: dt.date | None = None) ->
                 mode=outbox.mode,
                 outbox_status=outbox.status,
                 dedup_key=outbox.dedup_key,
+                delivery=delivery,
             )
         )
 
@@ -424,12 +480,26 @@ def evaluate(session: Session, day: dt.date, *, today: dt.date | None = None) ->
     failed = [c["id"] for c in checks if c["status"] == "FAIL"]
     warned = [c["id"] for c in checks if c["status"] == "WARN"]
     verdict = "FAIL" if failed else ("WARN" if warned else "PASS")
+    recovery = delivery["recovery"] if delivery is not None else "unknown"
+    if verdict == "FAIL":
+        run_quality = "failed"
+    elif verdict == "WARN":
+        run_quality = "warn"
+    elif recovery == "manual":
+        run_quality = "manual_recovered"
+    elif recovery == "retry":
+        run_quality = "retry_recovered"
+    else:
+        run_quality = "natural"
     return {
         "date": day.isoformat(),
         "verdict": verdict,
+        "run_quality": run_quality,
+        "natural_pass": run_quality == "natural",
         "failed": failed,
         "warned": warned,
         "checks": checks,
+        "delivery": delivery,
         "strategy": _strategy_summary(session, today),
         "generated_at": dt.datetime.now(dt.UTC).isoformat(),
     }

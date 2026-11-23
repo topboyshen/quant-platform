@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from qp.models.base import Base
 from qp.models.notify import DeliveryAttempt, Outbox
+from qp.models.ops import JobRun
 from qp.models.research import Forecast, LlmCall
 from qp.research.compare import compare_research
 from qp.research.importer import (
@@ -171,6 +172,60 @@ def test_compare_fails_on_live_notification(engine):
             result = compare_research(session, ledger=reader, phase2=reader, qd=reader)
         r10 = next(c for c in result["checks"] if c["id"] == "R10")
         assert r10["status"] == "FAIL"
+    finally:
+        cleanup(engine)
+
+
+def test_compare_allows_approved_live_notification(engine):
+    cleanup(engine)
+    try:
+        reader = StubReader(source_tables())
+        seed(engine, reader)
+        with Session(engine) as session:
+            session.add(
+                Outbox(
+                    channel="telegram",
+                    recipient="signals",
+                    dedup_key="watchdog:2027-03-08:daily",
+                    body="x",
+                    mode="live",
+                    status="sent",
+                )
+            )
+            session.commit()
+            result = compare_research(session, ledger=reader, phase2=reader, qd=reader)
+        r10 = next(c for c in result["checks"] if c["id"] == "R10")
+        assert r10["status"] == "PASS", r10
+        assert r10["details"]["allowed_live"]
+    finally:
+        cleanup(engine)
+
+
+def test_compare_fails_on_live_research_import(engine):
+    cleanup(engine)
+    try:
+        reader = StubReader(source_tables())
+        seed(engine, reader)
+        with Session(engine) as session:
+            source = JobRun(job_name="research.import_ledger", status="succeeded", trigger="test", result={})
+            session.add(source)
+            session.flush()
+            session.add(
+                Outbox(
+                    channel="telegram",
+                    recipient="signals",
+                    dedup_key="watchdog:2027-03-08:daily",
+                    body="x",
+                    mode="live",
+                    status="sent",
+                    source_job_run_id=source.id,
+                )
+            )
+            session.commit()
+            result = compare_research(session, ledger=reader, phase2=reader, qd=reader)
+            r10 = next(c for c in result["checks"] if c["id"] == "R10")
+            assert r10["status"] == "FAIL"
+            assert any("research.import_ledger" in item for item in r10["diffs"])
     finally:
         cleanup(engine)
 
