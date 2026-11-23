@@ -6,12 +6,15 @@ import pytest
 
 from qp.market.http import FetchError
 from qp.market.kline import (
+    DEFAULT_SOURCES,
     DailyBar,
     KlineFetcher,
     exchange_prefixed_code,
     fetch_akshare_bars,
+    fetch_sina_bars,
     normalize_bars,
     parse_eastmoney_klines,
+    parse_sina_klines,
     parse_tencent_klines,
     resolve_secid,
 )
@@ -37,6 +40,13 @@ def tencent_rows(days: list[dt.date]) -> list[list]:
     return [[day.isoformat(), "10.0", "11.0", "12.0", "9.0", "1000"] for day in days]
 
 
+def sina_rows(days: list[dt.date]) -> list[dict]:
+    return [
+        {"day": day.isoformat(), "open": "10.0", "high": "12.0", "low": "9.0", "close": "11.0", "volume": "1000"}
+        for day in days
+    ]
+
+
 def test_resolve_secid_and_prefix():
     assert resolve_secid("600000") == "1.600000"
     assert resolve_secid("510300") == "1.510300"
@@ -60,6 +70,30 @@ def test_parse_tencent_orders_ohlcv():
     bars = parse_tencent_klines(tencent_rows(business_days(30)))
     assert bars[-1].close == 11.0 and bars[-1].high == 12.0
     assert bars[-1].date == END
+
+
+def test_parse_sina_orders_ohlcv_and_is_a_default_fallback():
+    bars = parse_sina_klines(sina_rows(business_days(30)))
+    assert bars[-1].close == 11.0 and bars[-1].high == 12.0
+    assert bars[-1].date == END
+    assert "sina_kline" in [name for name, _ in DEFAULT_SOURCES]
+
+
+def test_sina_adapter_uses_proxy_false_and_parses(monkeypatch):
+    class Response:
+        def json(self):
+            return sina_rows(business_days(30))
+
+    calls = []
+
+    def fake_fetch(url, **kwargs):
+        calls.append((url, kwargs))
+        return Response()
+
+    monkeypatch.setattr("qp.market.kline.http.fetch", fake_fetch)
+    bars = fetch_sina_bars("510300", 50)
+    assert bars[-1].date == END
+    assert calls and calls[0][1]["proxy"] is False
 
 
 def test_parsers_reject_short_or_malformed_rows():
