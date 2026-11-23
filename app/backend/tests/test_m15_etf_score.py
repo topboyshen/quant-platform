@@ -9,12 +9,14 @@ import pytest
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
+from qp.models.market import TradingDay
 from qp.models.research import EtfScore, EtfScoreRun
 from qp.models.signals import TargetDecision
 from qp.research import etf_score
 from qp.signals.universe import TARGETS
 
 CODES = [t.code for t in TARGETS]
+CST = dt.timezone(dt.timedelta(hours=8))
 
 
 def payload(*, horizon: int = 20, version: str = "qp-etf-test-v1", cutoff: dt.date | None = None) -> dict:
@@ -187,26 +189,45 @@ def test_expected_session_uses_weekdays():
     assert etf_score.expected_session(dt.date(2026, 11, 15)) == dt.date(2026, 11, 13)
 
 
+def _seed_score_calendar(engine) -> None:
+    with Session(engine) as s:
+        for day in (dt.date(2026, 11, 20), dt.date(2026, 11, 23)):
+            s.merge(TradingDay(origin="qp", date=day, is_open=True, source="test"))
+        s.commit()
+
+
+def test_expected_score_session_respects_intraday_window(engine):
+    _seed_score_calendar(engine)
+    with Session(engine) as s:
+        before = dt.datetime(2026, 11, 23, 13, 0, tzinfo=CST)
+        after = dt.datetime(2026, 11, 23, 17, 30, tzinfo=CST)
+        assert etf_score.expected_score_session(s, now=before) == dt.date(2026, 11, 20)
+        assert etf_score.expected_score_session(s, now=after) == dt.date(2026, 11, 23)
+
+
 def test_stale_flag_and_expected_cutoff(engine):
     cleanup(engine)
-    expected = etf_score.expected_session(etf_score.now_cst().date())
+    _seed_score_calendar(engine)
+    now = dt.datetime(2026, 11, 23, 13, 0, tzinfo=CST)
+    expected = dt.date(2026, 11, 20)
     try:
         fresh = payload()
         fresh["data_cutoff"] = expected.isoformat()
         with Session(engine) as s:
             etf_score.import_payload(s, fresh)
             s.commit()
-            out = etf_score.latest(s)
+            out = etf_score.latest(s, now=now)
             assert out["run"]["stale"] is False
             assert out["run"]["expected_cutoff"] == expected.isoformat()
             assert out["run"]["staleness_days"] == 0
+            assert out["run"]["pending_today"] is True
         cleanup(engine)
         old = payload()
         old["data_cutoff"] = (expected - dt.timedelta(days=7)).isoformat()
         with Session(engine) as s:
             etf_score.import_payload(s, old)
             s.commit()
-            out = etf_score.latest(s)
+            out = etf_score.latest(s, now=now)
             assert out["run"]["stale"] is True
             assert out["run"]["staleness_days"] == 7
     finally:
