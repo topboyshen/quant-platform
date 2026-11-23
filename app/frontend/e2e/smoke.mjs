@@ -31,6 +31,7 @@ const ROUTES = [
   ['/settings', '设置'],
 ]
 const BAD_TEXT = ['加载失败', '请求失败', 'Internal Server Error', 'Failed to fetch', 'Not Found']
+const OVERVIEW_LABELS = ['当前待处理', '今日日报与研究通知', '近期自然运行质量']
 
 const failures = []
 const apiFailures = []
@@ -85,6 +86,11 @@ try {
     }
     const nav = await page.locator('.nav').innerText().catch(() => '')
     check(nav.includes(label), `${path}: nav label "${label}" missing`)
+    if (path === '/') {
+      for (const overviewLabel of OVERVIEW_LABELS) {
+        check(text.includes(overviewLabel), `${path}: overview label "${overviewLabel}" missing`)
+      }
+    }
     const failed = apiFailures.slice(apiMark)
     check(failed.length === 0, `${path}: API failures ${failed.join(', ')}`)
     console.log(`${path} ok (${label})`)

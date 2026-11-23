@@ -215,8 +215,10 @@ A failed run is retried by the next slot; failures are recorded in
 - Frontend: Vitest + `vue-tsc` + Vite build; Playwright smoke logs in and walks
   the top-level pages against a real migrated database.
 - Security: ruff `E/F/I/UP/B` + `ruff format --check` + Gitleaks full-history
-  scan; dependency audit is advisory. mypy on jobs/signals/models is
-  report-only (existing baseline).
+  scan. Dependency audit is blocking under
+  [`app/deploy/DEPENDENCY-POLICY.md`](app/deploy/DEPENDENCY-POLICY.md), with
+  time-boxed exceptions. Mypy blocks on a whitelist of new critical modules;
+  the full jobs/signals/models run remains report-only as an existing baseline.
 
 ## 7. Recovery and RTO
 

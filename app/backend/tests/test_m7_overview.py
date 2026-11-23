@@ -203,6 +203,7 @@ def test_overview_returns_business_modules(engine, client, monkeypatch):
         assert data["modules"]["research"]["metrics"]["feeds"]["20d"]["eligible"] == 2
         assert data["modules"]["reports"]["status"] == "ok"
         assert data["modules"]["reports"]["metrics"]["daily"]["message_id"] == 5001
+        assert data["modules"]["reports"]["metrics"]["daily"]["receipt_status"] == "unknown"
         assert data["pending"] == []
         assert data["recent_quality"][-1]["run_quality"] == "natural"
     finally:

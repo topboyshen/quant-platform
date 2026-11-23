@@ -32,16 +32,23 @@ jobs:
         env:
           QP_TEST_PGDATA: ${{ runner.temp }}/qp-pgdata
         run: |
-          python -m pip install pytest-cov
+          python -m pip install pytest-cov==7.1.0
           python -m pytest -q --cov=qp --cov-report=term --cov-fail-under=80
       - name: Repo asset tests
         env:
           QP_TEST_PGDATA: ${{ runner.temp }}/qp-pgdata
         run: python -m pytest -q --run-assets -m assets
-      - name: Mypy (report-only, existing baseline)
+      - name: Mypy (new critical modules, blocking)
+        run: |
+          python -m pip install mypy==2.4.1
+          mypy --ignore-missing-imports --follow-imports=skip \
+            qp/jobs/gates.py qp/signals/acceptance.py qp/signals/attribution.py \
+            qp/api/overview.py qp/api/chain.py \
+            qp/signals/chain_base.py qp/signals/chain_writer.py qp/signals/chain_snapshot.py
+      - name: Mypy (existing baseline, report-only)
         continue-on-error: true
         run: |
-          python -m pip install mypy
+          python -m pip install mypy==2.4.1
           mypy --ignore-missing-imports qp/jobs qp/signals qp/models
 
   security-and-lint:
@@ -57,7 +64,7 @@ jobs:
       - name: Ruff gate
         run: |
           python -m pip install --upgrade pip
-          pip install ruff
+          pip install ruff==0.17.5
           ruff check app/backend
           ruff format --check app/backend
       - name: Gitleaks
@@ -66,27 +73,23 @@ jobs:
             detect --source=/repo -v --redact
 
   dependency-audit:
-    name: dependency audit (advisory)
+    name: dependency audit
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: pip-audit
-        run: |
-          python -m pip install --upgrade pip
-          pip install pip-audit
-          pip-audit -r app/backend/requirements.lock
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: app/frontend/package-lock.json
-      - name: npm audit (production deps)
-        working-directory: app/frontend
-        run: npm audit --omit=dev --audit-level=high
+      - name: Dependency policy gate
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit==2.10.1
+          python app/deploy/bin/dependency-audit.py
 
   frontend:
     name: frontend build

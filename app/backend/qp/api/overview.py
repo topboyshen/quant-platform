@@ -128,10 +128,14 @@ def _outbox_summary(session: Session, outbox: Outbox | None) -> dict[str, Any] |
     last = successes[-1] if successes else None
     last_no = None
     if last is not None:
-        try:
-            last_no = int((last.detail or {}).get("attempt"))
-        except (TypeError, ValueError):
+        value = (last.detail or {}).get("attempt")
+        if value is None:
             last_no = len(attempts)
+        else:
+            try:
+                last_no = int(value)
+            except (TypeError, ValueError):
+                last_no = len(attempts)
     gap = None
     if last is not None and outbox.created_at is not None:
         gap = round((last.at - outbox.created_at).total_seconds() / 3600, 2)
