@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from qp.jobs import JOBS, run_job
 from qp.jobs.gates import require_job_success
+from qp.jobs.registry import JobContext
+from qp.jobs.signals import chain_window_job
 from qp.models.ops import JobRun
 
 
@@ -133,6 +135,31 @@ def test_gate_accepts_today_success(engine, monkeypatch):
         assert out["ok"] is True and out["upstream_run_id"] > 0
     finally:
         _clean(engine)
+
+
+def test_successful_job_records_adopted_upstream_evidence(engine, monkeypatch):
+    monkeypatch.setenv("QP_JOB_GATES", "1")
+    _clean(engine, "signals.chain_snapshot")
+    now = dt.datetime.now(dt.UTC).astimezone(dt.timezone(dt.timedelta(hours=8)))
+    with Session(engine) as s:
+        s.add(
+            JobRun(
+                job_name="signals.chain_snapshot",
+                status="succeeded",
+                trigger="test",
+                started_at=now,
+                finished_at=now,
+                result={"body": {"business_date": now.date().isoformat()}},
+            )
+        )
+        s.commit()
+    try:
+        out = chain_window_job(JobContext(engine=engine, run_id=0, name="test"))
+        assert out["upstream_gate"]["ok"] is True
+        assert out["upstream_gate"]["upstream_run_id"]
+        assert out["upstream_gate"]["artifact_date"] == now.date().isoformat()
+    finally:
+        _clean(engine, "signals.chain_snapshot")
 
 
 def test_blocked_result_gets_blocked_status(engine, monkeypatch):

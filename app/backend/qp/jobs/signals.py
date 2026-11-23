@@ -31,15 +31,18 @@ def _gate(
     max_age_hours: float = 8.0,
     expected_date: dt.date | None = None,
     require_latest_success: bool = False,
-) -> dict | None:
-    gate = require_job_success(
+) -> dict:
+    return require_job_success(
         ctx.engine,
         upstream,
         max_age_hours=max_age_hours,
         expected_date=expected_date,
         require_latest_success=require_latest_success,
     )
-    if gate["ok"]:
+
+
+def _blocked(gate: dict) -> dict | None:
+    if gate.get("ok"):
         return None
     return {"ok": False, "blocked": "upstream_gate", "gate": gate}
 
@@ -142,7 +145,8 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
 
     if not chain.enabled():
         return {"ok": True, "skipped": "record_chain_disabled"}
-    blocked = _gate(ctx, "signals.eod", expected_date=now_cst().date())
+    gate = _gate(ctx, "signals.eod", expected_date=now_cst().date())
+    blocked = _blocked(gate)
     if blocked:
         return blocked
     today = now_cst().date()
@@ -153,8 +157,9 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
 
             out["compare"] = chain_compare.compare(session, today)
         session.commit()
+    out["upstream_gate"] = gate
     if out.get("reason") == "no_batch":
-        return {"ok": True, "skipped": "no_batch", "business_date": today.isoformat()}
+        return {"ok": True, "skipped": "no_batch", "business_date": today.isoformat(), "upstream_gate": gate}
     out["ok"] = bool(out.get("ok"))
     return out
 
@@ -167,12 +172,14 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
 def chain_window_job(ctx: JobContext) -> dict:
     from qp.signals import chain_window
 
-    blocked = _gate(ctx, "signals.chain_snapshot", expected_date=now_cst().date())
+    gate = _gate(ctx, "signals.chain_snapshot", expected_date=now_cst().date())
+    blocked = _blocked(gate)
     if blocked:
         return blocked
     with Session(ctx.engine) as session:
         now = now_cst()
         out = chain_window.report(session, end=now.date(), now=now)
+    out["upstream_gate"] = gate
     out["ok"] = out.get("verdict") != "FAIL"
     return out
 
@@ -243,11 +250,13 @@ def rule_shadow_job(ctx: JobContext) -> dict:
         )
         if not is_open:
             return {"ok": True, "skipped": "non_trading_day", "day": today.isoformat()}
-        blocked = _gate(ctx, "signals.eod", expected_date=today)
+        gate = _gate(ctx, "signals.eod", expected_date=today)
+        blocked = _blocked(gate)
         if blocked:
             return blocked
         out = rule_shadow.generate(session, day=today)
         session.commit()
+    out["upstream_gate"] = gate
     out["ok"] = True
     return out
 
@@ -313,13 +322,15 @@ def acceptance_job(ctx: JobContext) -> dict:
 
     today = now_cst().date()
     with Session(ctx.engine) as session:
-        blocked = _gate(ctx, "signals.outcomes", expected_date=today)
+        gate = _gate(ctx, "signals.outcomes", expected_date=today)
+        blocked = _blocked(gate)
         if blocked:
             return blocked
         day = acceptance.latest_decision_date(session, today)
         if day is None:
-            return {"ok": False, "reason": "no_runs"}
+            return {"ok": False, "reason": "no_runs", "upstream_gate": gate}
         out = acceptance.evaluate(session, day, today=today)
+    out["upstream_gate"] = gate
     out["ok"] = out["verdict"] != "FAIL"
     return out
 
