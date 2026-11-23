@@ -12,17 +12,17 @@ from qp.jobs.gates import require_job_success
 from qp.models.ops import JobRun
 
 
-def _run(engine, *, status="succeeded", finished=None, name="test.gate.upstream"):
-    now = dt.datetime.now(dt.UTC)
+def _run(engine, *, status="succeeded", finished=None, started=None, result=None, name="test.gate.upstream"):
+    at = finished or dt.datetime.now(dt.UTC)
     with Session(engine) as s:
         s.add(
             JobRun(
                 job_name=name,
                 status=status,
                 trigger="test",
-                started_at=finished or now,
-                finished_at=finished or now,
-                result={},
+                started_at=started or at,
+                finished_at=at if status == "succeeded" else None,
+                result=result or {},
             )
         )
         s.commit()
@@ -59,6 +59,67 @@ def test_gate_blocks_missing_failed_stale_and_future(engine, monkeypatch):
         _run(engine, finished=future)
         ahead = require_job_success(engine, "test.gate.upstream", now=reference)
         assert ahead["ok"] is False and ahead["reason"] == "upstream_in_future"
+    finally:
+        _clean(engine)
+
+
+def test_gate_exposes_later_failure_and_can_require_latest(engine, monkeypatch):
+    monkeypatch.setenv("QP_JOB_GATES", "1")
+    _clean(engine)
+    try:
+        reference = dt.datetime(2026, 11, 10, 12, 0, tzinfo=dt.UTC)
+        _run(
+            engine,
+            finished=reference - dt.timedelta(minutes=2),
+            result={"decision_date": reference.date().isoformat()},
+        )
+        _run(engine, status="failed", finished=reference - dt.timedelta(minutes=1))
+        visible = require_job_success(engine, "test.gate.upstream", now=reference)
+        assert visible["ok"] is True
+        assert visible["later_failure"]["status"] == "failed"
+        strict = require_job_success(
+            engine,
+            "test.gate.upstream",
+            now=reference,
+            require_latest_success=True,
+        )
+        assert strict["ok"] is False and strict["reason"] == "upstream_superseded"
+    finally:
+        _clean(engine)
+
+
+def test_gate_rejects_stale_artifact_date(engine, monkeypatch):
+    monkeypatch.setenv("QP_JOB_GATES", "1")
+    _clean(engine)
+    try:
+        reference = dt.datetime(2026, 11, 10, 12, 0, tzinfo=dt.UTC)
+        _run(
+            engine,
+            finished=reference,
+            result={"decision_date": (reference.date() - dt.timedelta(days=1)).isoformat()},
+        )
+        out = require_job_success(
+            engine,
+            "test.gate.upstream",
+            now=reference,
+            expected_date=reference.date(),
+        )
+        assert out["ok"] is False and out["reason"] == "upstream_artifact_stale"
+        assert out["artifact_date"] == (reference.date() - dt.timedelta(days=1)).isoformat()
+    finally:
+        _clean(engine)
+
+
+def test_skipped_runs_do_not_count_as_upstream_success(engine, monkeypatch):
+    monkeypatch.setenv("QP_JOB_GATES", "1")
+    _clean(engine)
+    try:
+        reference = dt.datetime(2026, 11, 10, 12, 0, tzinfo=dt.UTC)
+        for status in ("skipped_dup", "skipped_locked"):
+            _run(engine, status=status, finished=reference)
+            out = require_job_success(engine, "test.gate.upstream", now=reference)
+            assert out["ok"] is False and out["reason"] == "upstream_missing"
+            _clean(engine)
     finally:
         _clean(engine)
 

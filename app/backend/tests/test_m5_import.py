@@ -9,6 +9,8 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from qp.models.chain import ChainDecision
+from qp.models.notify import Outbox
 from qp.models.research import (
     Forecast,
     ForecastBatch,
@@ -17,6 +19,7 @@ from qp.models.research import (
     Phase2Audit,
     Phase2Protocol,
 )
+from qp.models.signals import TargetDecision
 from qp.research.importer import (
     LEDGER_SPECS,
     PHASE2_SPECS,
@@ -131,6 +134,27 @@ def test_ledger_import_is_idempotent_and_mirrors_status(engine):
             assert session.get(Forecast, FORECAST).status == "SETTLED"
             run = session.scalar(select(ImportRun).order_by(ImportRun.id.desc()).limit(1))
             assert run.status == "succeeded" and run.source == "research_ledger"
+    finally:
+        cleanup(engine)
+
+
+def test_research_import_does_not_write_formal_signal_chain(engine):
+    cleanup(engine)
+    try:
+        with Session(engine) as session:
+            before = {
+                "target": session.query(TargetDecision).count(),
+                "chain": session.query(ChainDecision).count(),
+                "outbox": session.query(Outbox).count(),
+            }
+        import_ledger(engine, FakeReader(ledger_tables("SEALED")))
+        with Session(engine) as session:
+            after = {
+                "target": session.query(TargetDecision).count(),
+                "chain": session.query(ChainDecision).count(),
+                "outbox": session.query(Outbox).count(),
+            }
+        assert after == before
     finally:
         cleanup(engine)
 
