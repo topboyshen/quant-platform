@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from qp.config import get_settings
 from qp.models.market import IndexClose, TradingDay
 from qp.models.notify import DeliveryAttempt, Outbox
+from qp.models.ops import JobRun
 from qp.models.signals import (
     DecisionOutcome,
     EodRun,
@@ -166,12 +167,28 @@ def _outcome_backlog(session: Session, today: dt.date) -> dict[str, Any]:
     }
 
 
+def execution_source(run: JobRun | None) -> str:
+    """Explicit source label for a job run; never infer manual from timing alone."""
+    if run is None:
+        return "unknown"
+    trigger = str(run.trigger or "").lower()
+    if trigger == "timer":
+        return "scheduled_retry" if "retry" in str(run.job_name or "").lower() else "scheduled"
+    if trigger in ("manual", "api"):
+        return "manual"
+    if trigger == "replay":
+        return "replay"
+    return trigger or "unknown"
+
+
 def _delivery_summary(session: Session, outbox: Outbox) -> dict[str, Any]:
     """Describe how a live notification was delivered, including recovery mode.
 
-    ``natural`` = first attempt succeeded.  ``retry`` = automatic retry recovered.
-    ``manual`` = a later attempt exceeded the configured automatic attempt budget
-    or arrived more than an hour after creation, so it was a manual recovery.
+    ``natural`` = first attempt succeeded from a scheduled run.  ``retry`` =
+    automatic retry recovered.  ``manual`` = the outbox was produced by a manual
+    job run, or (only when the source is unknown) the attempt pattern exceeded
+    the automatic budget.  Timing alone is never presented as proof of manual
+    recovery for a known scheduled run.
     """
     attempts = list(
         session.scalars(
@@ -199,14 +216,21 @@ def _delivery_summary(session: Session, outbox: Outbox) -> dict[str, Any]:
     gap_hours = None
     if last_ok is not None and outbox.created_at is not None:
         gap_hours = round((last_ok.at - outbox.created_at).total_seconds() / 3600, 2)
-    manual = bool(
+    source_run = session.get(JobRun, outbox.source_job_run_id) if outbox.source_job_run_id else None
+    source = execution_source(source_run)
+    source_known = source not in ("unknown", "test")
+    heuristic_manual = bool(
         successes
         and not first_attempt_ok
         and ((last_ok_no is not None and last_ok_no > max_attempts) or (gap_hours is not None and gap_hours > 1))
     )
-    if first_attempt_ok:
+    if source in ("manual", "replay"):
+        recovery = "manual"
+    elif first_attempt_ok:
         recovery = "natural"
-    elif manual:
+    elif source_known:
+        recovery = "retry"
+    elif heuristic_manual:
         recovery = "manual"
     elif successes:
         recovery = "retry"
@@ -215,6 +239,9 @@ def _delivery_summary(session: Session, outbox: Outbox) -> dict[str, Any]:
     else:
         recovery = "unknown"
     return {
+        "execution_source": source,
+        "recovery_basis": "execution_source" if source_known else "attempt_heuristic",
+        "source_job_run_id": outbox.source_job_run_id,
         "attempts": len(attempts),
         "failed": len(failures),
         "successful": len(successes),

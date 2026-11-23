@@ -182,6 +182,23 @@ def _get(client, engine, scopes: list[str]) -> dict:
     return response.json()
 
 
+def test_overview_missing_calendar_is_unknown_not_holiday(engine, client, monkeypatch):
+    monkeypatch.setattr("qp.api.overview._now", lambda: NOW)
+    monkeypatch.setattr("qp.research.etf_score.expected_session", lambda _: DAY)
+    cleanup(engine)
+    try:
+        seed(engine)
+        with Session(engine) as session:
+            session.execute(delete(TradingDay))
+            session.commit()
+        data = _get(client, engine, ["ops:read", "signals:read", "market:read", "research:read", "reports:read"])
+        assert data["session"] == "calendar_unknown"
+        assert data["session_label"] == "日历未知"
+        assert data["business_date"] == DAY.isoformat()
+    finally:
+        cleanup(engine)
+
+
 def test_overview_returns_business_modules(engine, client, monkeypatch):
     monkeypatch.setattr("qp.api.overview._now", lambda: NOW)
     monkeypatch.setattr("qp.research.etf_score.expected_session", lambda _: DAY)
@@ -240,6 +257,46 @@ def test_overview_marks_manual_recovery_as_pending(engine, client, monkeypatch):
             row["business_date"] == DAY.isoformat() and row["run_quality"] == "manual_recovered"
             for row in data["recent_quality"]
         )
+    finally:
+        cleanup(engine)
+
+
+def test_overview_outbox_manual_source_is_not_natural(engine):
+    from qp.api.overview import _outbox_summary
+
+    cleanup(engine)
+    try:
+        with Session(engine) as session:
+            job = JobRun(
+                job_name="signals.watchdog",
+                status="succeeded",
+                trigger="manual",
+                started_at=NOW,
+                finished_at=NOW,
+                result={},
+            )
+            session.add(job)
+            session.flush()
+            outbox = Outbox(
+                channel="telegram",
+                recipient="signals",
+                dedup_key=f"watchdog:{DAY.isoformat()}:daily",
+                subject="daily",
+                body="{}",
+                mode="live",
+                status="sent",
+                created_at=NOW,
+                source_job_run_id=job.id,
+            )
+            session.add(outbox)
+            session.flush()
+            session.add(DeliveryAttempt(outbox_id=outbox.id, at=NOW, mode="live", ok=True, detail={"attempt": 1}))
+            session.commit()
+            summary = _outbox_summary(session, outbox)
+        assert summary["recovery"] == "manual"
+        assert summary["execution_source"] == "manual"
+        assert summary["recovery_basis"] == "execution_source"
+        assert summary["first_attempt_ok"] is True
     finally:
         cleanup(engine)
 

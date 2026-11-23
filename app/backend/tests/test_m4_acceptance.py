@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from qp.models.market import IndexClose, TradingDay
 from qp.models.notify import DeliveryAttempt, Outbox
+from qp.models.ops import JobRun
 from qp.models.signals import (
     DecisionOutcome,
     EodRun,
@@ -146,6 +147,7 @@ def seed_notification(
     status: str = "sent",
     ok_attempt: bool = True,
     dedup_key: str | None = None,
+    source_job_run_id: int | None = None,
 ) -> int:
     with Session(engine) as session:
         outbox = Outbox(
@@ -156,6 +158,7 @@ def seed_notification(
             body=json.dumps({"ok": True}),
             mode=mode,
             status=status,
+            source_job_run_id=source_job_run_id,
         )
         session.add(outbox)
         session.flush()
@@ -235,6 +238,40 @@ def test_full_day_passes(engine, monkeypatch):
             "A10_inputs",
         ]
     finally:
+        cleanup(engine)
+
+
+def test_manual_first_attempt_is_not_natural(engine, monkeypatch):
+    monkeypatch.setenv("QP_SIGNALS_NOTIFY_MODE", "live")
+    cleanup(engine)
+    try:
+        seed_calendar(engine, [DAY])
+        seed_index(engine)
+        seed_day(engine)
+        with Session(engine) as session:
+            run = JobRun(
+                job_name="signals.watchdog",
+                status="succeeded",
+                trigger="manual",
+                started_at=dt.datetime(DAY.year, DAY.month, DAY.day, 15, 50, tzinfo=dt.UTC),
+                finished_at=dt.datetime(DAY.year, DAY.month, DAY.day, 15, 50, tzinfo=dt.UTC),
+                result={},
+            )
+            session.add(run)
+            session.commit()
+            run_id = run.id
+        seed_notification(engine, source_job_run_id=run_id)
+        out = run_acceptance(engine)
+        assert out["verdict"] == "PASS"
+        assert out["run_quality"] == "manual_recovered"
+        assert out["natural_pass"] is False
+        assert out["delivery"]["recovery"] == "manual"
+        assert out["delivery"]["execution_source"] == "manual"
+        assert out["delivery"]["recovery_basis"] == "execution_source"
+    finally:
+        with Session(engine) as session:
+            session.execute(delete(JobRun).where(JobRun.job_name == "signals.watchdog"))
+            session.commit()
         cleanup(engine)
 
 
