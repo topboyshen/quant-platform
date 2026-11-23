@@ -33,8 +33,8 @@ previous day's success as upstream success.
 
 ## Evidence
 
-- `blocked` is stored in `ops.job_run.status`; the overview failure count includes
-  `failed` and `blocked`.
+- `blocked` is stored in `ops.job_run.status`; the overview reports failed and
+  blocked jobs separately so a gate block is not mistaken for an execution failure.
 - `require_job_success()` returns the upstream run id, finish time, age and reason.
 - Unit tests: `tests/test_job_gates.py`; job tests run with gates disabled by
   default, preserving existing fixtures.
