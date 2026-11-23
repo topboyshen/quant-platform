@@ -276,6 +276,32 @@ def test_two_attempts_report_recovery(engine):
         cleanup(engine)
 
 
+def test_daily_report_funnel_uses_decision_rows_when_details_missing(engine):
+    cleanup(engine)
+    try:
+        seed_run(
+            engine,
+            target_count=3,
+            decision_states=("blocked", "no_trigger", "data_failed"),
+            with_snapshot=True,
+            signal_count=1,
+            blocked_signal_count=1,
+        )
+        with Session(engine) as session:
+            run_watchdog(session, now=at(15, 50))
+            session.commit()
+        body = json.loads(outbox_rows(engine)[0].body)
+        assert body["counts"]["triggered"] == 1
+        assert "原始触发 1" in body["funnel"]
+        assert "去重丢弃 0" in body["funnel"]
+        assert "留存 1" in body["funnel"]
+        assert "blocked 1" in body["funnel"]
+        assert "触发 0" not in body["funnel"]
+        assert "去重丢弃0" in body["reading"]["signals"]
+    finally:
+        cleanup(engine)
+
+
 def test_daily_report_structured_fields(engine):
     cleanup(engine)
     try:
