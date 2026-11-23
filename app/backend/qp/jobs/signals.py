@@ -24,8 +24,21 @@ from qp.signals.repair import run_repair
 from qp.signals.watchdog import latest_retryable_run, run_watchdog
 
 
-def _gate(ctx: JobContext, upstream: str, *, max_age_hours: float = 8.0) -> dict | None:
-    gate = require_job_success(ctx.engine, upstream, max_age_hours=max_age_hours)
+def _gate(
+    ctx: JobContext,
+    upstream: str,
+    *,
+    max_age_hours: float = 8.0,
+    expected_date: dt.date | None = None,
+    require_latest_success: bool = False,
+) -> dict | None:
+    gate = require_job_success(
+        ctx.engine,
+        upstream,
+        max_age_hours=max_age_hours,
+        expected_date=expected_date,
+        require_latest_success=require_latest_success,
+    )
     if gate["ok"]:
         return None
     return {"ok": False, "blocked": "upstream_gate", "gate": gate}
@@ -129,7 +142,7 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
 
     if not chain.enabled():
         return {"ok": True, "skipped": "record_chain_disabled"}
-    blocked = _gate(ctx, "signals.eod")
+    blocked = _gate(ctx, "signals.eod", expected_date=now_cst().date())
     if blocked:
         return blocked
     today = now_cst().date()
@@ -154,7 +167,7 @@ def chain_snapshot_job(ctx: JobContext) -> dict:
 def chain_window_job(ctx: JobContext) -> dict:
     from qp.signals import chain_window
 
-    blocked = _gate(ctx, "signals.chain_snapshot")
+    blocked = _gate(ctx, "signals.chain_snapshot", expected_date=now_cst().date())
     if blocked:
         return blocked
     with Session(ctx.engine) as session:
@@ -230,7 +243,7 @@ def rule_shadow_job(ctx: JobContext) -> dict:
         )
         if not is_open:
             return {"ok": True, "skipped": "non_trading_day", "day": today.isoformat()}
-        blocked = _gate(ctx, "signals.eod")
+        blocked = _gate(ctx, "signals.eod", expected_date=today)
         if blocked:
             return blocked
         out = rule_shadow.generate(session, day=today)
@@ -300,7 +313,7 @@ def acceptance_job(ctx: JobContext) -> dict:
 
     today = now_cst().date()
     with Session(ctx.engine) as session:
-        blocked = _gate(ctx, "signals.outcomes")
+        blocked = _gate(ctx, "signals.outcomes", expected_date=today)
         if blocked:
             return blocked
         day = acceptance.latest_decision_date(session, today)

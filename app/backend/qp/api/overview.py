@@ -155,6 +155,9 @@ def _outbox_summary(session: Session, outbox: Outbox | None) -> dict[str, Any] |
         "successful_attempts": len(successes),
         "first_attempt_ok": first_ok,
         "last_ok_attempt": last_no,
+        "first_attempt_at": attempts[0].at.isoformat() if attempts else None,
+        "first_failed_at": failures[0].at.isoformat() if failures else None,
+        "last_ok_at": last.at.isoformat() if last is not None else None,
         "gap_hours": gap,
         "recovery": recovery,
         "message_id": (last.detail or {}).get("message_id") if last is not None else None,
@@ -487,7 +490,7 @@ def _ops_module(session: Session, day: dt.date, now: dt.datetime) -> dict[str, A
     )
 
 
-def _recent_quality(session: Session, day: dt.date, now: dt.datetime, limit: int = 5) -> list[dict[str, Any]]:
+def _recent_quality(session: Session, day: dt.date, now: dt.datetime, limit: int = 10) -> list[dict[str, Any]]:
     days = _open_days(session, day, limit=limit)
     out: list[dict[str, Any]] = []
     for current in days:

@@ -27,17 +27,30 @@ an env-only change to `0` plus a `qp-job@` restart; no schema change.
 | `signals.chain_window` | `signals.chain_snapshot` | 8h |
 | `signals.acceptance` | `signals.outcomes` | 8h |
 
-The gate only accepts a `succeeded` run that finished today and is within the
-age window. It does not treat `skipped_locked`, `skipped_dup`, `failed` or a
-previous day's success as upstream success.
+The gate accepts a `succeeded` run that finished today and is within the age
+window. It does not treat `skipped_locked`, `skipped_dup`, `failed` or a
+previous day's success as upstream success. Applied signal gates also pass
+`expected_date=<today>`, so a same-day job whose result carries yesterday's
+`decision_date` / `as_of` / `business_date` / `data_cutoff` is blocked with
+`upstream_artifact_stale`.
+
+A later failed or blocked run is always reported in the gate result as
+`later_failure` and `latest_status`; it does not invalidate an older valid
+artifact by default. Callers that know the later failure invalidates their
+artifact can pass `require_latest_success=True` to get
+`upstream_superseded`. This avoids the opposite mistake of blocking every
+downstream job after a harmless retry failure.
 
 ## Evidence
 
 - `blocked` is stored in `ops.job_run.status`; the overview reports failed and
   blocked jobs separately so a gate block is not mistaken for an execution failure.
-- `require_job_success()` returns the upstream run id, finish time, age and reason.
-- Unit tests: `tests/test_job_gates.py`; job tests run with gates disabled by
-  default, preserving existing fixtures.
+- `require_job_success()` returns the upstream run id, finish time, age, latest
+  run status, optional `later_failure`, and artifact date (when parseable).
+- Unit tests: `tests/test_job_gates.py` covers missing/failed/stale/future,
+  stale artifact date, skipped runs, later failure visibility and the strict
+  `require_latest_success` option. Job tests run with gates disabled by default,
+  preserving existing fixtures.
 
 ## Rollout
 

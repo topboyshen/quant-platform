@@ -293,6 +293,8 @@ def test_manual_recovery_is_not_natural(engine, monkeypatch):
         assert out["natural_pass"] is False
         assert out["delivery"]["recovery"] == "manual"
         assert out["delivery"]["last_ok_attempt"] == 6
+        assert out["delivery"]["first_failed_at"]
+        assert out["delivery"]["last_ok_at"]
     finally:
         cleanup(engine)
 
