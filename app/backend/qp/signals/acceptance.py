@@ -184,6 +184,8 @@ def _delivery_summary(session: Session, outbox: Outbox) -> dict[str, Any]:
 
     def number(attempt: DeliveryAttempt, index: int) -> int:
         value = (attempt.detail or {}).get("attempt")
+        if value is None:
+            return index
         try:
             return int(value)
         except (TypeError, ValueError):

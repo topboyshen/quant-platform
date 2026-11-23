@@ -91,5 +91,7 @@ live in `backend/requirements-runtime.lock`; the test lock additionally carries
   [`deploy/BACKUP-RESTORE-RUNBOOK.md`](deploy/BACKUP-RESTORE-RUNBOOK.md).
 - [`deploy/KNOWN-LIMITATIONS.md`](deploy/KNOWN-LIMITATIONS.md) — source and
   egress limits.
+- [`deploy/DEPENDENCY-POLICY.md`](deploy/DEPENDENCY-POLICY.md) — blocking
+  dependency audit, time-boxed exceptions and investigation items.
 - [`deploy/EVIDENCE-MANIFEST.md`](deploy/EVIDENCE-MANIFEST.md) — external
   artifact identity checks.

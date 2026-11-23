@@ -1,6 +1,6 @@
 # 备份与恢复 Runbook
 
-状态：**已执行恢复演练（2026-11-23 10:52/10:53 CST，PASS，本地 + 异地副本；DB 恢复 4–7s，升级 1s，API 冷启动 1.65s）**；异地副本已启用（Mac 每日拉取）。
+状态：**已执行恢复演练（2026-11-23 10:52/10:53 CST，PASS，本地 + 异地副本；DB 恢复 4–7s，升级 1s，API 冷启动 1.65s；另完成 0.3.97 独立 stage venv/DB 演练）**；异地副本已启用（Mac 每日拉取）。
 
 ## 1. 备份
 
@@ -51,6 +51,7 @@ sudo /usr/local/sbin/qp-restore-drill \
 | 2026-11-23 10:52 | `qp-pre-0.3.95-20261123T1046.dump`（5.1MB，sha256 `c95a1cd3…`） | **PASS** | 0017；恢复 7s、升级 1s；100 表/10 触发器/0 孤儿；恢复点 11-20，1,360 决策 / 3,700 结果 / 1,360 链；acceptance WARN（演练环境默认 shadow） |
 | 2026-11-23 10:53 | 异地 `qp-20261123T035002.dump`（5.1MB，sha256 `fae24593…`） | **PASS** | 0017；恢复 4s、升级 1s；异地副本可恢复；同一恢复点 11-20 |
 | 2026-11-23 10:54 | 同上 dump，`qp_restore_appdrill` | **PASS** | 恢复 4s + 升级 1s；用恢复副本启动临时 `qp-api`，`/api/health` 冷启动 **1.65s**，返回 `db:true` |
+| 2026-11-23 13:02 | 0.3.97 release bundle + `qp-pre-0.3.97-20261123T1252.dump` | **PASS** | 独立 `/opt/qp-stage` release/venv（venv **19s**）+ scratch DB 恢复 5s/升级 1s；stage API health **1.63s**；db check 0017；清理 stage |
 
 报告：`/home/ubuntu/qp-restore-drill-20261123/report.txt`、
 `/home/ubuntu/qp-restore-drill-offsite-20261123/report.txt`（2026-11-23）；
