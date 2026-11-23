@@ -31,8 +31,12 @@
           </n-descriptions-item>
         </n-descriptions>
         <n-alert v-if="data.run.stale" type="error" :bordered="false">
-          快照过期：数据截止 {{ data.run.data_cutoff }}，最近应有交易日 {{ data.run.expected_cutoff }}
+          快照过期：数据截止 {{ data.run.data_cutoff }}，应有评分截止日 {{ data.run.expected_cutoff }}
           （相差 {{ data.run.staleness_days }} 天）。不要把旧快照当作当日信号。
+        </n-alert>
+        <n-alert v-else-if="data.run.pending_today" type="info" :bordered="false">
+          今日评分尚未到生成时间（{{ data.run.score_ready_at }}），当前展示上一交易日快照；
+          不是今日信号。
         </n-alert>
         <n-grid :cols="4" :x-gap="12" :y-gap="12" responsive="screen">
           <n-gi><n-statistic label="可评分标的" :value="eligibleCount" /></n-gi>
@@ -112,6 +116,8 @@ interface Run {
   stale: boolean
   expected_cutoff: string
   staleness_days: number
+  score_ready_at: string
+  pending_today: boolean
   metrics: Metrics | null
   notes: string | null
 }

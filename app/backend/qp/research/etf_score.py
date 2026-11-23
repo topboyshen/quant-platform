@@ -19,6 +19,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from qp.models.market import TradingDay
 from qp.models.research import EtfScore, EtfScoreRun
 from qp.signals.eod import now_cst
 from qp.signals.universe import TARGETS
@@ -27,6 +28,7 @@ CODES = {target.code for target in TARGETS}
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 UNIVERSE = "fixed_40_current_pool"
 DISCLAIMER = "研究只读评分：固定当前 ETF 池、离线模型快照；不是交易信号，不下单、不通知、不写正式记录链。"
+SCORE_READY_TIME = dt.time(17, 15)
 
 
 class ScorePayloadError(ValueError):
@@ -268,6 +270,30 @@ def expected_session(today: dt.date) -> dt.date:
     return day
 
 
+def expected_score_session(session: Session, now: dt.datetime | None = None) -> dt.date:
+    """Expected score cutoff for the current moment.
+
+    Before the scoring window closes, today's offline score is not due yet.
+    The expected cutoff is the previous open session, so a previous snapshot is
+    not falsely marked stale during the trading day.  After 17:15 the current
+    open session becomes expected.
+    """
+    current = now or now_cst()
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=dt.timezone(dt.timedelta(hours=8)))
+    today = current.date()
+    ready = current.time() >= SCORE_READY_TIME
+    stmt = select(func.max(TradingDay.date)).where(TradingDay.origin == "qp", TradingDay.is_open.is_(True))
+    stmt = stmt.where(TradingDay.date <= today if ready else TradingDay.date < today)
+    value = session.scalar(stmt)
+    if value is not None:
+        return value
+    day = today if ready else today - dt.timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= dt.timedelta(days=1)
+    return day
+
+
 def horizons(session: Session) -> list[int]:
     """Label horizons that currently have at least one imported snapshot."""
     return [
@@ -276,7 +302,9 @@ def horizons(session: Session) -> list[int]:
     ]
 
 
-def latest(session: Session, *, run_id: int | None = None, horizon: int | None = None) -> dict[str, Any]:
+def latest(
+    session: Session, *, run_id: int | None = None, horizon: int | None = None, now: dt.datetime | None = None
+) -> dict[str, Any]:
     """Latest snapshot, optionally scoped to one label horizon.
 
     The 5d and 20d shadows are independent model artifacts.  Without a filter
@@ -333,7 +361,20 @@ def latest(session: Session, *, run_id: int | None = None, horizon: int | None =
                 "created_at": r.created_at,
             }
         )
-    expected = expected_session(now_cst().date())
+    current = now or now_cst()
+    expected = expected_score_session(session, now=current)
+    today = current.date()
+    today_open = (
+        session.scalar(
+            select(func.count())
+            .select_from(TradingDay)
+            .where(TradingDay.origin == "qp", TradingDay.date == today, TradingDay.is_open.is_(True))
+        )
+        or 0
+    )
+    pending_today = bool(
+        today_open and current.time() < SCORE_READY_TIME and expected < today and run.data_cutoff < today
+    )
     return {
         "read_only": True,
         "is_trade_signal": False,
@@ -353,6 +394,8 @@ def latest(session: Session, *, run_id: int | None = None, horizon: int | None =
             "stale": run.data_cutoff < expected,
             "expected_cutoff": expected.isoformat(),
             "staleness_days": (expected - run.data_cutoff).days,
+            "score_ready_at": SCORE_READY_TIME.strftime("%H:%M"),
+            "pending_today": pending_today,
             "metrics": run.metrics,
             "notes": run.notes,
             "created_at": run.created_at,
