@@ -110,7 +110,24 @@ sudo touch /etc/qp/notify.disabled      # 或文件级 kill switch
 - 4xx（除 429）视为永久失败；429/5xx/网络错误才重试。
 - 关闭报告链后，`notify.outbox` 不应再出现 `report:` 或 `morning:` 新行。
 
-## 9. 影子 allowed 样本（验证用，M12）
+## 9. Acceptance 的 verdict 与 run_quality
+
+`qp signals acceptance` 的 `verdict` 只回答“这次复评有没有 FAIL/WARN”；
+`run_quality` 另外保留自然运行质量，二者不能互相替代：
+
+| 字段 | 含义 |
+|---|---|
+| `natural` | verdict PASS，且通知首次投递即成功 |
+| `retry_recovered` | verdict PASS，自动重试后成功 |
+| `manual_recovered` | verdict PASS，但超过自动尝试次数或隔很久才由人工补发 |
+| `warn` / `failed` | verdict WARN / FAIL |
+| `natural_pass` | 仅 `natural` 为 true |
+
+A8 仍会把“已补发成功”判为 PASS，但 `run_quality=manual_recovered` 和
+`natural_pass=false` 会保留事实；历史手工复评的 `result.reconciliation` 不应删除。
+验收统计同时看 verdict 和 run_quality，不能把手工恢复计入自然通过率。
+
+## 10. 影子 allowed 样本（验证用，M12）
 
 当风控长期拦截全部触发信号时，`decision_outcome` 没有样本可验证趋势规则。影子通道把「趋势触发但被风控拦截」的决策复制到独立表并计算前瞻收益，**只用于验证**。
 

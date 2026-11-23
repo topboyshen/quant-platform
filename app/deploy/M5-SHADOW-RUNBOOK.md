@@ -143,7 +143,7 @@ sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
 
 - R1 台账行数、R2 状态分布、R2P phase2 血缘行数
 - R3 回测计数与权益/盈亏汇总、R4 盈利研究、R5 AI 记录、R6 项目结构
-- R7 LLM 仅回放、R8 源只读与导入状态、R9 自然键唯一、R10 通知 shadow-only
+- R7 LLM 仅回放、R8 源只读与导入状态、R9 自然键唯一、R10 live 通知仅限已批准的信号/报告生产者，研究导入保持 shadow
 
 判定：全 PASS 记通过；WARN 只允许来源/文本差异；FAIL 需人工裁决；BLOCKED（源未配置/不可达）
 最多 2 天，连续 2 天视为未通过。
