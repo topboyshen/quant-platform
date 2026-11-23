@@ -47,6 +47,9 @@ downstream job after a harmless retry failure.
   blocked jobs separately so a gate block is not mistaken for an execution failure.
 - `require_job_success()` returns the upstream run id, finish time, age, latest
   run status, optional `later_failure`, and artifact date (when parseable).
+- Successful downstream jobs record the adopted gate under `result.upstream_gate`
+  (`upstream_run_id`, `artifact_date`, `later_failure`, ...), so a later audit can
+  see which upstream run and artifact the job actually trusted.
 - Unit tests: `tests/test_job_gates.py` covers missing/failed/stale/future,
   stale artifact date, skipped runs, later failure visibility and the strict
   `require_latest_success` option. Job tests run with gates disabled by default,
