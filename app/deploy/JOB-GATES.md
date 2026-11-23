@@ -30,9 +30,18 @@ an env-only change to `0` plus a `qp-job@` restart; no schema change.
 The gate accepts a `succeeded` run that finished today and is within the age
 window. It does not treat `skipped_locked`, `skipped_dup`, `failed` or a
 previous day's success as upstream success. Applied signal gates also pass
-`expected_date=<today>`, so a same-day job whose result carries yesterday's
-`decision_date` / `as_of` / `business_date` / `data_cutoff` is blocked with
-`upstream_artifact_stale`.
+`expected_date=<today>`, making the artifact date part of the contract:
+
+| Artifact date | Result |
+|---|---|
+| missing / unparseable | `upstream_artifact_unknown` |
+| later than expected | `upstream_artifact_future` |
+| earlier than expected | `upstream_artifact_stale` |
+| exactly expected | accepted |
+
+The date is read from explicit result fields (`decision_date`, `as_of`,
+`business_date`, `data_cutoff`, ...); callers that require same-day input must
+pass `expected_date`.
 
 A later failed or blocked run is always reported in the gate result as
 `later_failure` and `latest_status`; it does not invalidate an older valid

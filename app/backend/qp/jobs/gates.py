@@ -52,7 +52,12 @@ def require_job_success(
     expected_date: dt.date | None = None,
     require_latest_success: bool = False,
 ) -> dict[str, Any]:
-    """Return ``{"ok": True, ...}`` only when the upstream succeeded today."""
+    """Return ``{"ok": True, ...}`` only when the upstream succeeded today.
+
+    When ``expected_date`` is supplied, the upstream's artifact date is part of
+    the contract: missing, future, and stale dates all block with distinct
+    reasons instead of only rejecting the stale case.
+    """
     if not get_settings().job_gates:
         return {"ok": True, "gate": "disabled", "upstream": upstream}
     current = now or dt.datetime.now(CST)
@@ -129,16 +134,37 @@ def require_job_success(
             "age_hours": round(age.total_seconds() / 3600, 2),
         }
     artifact_date = _artifact_date(run.result)
-    if expected_date is not None and artifact_date is not None and artifact_date < expected_date:
-        return {
-            **base,
-            "ok": False,
-            "reason": "upstream_artifact_stale",
-            "upstream_run_id": run.id,
-            "upstream_finished_at": finished.isoformat(),
-            "artifact_date": artifact_date.isoformat(),
-            "expected_date": expected_date.isoformat(),
-        }
+    if expected_date is not None:
+        if artifact_date is None:
+            return {
+                **base,
+                "ok": False,
+                "reason": "upstream_artifact_unknown",
+                "upstream_run_id": run.id,
+                "upstream_finished_at": finished.isoformat(),
+                "artifact_date": None,
+                "expected_date": expected_date.isoformat(),
+            }
+        if artifact_date > expected_date:
+            return {
+                **base,
+                "ok": False,
+                "reason": "upstream_artifact_future",
+                "upstream_run_id": run.id,
+                "upstream_finished_at": finished.isoformat(),
+                "artifact_date": artifact_date.isoformat(),
+                "expected_date": expected_date.isoformat(),
+            }
+        if artifact_date < expected_date:
+            return {
+                **base,
+                "ok": False,
+                "reason": "upstream_artifact_stale",
+                "upstream_run_id": run.id,
+                "upstream_finished_at": finished.isoformat(),
+                "artifact_date": artifact_date.isoformat(),
+                "expected_date": expected_date.isoformat(),
+            }
     return {
         **base,
         "ok": True,

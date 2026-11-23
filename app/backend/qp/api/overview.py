@@ -24,6 +24,7 @@ from qp.models.reports import Report
 from qp.models.signals import EodRun
 from qp.release import release_info
 from qp.research import etf_score
+from qp.signals.acceptance import execution_source
 
 router = APIRouter(prefix="/api/overview")
 
@@ -67,15 +68,20 @@ def _open_days(session: Session, end: dt.date, limit: int = 10) -> list[dt.date]
 
 
 def _business_context(session: Session, now: dt.datetime) -> tuple[dt.date, str, str]:
+    """Return business date, session and label.
+
+    A missing calendar row is *not* a holiday.  Only an explicit ``is_open=False``
+    row may suppress today's work; missing coverage stays visible as
+    ``calendar_unknown`` so a collector gap cannot be mistaken for a normal
+    non-trading day.
+    """
     today = now.date()
-    open_today = session.scalar(
-        select(func.count())
-        .select_from(TradingDay)
-        .where(TradingDay.origin == "qp", TradingDay.date == today, TradingDay.is_open.is_(True))
-    )
+    calendar_row = session.scalar(select(TradingDay).where(TradingDay.origin == "qp", TradingDay.date == today))
     days = _open_days(session, today, limit=1)
-    business_date = today if open_today else (days[-1] if days else today)
-    if not open_today:
+    business_date = today if calendar_row is not None and calendar_row.is_open else (days[-1] if days else today)
+    if calendar_row is None:
+        session_name = "calendar_unknown"
+    elif not calendar_row.is_open:
         session_name = "non_trading"
     elif now.time() < dt.time(9, 30):
         session_name = "pre_open"
@@ -88,6 +94,7 @@ def _business_context(session: Session, now: dt.datetime) -> tuple[dt.date, str,
         "open": "交易中",
         "closed": "已收盘",
         "non_trading": "休市",
+        "calendar_unknown": "日历未知",
     }
     return business_date, session_name, labels[session_name]
 
@@ -140,14 +147,28 @@ def _outbox_summary(session: Session, outbox: Outbox | None) -> dict[str, Any] |
     if last is not None and outbox.created_at is not None:
         gap = round((last.at - outbox.created_at).total_seconds() / 3600, 2)
     max_attempts = get_settings().notify_max_attempts
-    manual = bool(
+    source_run = session.get(JobRun, outbox.source_job_run_id) if outbox.source_job_run_id else None
+    source = execution_source(source_run)
+    source_known = source not in ("unknown", "test")
+    heuristic_manual = bool(
         successes
         and not first_ok
         and ((last_no is not None and last_no > max_attempts) or (gap is not None and gap > 1))
     )
-    recovery = (
-        "natural" if first_ok else "manual" if manual else "retry" if successes else "failed" if attempts else "unknown"
-    )
+    if source in ("manual", "replay"):
+        recovery = "manual"
+    elif first_ok:
+        recovery = "natural"
+    elif source_known:
+        recovery = "retry"
+    elif heuristic_manual:
+        recovery = "manual"
+    elif successes:
+        recovery = "retry"
+    elif attempts:
+        recovery = "failed"
+    else:
+        recovery = "unknown"
     return {
         "id": outbox.id,
         "dedup_key": outbox.dedup_key,
@@ -163,6 +184,9 @@ def _outbox_summary(session: Session, outbox: Outbox | None) -> dict[str, Any] |
         "first_failed_at": failures[0].at.isoformat() if failures else None,
         "last_ok_at": last.at.isoformat() if last is not None else None,
         "gap_hours": gap,
+        "execution_source": source,
+        "recovery_basis": "execution_source" if source_known else "attempt_heuristic",
+        "source_job_run_id": outbox.source_job_run_id,
         "recovery": recovery,
         "message_id": (last.detail or {}).get("message_id") if last is not None else None,
         "processed_at": _iso(outbox.processed_at),

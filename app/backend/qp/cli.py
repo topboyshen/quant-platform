@@ -75,6 +75,29 @@ def cmd_job_run(a) -> int:
     return 0 if run.status in ("succeeded", "skipped_dup", "skipped_locked") else 1
 
 
+def cmd_job_review(a) -> int:
+    from qp.db import session_scope
+    from qp.jobs.reviews import append_review
+
+    fields: dict[str, str] = {}
+    for item in a.field or []:
+        key, sep, value = item.partition("=")
+        if not sep or not key.strip():
+            raise SystemExit(f"invalid --field {item!r}; expected key=value")
+        fields[key.strip()] = value
+    with session_scope() as s:
+        row = append_review(
+            s,
+            original_run_id=a.run_id,
+            reviewer=a.reviewer,
+            reason=a.reason,
+            fields=fields,
+        )
+        out = {"id": row.id, "review_of_run_id": a.run_id, "result": row.result}
+    print(json.dumps(out, default=str, ensure_ascii=False))
+    return 0
+
+
 def cmd_shadow_compare(a) -> int:
     import datetime as dt
 
@@ -447,6 +470,12 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--trigger", default=os.getenv("QP_TRIGGER", "manual"))
     r.add_argument("--dedup-key", default=None)
     r.set_defaults(fn=cmd_job_run)
+    rv = jb.add_parser("review")
+    rv.add_argument("--run-id", type=int, required=True)
+    rv.add_argument("--reviewer", required=True)
+    rv.add_argument("--reason", required=True)
+    rv.add_argument("--field", action="append", default=[])
+    rv.set_defaults(fn=cmd_job_review)
     sh = sub.add_parser("shadow").add_subparsers(dest="sub", required=True)
     sc = sh.add_parser("compare")
     sc.add_argument("--date", required=True)

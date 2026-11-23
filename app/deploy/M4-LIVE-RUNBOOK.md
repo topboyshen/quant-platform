@@ -117,15 +117,28 @@ sudo touch /etc/qp/notify.disabled      # 或文件级 kill switch
 
 | 字段 | 含义 |
 |---|---|
-| `natural` | verdict PASS，且通知首次投递即成功 |
+| `natural` | verdict PASS，定时运行的首次投递即成功 |
 | `retry_recovered` | verdict PASS，自动重试后成功 |
-| `manual_recovered` | verdict PASS，但超过自动尝试次数或隔很久才由人工补发 |
+| `manual_recovered` | verdict PASS，但 outbox 来自人工 job run，或来源未知且超过自动尝试预算 |
 | `warn` / `failed` | verdict WARN / FAIL |
 | `natural_pass` | 仅 `natural` 为 true |
 
 A8 仍会把“已补发成功”判为 PASS，但 `run_quality=manual_recovered` 和
-`natural_pass=false` 会保留事实；历史手工复评的 `result.reconciliation` 不应删除。
-验收统计同时看 verdict 和 run_quality，不能把手工恢复计入自然通过率。
+`natural_pass=false` 会保留事实。`delivery.execution_source` 来自
+`ops.job_run.trigger`（`scheduled` / `scheduled_retry` / `manual` / `replay`），
+`recovery_basis` 标明结论来自执行来源还是仅来自尝试次数启发式；不得把定时任务
+的延迟自动写成“人工恢复”。
+
+历史验收记录只追加、不覆盖。需要复核旧运行时使用：
+
+```bash
+qp job review --run-id <id> --reviewer <name> --reason <text> --field key=value
+```
+
+该命令写入新的 `ops.job_run_review` 行并在 result 中关联原 run id；原
+`ops.job_run.result` 保持不变。页面同时保留原始结论与后续复核，不为了纠正
+口径而回滚或改写历史行。验收统计同时看 verdict 和 run_quality，不能把手工
+恢复计入自然通过率。
 
 ## 10. 影子 allowed 样本（验证用，M12）
 

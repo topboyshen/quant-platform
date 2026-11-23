@@ -128,6 +128,19 @@ def test_fetcher_falls_back_to_second_source():
     assert result.publication_lag is False
 
 
+def test_fetcher_sina_takes_over_when_tencent_fails():
+    def broken(code, days):
+        raise FetchError("tencent_kline:http_501")
+
+    sina = lambda code, days: parse_sina_klines(sina_rows(business_days(30)))  # noqa: E731
+    fetcher = KlineFetcher(wait_seconds=0, sources=[("tencent", broken), ("sina", sina)])
+    result = fetcher.get("510300", required_date=END, previous_session=business_days(2)[0])
+    assert result.source == "sina" and result.bars[-1].date == END
+    assert [a["source"] for a in result.attempts] == ["tencent", "sina"]
+    assert result.attempts[0]["error"] == "FetchError"
+    assert result.attempts[1]["rows"] == 30
+
+
 def test_fetcher_treats_previous_session_as_publication_lag_and_waits_once():
     previous = business_days(2)[0]
     stale = lambda code, days: parse_tencent_klines(  # noqa: E731

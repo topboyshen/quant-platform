@@ -112,6 +112,26 @@ def test_gate_rejects_stale_artifact_date(engine, monkeypatch):
         _clean(engine)
 
 
+def test_gate_requires_known_artifact_date_when_expected(engine, monkeypatch):
+    monkeypatch.setenv("QP_JOB_GATES", "1")
+    _clean(engine)
+    try:
+        reference = dt.datetime(2026, 11, 10, 12, 0, tzinfo=dt.UTC)
+        _run(engine, finished=reference, result={"ok": True})
+        missing = require_job_success(engine, "test.gate.upstream", now=reference, expected_date=reference.date())
+        assert missing["ok"] is False and missing["reason"] == "upstream_artifact_unknown"
+        _clean(engine)
+        _run(
+            engine,
+            finished=reference,
+            result={"decision_date": (reference.date() + dt.timedelta(days=1)).isoformat()},
+        )
+        future = require_job_success(engine, "test.gate.upstream", now=reference, expected_date=reference.date())
+        assert future["ok"] is False and future["reason"] == "upstream_artifact_future"
+    finally:
+        _clean(engine)
+
+
 def test_skipped_runs_do_not_count_as_upstream_success(engine, monkeypatch):
     monkeypatch.setenv("QP_JOB_GATES", "1")
     _clean(engine)
