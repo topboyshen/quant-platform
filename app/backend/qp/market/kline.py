@@ -1,4 +1,4 @@
-"""Daily K-line sources for M4 (SHADOW): Eastmoney push2his -> Tencent -> akshare.
+"""Daily K-line sources for M4 (SHADOW): Eastmoney -> Tencent -> Sina -> akshare.
 
 Pure stdlib + ``qp.market.http``. The normalisation rules mirror the legacy fetcher:
 ascending unique dates (last wins), positive closes, and an exact ``required_date``
@@ -21,6 +21,7 @@ from qp.market.http import FetchError
 
 EASTMONEY_URL = "http://push2his.eastmoney.com/api/qt/stock/kline/get"
 TENCENT_URL = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+SINA_URL = "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData"
 MIN_SOURCE_ROWS = 30
 DEFAULT_HISTORY_DAYS = 250
 
@@ -33,6 +34,10 @@ EASTMONEY_HEADERS = {
 TENCENT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Referer": "http://stockpage.10jqka.com.cn/",
+}
+SINA_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "https://finance.sina.com.cn/",
 }
 
 
@@ -113,6 +118,21 @@ def parse_tencent_klines(items: list[list]) -> list[DailyBar]:
     return bars
 
 
+def parse_sina_klines(items: list[dict]) -> list[DailyBar]:
+    """Rows are ``{day, open, high, low, close, volume}`` from Sina."""
+    bars: list[DailyBar] = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError("malformed_kline")
+        try:
+            bars.append(_bar(item["day"], item["open"], item["high"], item["low"], item["close"], item["volume"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("malformed_kline") from exc
+    if len(bars) < MIN_SOURCE_ROWS:
+        raise ValueError("insufficient_rows")
+    return bars
+
+
 def normalize_bars(bars: list[DailyBar]) -> list[DailyBar]:
     seen: dict[dt.date, DailyBar] = {}
     for bar in sorted(bars, key=lambda b: b.date):
@@ -159,6 +179,25 @@ def fetch_tencent_bars(code: str, days: int = DEFAULT_HISTORY_DAYS) -> list[Dail
         raise FetchError(f"tencent_kline:{exc}") from None
 
 
+def fetch_sina_bars(code: str, days: int = DEFAULT_HISTORY_DAYS) -> list[DailyBar]:
+    params = {
+        "symbol": exchange_prefixed_code(code),
+        "scale": "240",
+        "ma": "no",
+        "datalen": str(days + 30),
+    }
+    try:
+        payload = http.fetch(SINA_URL, params=params, headers=SINA_HEADERS, proxy=False, timeout=30).json()
+    except (FetchError, ValueError, json.JSONDecodeError) as exc:
+        raise FetchError(f"sina_kline:{type(exc).__name__}") from None
+    if not isinstance(payload, list):
+        raise FetchError("sina_kline:bad_payload")
+    try:
+        return parse_sina_klines(payload)
+    except ValueError as exc:
+        raise FetchError(f"sina_kline:{exc}") from None
+
+
 def fetch_akshare_bars(code: str, days: int = DEFAULT_HISTORY_DAYS) -> list[DailyBar]:
     """akshare is optional in the qp runtime; absence fails over, it never fabricates data."""
     raise FetchError("akshare_unavailable")
@@ -167,6 +206,7 @@ def fetch_akshare_bars(code: str, days: int = DEFAULT_HISTORY_DAYS) -> list[Dail
 DEFAULT_SOURCES: list[tuple[str, Callable[[str, int], list[DailyBar]]]] = [
     ("eastmoney_push2his", fetch_eastmoney_bars),
     ("tencent_kline", fetch_tencent_bars),
+    ("sina_kline", fetch_sina_bars),
     ("akshare_kline", fetch_akshare_bars),
 ]
 
