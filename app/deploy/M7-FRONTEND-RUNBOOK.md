@@ -48,7 +48,7 @@ curl -fsS -o /dev/null -w '%{http_code}\n' https://<host>/next/api/health # 200
 
 | # | 页面 | 路径 | 验收点 |
 |---|---|---|---|
-| 1 | 总览 | `/next/` | 版本、健康、最新 EOD、报告计数、任务失败、通知 |
+| 1 | 总览 | `/next/` | 业务日/交易时段/刷新状态/版本；当前待处理；行情/信号/研究截止与缺口；日报投递与回执；近期自然运行质量 |
 | 2 | 行情 · 健康 | `/next/market` | 与既有 M3 页面一致 |
 | 3 | 行情 · 证券 | `/next/market/instruments` | 搜索/筛选 |
 | 4 | 行情 · 日历 | `/next/market/calendar` | 三来源日历 |
