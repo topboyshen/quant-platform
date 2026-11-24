@@ -4,10 +4,12 @@ legacy state file is touched. Deployment of the timer stays gated on M3 PASS."""
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from qp.config import get_settings
 from qp.jobs.gates import require_job_success
 from qp.jobs.registry import JobContext, job
 from qp.models.market import TradingDay
@@ -346,3 +348,91 @@ def execution_digest_job(ctx: JobContext) -> dict:
         session.commit()
     out["ok"] = bool(out.get("ok"))
     return out
+
+
+def _attribution_text(data: dict) -> str:
+    def pct(value: object) -> str:
+        try:
+            return f"{float(value) * 100:+.2f}%"
+        except (TypeError, ValueError):
+            return "—"
+
+    sample = data["sample"]
+    overall = data["overall"]
+    eligible = data["eligible"]
+    lines = [
+        f"信号链绩效归因（{data['horizon']} 日） 截至 {data['as_of']}",
+        f"样本：成熟且成交 {sample['matured_filled']} 条，合格 {sample['eligible_matured']} 条"
+        f"（阈值 {data['threshold']}）",
+        f"总体：n={overall['n']}，胜率 {pct(overall['win_rate'])}，平均净收益 {pct(overall['avg_net_return'])}，"
+        f"平均超额 {pct(overall['avg_excess_return'])}",
+        f"合格：n={eligible['n']}，胜率 {pct(eligible['win_rate'])}，平均净收益 {pct(eligible['avg_net_return'])}，"
+        f"平均超额 {pct(eligible['avg_excess_return'])}",
+    ]
+    for warning in data.get("warnings") or []:
+        lines.append(f"警告：{warning.get('message') or warning.get('code')}")
+    for dimension in data.get("group_by") or []:
+        groups = (data.get("groups") or {}).get(dimension) or []
+        if not groups:
+            lines.append(f"{data['dimension_labels'][dimension]}：无样本")
+            continue
+        parts = [
+            f"{group['bucket']} n={group['n']} 胜率{pct(group['win_rate'])} 超额{pct(group['avg_excess_return'])}"
+            for group in groups[:5]
+        ]
+        lines.append(f"{data['dimension_labels'][dimension]}：" + "；".join(parts))
+    lines.append("只读归因，不是交易建议。")
+    return "\n".join(lines)
+
+
+@job(
+    "signals.attribution_weekly",
+    "Weekly 20-session signal attribution summary (read-only; Telegram outbox)",
+    schedule_hint="Mon 08:30 CST (qp-signals-attribution.timer)",
+)
+def attribution_weekly_job(ctx: JobContext) -> dict:
+    from qp.jobs.builtin import enqueue
+    from qp.signals import attribution
+
+    today = now_cst().date()
+    with Session(ctx.engine) as session:
+        data = attribution.report(
+            session,
+            horizon=20,
+            group_by=attribution.DIMENSIONS,
+            as_of=today,
+        )
+        text = _attribution_text(data)
+        iso = today.isocalendar()
+        week = f"{iso.year}-W{iso.week:02d}"
+        payload = {
+            "report_type": "attribution_weekly",
+            "week": week,
+            "as_of": today.isoformat(),
+            "horizon": 20,
+            "sample": data["sample"],
+            "threshold": data["threshold"],
+            "overall": data["overall"],
+            "eligible": data["eligible"],
+            "warnings": data["warnings"],
+            "text": text,
+        }
+        mode = "live" if get_settings().signals_notify_mode.strip().lower() == "live" else "shadow"
+        inserted = enqueue(
+            session,
+            channel="telegram",
+            recipient="signals" if mode == "live" else "shadow:signals-attribution",
+            dedup_key=f"attribution-weekly:{week}",
+            subject=f"信号链绩效归因 {week}",
+            body=json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str),
+            source_job_run_id=ctx.run_id,
+            mode=mode,
+        )
+        session.commit()
+    return {
+        "ok": True,
+        "week": week,
+        "enqueued": inserted,
+        "mode": mode,
+        "sample": data["sample"],
+    }
