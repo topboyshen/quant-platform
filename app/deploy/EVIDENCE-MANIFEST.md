@@ -1,10 +1,14 @@
-# External artifact evidence manifest (2026-11-16)
+# External artifact evidence manifest (reviewed 2026-11-24)
 
 The record chain stores `db_row` evidence for decisions. Model files, frozen
 inputs and exported payloads are **external artifacts** and use this manifest
 instead: each one is bound to a runtime identity (host, owner, mode), version,
 byte size and SHA-256. A file that exists but has no expected identity is
 `unknown`, never `verified`.
+
+Last full scan: **2026-11-16 21:24 CST**. This document was reviewed on
+2026-11-24 for the freeze baseline; a fresh scan is required before any M9
+Phase 2 decision. The counts below are the last recorded scan, not a live claim.
 
 Implementation: the read-only `batch4_acceptance.py` check 8 scans the artifacts
 on nnG8 and writes them into `batch4-acceptance-*.json`. This document is the

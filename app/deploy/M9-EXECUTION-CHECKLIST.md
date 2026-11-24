@@ -4,6 +4,10 @@
 `astock*`, `quant-*`, etc.). Each unit is stopped only after its own row below
 is complete and signed off. A blank cell is a hard stop.
 
+Current freeze baseline: production `0.3.106`, freeze **2026-11-24 → 2026-12-08**.
+Do not execute any Phase 2 row before 2026-12-08 and the separate authorization;
+see [`FREEZE-BASELINE-2026-11-24.md`](FREEZE-BASELINE-2026-11-24.md).
+
 ## 1. Pre-flight (once)
 
 - [ ] `qp decommission inventory --out ...` manifest saved and sha256 recorded.
@@ -12,6 +16,7 @@ is complete and signed off. A blank cell is a hard stop.
 - [ ] `qp` health, backup, chain window, and 17:40 report are green.
 - [ ] Rollback command for this unit is written down and tested on a mock unit.
 - [ ] The observation window required by the roadmap has actually elapsed.
+      Current window: 2026-11-24 → 2026-12-08; 2026-11-24 is a mixed-version day.
 
 ## 2. Per-unit gate
 
