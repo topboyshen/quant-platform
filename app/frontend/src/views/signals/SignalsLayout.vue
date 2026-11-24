@@ -10,6 +10,7 @@
       <n-tab name="rule-shadow">规则影子</n-tab>
       <n-tab name="rotation-shadow">轮动影子</n-tab>
       <n-tab name="compare">影子对比</n-tab>
+      <n-tab name="strategy">策略对比</n-tab>
     </n-tabs>
     <router-view />
   </n-space>
