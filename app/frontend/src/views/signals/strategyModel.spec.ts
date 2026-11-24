@@ -33,6 +33,7 @@ const report: AttrReport = {
     sector: [
       group('宽基', 8, 0.03),
       group('行业', 4, 0.06),
+      group('防御', 36, 0.0743, { sample_status: 'baseline_only', sample_status_label: '仅基线' }),
     ],
   },
 }
@@ -46,6 +47,13 @@ describe('buildStrategyRows', () => {
     ])
     expect(rows[0].rank).toBe(1)
     expect(rows[0].dimension_label).toBe('板块')
+  })
+
+  it('hides baseline-only groups by default and includes them on request', () => {
+    const hidden = buildStrategyRows(report, { minSamples: 1 })
+    expect(hidden.some((row) => row.bucket === '防御')).toBe(false)
+    const shown = buildStrategyRows(report, { minSamples: 1, hideBaseline: false })
+    expect(shown.some((row) => row.bucket === '防御')).toBe(true)
   })
 
   it('can include unknown and filter to one dimension', () => {
