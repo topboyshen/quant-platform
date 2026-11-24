@@ -477,7 +477,7 @@ def attribution_weekly_job(ctx: JobContext) -> dict:
             horizon=20,
             group_by=attribution.DIMENSIONS,
             end=today - dt.timedelta(days=7),
-            as_of=today,
+            as_of=today - dt.timedelta(days=7),
         )
         changes = _attribution_changes(data, previous)
         text = _attribution_text(data, previous=previous)
