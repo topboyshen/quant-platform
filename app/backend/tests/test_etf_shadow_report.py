@@ -310,7 +310,11 @@ def test_1740_reports_use_only_c13_forward_account(engine):
                 assert rotation["trade_date"] == report_date.isoformat()
                 assert rotation["signal_date"] == baseline.isoformat()
                 assert rotation["execute_date"] == (baseline + dt.timedelta(days=1)).isoformat()
-                assert (rotation["nav"], rotation["benchmark_nav"], rotation["ew_nav"]) == (1_020_000, 990_000, 1_030_000)
+                assert (rotation["nav"], rotation["benchmark_nav"], rotation["ew_nav"]) == (
+                    1_020_000,
+                    990_000,
+                    1_030_000,
+                )
                 assert (rotation["nav_return"], rotation["benchmark_return"], rotation["ew_return"]) == pytest.approx(
                     (0.02, -0.01, 0.03)
                 )
