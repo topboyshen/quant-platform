@@ -19,7 +19,7 @@ from qp.jobs.research import (
 )
 from qp.models.market import IndexClose
 from qp.models.notify import Outbox
-from qp.models.signals import MacroSlice, RiskState
+from qp.models.signals import MacroSlice, RiskState, RotationShadowAccount, RotationShadowDay, RotationShadowRun
 from qp.notify.render import render_outbox
 from qp.signals.eod import now_cst
 from qp.signals.watchdog import build_daily_report
@@ -237,6 +237,84 @@ def test_combined_builder_has_shadow(engine):
     assert out["read_only"] is True and out["is_trade_signal"] is False
     assert "etf_shadow" in out
     assert "missing" in out["etf_shadow"]["data_quality"]
+
+
+def test_1740_reports_use_only_c13_forward_account(engine):
+    report_date = dt.date(2032, 1, 14)
+    baseline = report_date - dt.timedelta(days=2)
+    prior_baseline = baseline - dt.timedelta(days=1)
+    future = report_date + dt.timedelta(days=1)
+    c13 = ("qp-rotation.v1", "forward")
+    risk = ("qp-rotation.risk.v1", "forward")
+    replay = ("qp-rotation.v1", "replay")
+
+    def mark(account, day, navs, positions):
+        nav, benchmark, ew = navs
+        return RotationShadowDay(
+            rule_version=account[0],
+            phase=account[1],
+            trade_date=day,
+            session_index=(day - baseline).days - 1,
+            nav=nav,
+            cash=0 if positions else nav,
+            invested=nav if positions else 0,
+            positions=positions,
+            benchmark_nav=benchmark,
+            ew_nav=ew,
+        )
+
+    def run(account, signal_date, execute_date, status="executed"):
+        return RotationShadowRun(
+            rule_version=account[0],
+            phase=account[1],
+            signal_date=signal_date,
+            execute_date=execute_date,
+            status=status,
+        )
+
+    with Session(engine) as s:
+        for account, day in ((c13, baseline), (risk, prior_baseline), (replay, prior_baseline)):
+            s.add(
+                RotationShadowAccount(
+                    rule_version=account[0],
+                    phase=account[1],
+                    baseline_date=day,
+                    start_date=day + dt.timedelta(days=1),
+                )
+            )
+        s.add_all(
+            [
+                mark(risk, prior_baseline, (500_000, 600_000, 700_000), {}),
+                mark(replay, prior_baseline, (800_000, 900_000, 950_000), {}),
+                mark(c13, baseline, (1_000_000, 1_000_000, 1_000_000), {}),
+                mark(risk, report_date, (510_000, 610_000, 710_000), {"510050": 100}),
+                mark(replay, report_date, (810_000, 910_000, 960_000), {"510300": 100}),
+                mark(c13, report_date, (1_020_000, 990_000, 1_030_000), {"515050": 100}),
+                mark(c13, future, (1_100_000, 1_200_000, 1_300_000), {"159941": 100}),
+                run(c13, baseline, baseline + dt.timedelta(days=1)),
+                run(risk, report_date - dt.timedelta(days=1), report_date),
+                run(replay, report_date - dt.timedelta(days=1), report_date),
+                run(c13, report_date - dt.timedelta(days=1), report_date, status="pending"),
+                run(c13, report_date, future),
+            ]
+        )
+        s.flush()
+
+        for day in (report_date, prior_baseline):
+            rotation = build_etf_shadow_report(s, today=day)["rotation"]
+            assert build_combined_report(s, today=day)["etf_shadow"]["rotation"] == rotation
+            if day == prior_baseline:
+                assert rotation is None
+            else:
+                assert rotation["rule_version"] == "qp-rotation.v1"
+                assert rotation["trade_date"] == report_date.isoformat()
+                assert rotation["signal_date"] == baseline.isoformat()
+                assert rotation["execute_date"] == (baseline + dt.timedelta(days=1)).isoformat()
+                assert (rotation["nav"], rotation["benchmark_nav"], rotation["ew_nav"]) == (1_020_000, 990_000, 1_030_000)
+                assert (rotation["nav_return"], rotation["benchmark_return"], rotation["ew_return"]) == pytest.approx(
+                    (0.02, -0.01, 0.03)
+                )
+                assert [position["code"] for position in rotation["positions"]] == ["515050"]
 
 
 def test_empty_builder_is_explicit(engine):
