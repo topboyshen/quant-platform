@@ -124,6 +124,27 @@ def test_generate_is_idempotent(engine):
         cleanup(engine)
 
 
+def test_backfill_replays_open_days(engine):
+    cleanup(engine)
+    try:
+        calendar(engine, [DAY, AFTER[0]])
+        with Session(engine) as session:
+            out = rule_shadow.backfill(
+                session,
+                since=DAY,
+                until=AFTER[0],
+                fetcher=FakeFetcher({CODE: cross_bars(3000.0)}),
+                targets=[target()],
+            )
+            session.commit()
+        assert out["days"] == 2
+        assert out["inserted"] == 1
+        assert out["no_bar"] == 1
+        assert out["details"] == [{"day": DAY.isoformat(), "inserted": 1}]
+    finally:
+        cleanup(engine)
+
+
 def test_cooldown_counts_trading_sessions(engine):
     cleanup(engine)
     try:
