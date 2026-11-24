@@ -22,10 +22,14 @@
           <n-switch v-model:value="hideUnknown" size="small" />
           <n-text depth="3">隐藏 unknown</n-text>
         </n-space>
+        <n-space align="center" size="small">
+          <n-switch v-model:value="showBaseline" size="small" />
+          <n-text depth="3">显示仅基线</n-text>
+        </n-space>
         <n-text depth="3">共 {{ rows.length }} 个分组满足样本门槛</n-text>
       </n-space>
       <AsyncState :loading="loading" :error="error" :empty="!loading && !error && !rows.length"
-                  empty-text="没有满足样本门槛的归因分组">
+                  :empty-text="showBaseline ? '没有满足样本门槛的归因分组' : '没有非基线分组满足样本门槛（仅基线分组已隐藏）'">
         <template v-if="report">
           <n-space size="small" style="margin-bottom: 12px">
             <n-tag size="small">总体 n={{ report.overall.n }}</n-tag>
@@ -64,6 +68,7 @@ const dimension = ref<string | null>(null)
 const minSamples = ref(5)
 const sortBy = ref<StrategySort>('avg_excess_return')
 const hideUnknown = ref(true)
+const showBaseline = ref(false)
 
 const dimensionOptions = Object.entries(STRATEGY_DIMENSIONS).map(([value, label]) => ({ value, label }))
 const minOptions = [
@@ -84,6 +89,7 @@ const rows = computed<StrategyRow[]>(() => report.value
       minSamples: minSamples.value,
       dimension: dimension.value,
       hideUnknown: hideUnknown.value,
+      hideBaseline: !showBaseline.value,
       sortBy: sortBy.value,
     })
   : [])

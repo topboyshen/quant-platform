@@ -45,6 +45,7 @@ export interface StrategyOptions {
   minSamples?: number
   dimension?: string | null
   hideUnknown?: boolean
+  hideBaseline?: boolean
   sortBy?: StrategySort
 }
 
@@ -53,6 +54,7 @@ export function buildStrategyRows(report: AttrReport, options: StrategyOptions =
   const minSamples = options.minSamples ?? 5
   const dimension = options.dimension || null
   const hideUnknown = options.hideUnknown ?? true
+  const hideBaseline = options.hideBaseline ?? true
   const sortBy = options.sortBy ?? 'avg_excess_return'
   const dimensions = dimension ? [dimension] : report.group_by
   const rows: Omit<StrategyRow, 'rank'>[] = []
@@ -60,6 +62,7 @@ export function buildStrategyRows(report: AttrReport, options: StrategyOptions =
     for (const group of report.groups[dim] || []) {
       if (group.n < minSamples) continue
       if (hideUnknown && group.bucket === 'unknown') continue
+      if (hideBaseline && group.sample_status === 'baseline_only') continue
       rows.push({
         ...group,
         dimension: dim,
