@@ -29,10 +29,15 @@ sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
 sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
   /opt/qp/current/venv/bin/qp chain compare --date YYYY-MM-DD'
 
-# 绩效归因（20 日成熟结果；只读，不写库、不发通知）
+# 绩效归因（20 日成熟结果；只读查询）
 sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
   /opt/qp/current/venv/bin/qp chain attribution --horizon 20 --markdown'
 ```
+
+每周一 08:30 `qp-signals-attribution.timer` 会运行
+`signals.attribution_weekly`：只读计算六维归因，按 ISO 周写入一条
+`attribution-weekly:<year>-W<week>` outbox（live 模式发 Telegram，shadow 模式只落库）。
+同一周重复运行不会重复入队；归因样本不足时仍发送，但正文会明确写“样本不足/仅描述性参考”。
 
 PASS 条件：当天 EOD run 已到终态（`success`/`partial` 且 `finished_at` 非空）、快照 `status=complete`、
 五项漏斗计数与 `target_decision` 一致、`loss` 三项为 0；未到 16:12 的当天显示“待运行/进行中”，

@@ -1,0 +1,11 @@
+[Unit]
+Description=quant-platform weekly signal-chain attribution summary (Mon 08:30)
+
+[Timer]
+OnCalendar=Mon *-*-* 08:30:00 Asia/Shanghai
+AccuracySec=30s
+Persistent=true
+Unit=qp-job@signals.attribution_weekly.service
+
+[Install]
+WantedBy=timers.target

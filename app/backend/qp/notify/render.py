@@ -172,6 +172,13 @@ def _etf_shadow(payload: dict, subject: str | None) -> str:
     return "\n".join(lines)
 
 
+def _attribution(payload: dict, subject: str | None) -> str:
+    text = str(payload.get("text") or "").strip()
+    if not text:
+        return _clip(f"【qp】{subject or '信号链绩效归因'}\n\n本周暂无可展示的归因摘要。")
+    return _clip(f"【qp】{subject or '信号链绩效归因'}\n\n{text}")
+
+
 def render_outbox(row: Outbox) -> str:
     try:
         payload = json.loads(row.body)
@@ -185,6 +192,8 @@ def render_outbox(row: Outbox) -> str:
             return _clip(_failure(payload, row.subject))
         if report_type == "etf_shadow_report":
             return _clip(_etf_shadow(payload, row.subject))
+        if report_type == "attribution_weekly":
+            return _attribution(payload, row.subject)
         if report_type == "daily_combined_report":
             return _clip(_daily(payload, row.subject))
     return _clip(f"{row.subject or 'qp 通知'}\n\n{row.body}")
