@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
@@ -117,6 +119,131 @@ def test_signal_endpoints(engine, client):
         assert outcomes["rows"][0]["fill_status"] == "filled"
     finally:
         cleanup(engine)
+
+
+@pytest.fixture
+def store_outcomes(engine):
+    cleanup(engine)
+
+    def store(attempt_no, *outcomes):
+        day = dt.date(2026, 8, 27)
+        with Session(engine) as session:
+            run = EodRun(decision_date=day, attempt_no=attempt_no, status="success", decision_outcome="emitted")
+            session.add(run)
+            session.flush()
+            decision = TargetDecision(
+                run_id=run.run_id,
+                decision_date=day,
+                code="512000",
+                data_status="ok",
+                decision_state="allowed",
+                risk_action="allowed",
+                reason_code="trigger",
+            )
+            session.add(decision)
+            session.flush()
+            decision_id = decision.id
+            for outcome in outcomes:
+                outcome.decision_id = decision_id
+                session.add(outcome)
+            session.commit()
+            return decision_id
+
+    yield store
+    cleanup(engine)
+
+
+def _filled_outcome(horizon, entry_open, entry_fill, *, entry_date=dt.date(2026, 8, 28), **fields):
+    prices = {"entry_open": entry_open, "entry_fill": entry_fill}
+    return DecisionOutcome(
+        horizon_sessions=horizon,
+        entry_date=entry_date,
+        fill_status="filled",
+        details={key: value for key, value in prices.items() if value is not None},
+        **fields,
+    )
+
+
+def test_outcome_basis_spans_pages_and_keeps_each_horizons_return(engine, client, store_outcomes):
+    # Archived 512000 decision 8ec9d507a4cc484faae0b62d1416d479. Return columns have eight decimal places.
+    historical = [
+        (1, 0.530, 0.530265, dt.date(2026, 8, 28), -0.00159872, 0.0, -0.00159872),
+        (3, 0.528, 0.528264, dt.date(2026, 9, 1), 0.00218310, -0.00085397, 0.00303707),
+        (5, 0.528, 0.528264, dt.date(2026, 9, 3), -0.00538054, -0.01345004, 0.00806950),
+    ]
+    decision = store_outcomes(
+        1,
+        *[
+            _filled_outcome(
+                h,
+                opening,
+                fill,
+                entry_price=opening,
+                exit_date=end,
+                net_return=net,
+                benchmark_return=benchmark,
+                excess_return=excess,
+            )
+            for h, opening, fill, end, net, benchmark, excess in historical
+        ],
+    )
+    # A different decision on the same date and code has internally consistent prices.
+    other_decision = store_outcomes(2, _filled_outcome(1, 0.50, 0.50025), _filled_outcome(3, 0.50, 0.50025))
+    headers = {"authorization": f"Bearer {_token(engine)}"}
+    rows = {}
+    for offset in range(5):
+        page = client.get("/api/signals/outcomes", params={"limit": 1, "offset": offset}, headers=headers)
+        assert page.status_code == 200
+        assert page.json()["total"] == 5
+        [row] = page.json()["rows"]
+        rows[row["decision_id"], row["horizon_sessions"]] = row
+
+    for h, _, _, end, net, benchmark, excess in historical:
+        row = rows[decision, h]
+        assert row["code"] == "512000" and row["decision_date"] == "2026-08-27"
+        assert row["entry_date"] == "2026-08-28" and row["exit_date"] == end.isoformat()
+        assert (row["net_return"], row["benchmark_return"], row["excess_return"]) == (net, benchmark, excess)
+        basis = row["entry_basis"]
+        assert basis["status"] == "conflict" and basis["horizons"] == [1, 3, 5]
+        conflicts = {item["field"]: item["values_by_horizon"] for item in basis["conflicts"]}
+        assert set(conflicts) == {"entry_open", "entry_fill"}
+        for field, field_index in (("entry_open", 1), ("entry_fill", 2)):
+            assert all(isinstance(value, str) for value in conflicts[field].values())
+            values = {key: Decimal(value) for key, value in conflicts[field].items()}
+            assert values == {str(record[0]): Decimal(str(record[field_index])) for record in historical}
+
+    for h in (1, 3):
+        assert rows[other_decision, h]["entry_basis"] == {"status": "consistent", "horizons": [1, 3], "conflicts": []}
+
+
+def test_outcome_basis_incomplete_evidence_and_known_date_conflict(engine, client, store_outcomes):
+    single = store_outcomes(1, _filled_outcome(1, 0.53, 0.530265))
+    incomplete = store_outcomes(
+        2, _filled_outcome(1, 0.53, 0.530265), _filled_outcome(3, None, 0.530265, entry_price=0.53)
+    )
+    different_dates = store_outcomes(
+        3,
+        _filled_outcome(1, 0.53, 0.530265),
+        _filled_outcome(3, 0.53, None, entry_date=dt.date(2026, 8, 31)),
+        _filled_outcome(5, 0.53, 0.530265, entry_date=None),
+    )
+    headers = {"authorization": f"Bearer {_token(engine)}"}
+    response = client.get("/api/signals/outcomes", headers=headers)
+    assert response.status_code == 200
+    rows = response.json()["rows"]
+    assert len(rows) == 6
+    for row in rows:
+        if row["decision_id"] == different_dates:
+            assert row["entry_basis"] == {
+                "status": "conflict",
+                "horizons": [1, 3, 5],
+                "conflicts": [
+                    {"field": "entry_date", "values_by_horizon": {"1": "2026-08-28", "3": "2026-08-31", "5": None}}
+                ],
+            }
+        else:
+            horizons = {single: [1], incomplete: [1, 3]}[row["decision_id"]]
+            assert row["entry_basis"] == {"status": "insufficient", "horizons": horizons, "conflicts": []}
 
 
 def test_compare_reads_shadow_report(engine, client, tmp_path: Path, monkeypatch):

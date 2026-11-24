@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,7 @@ from qp.models.signals import (
     TargetDecision,
     TrendSignal,
 )
+from qp.signals.entry_basis import compare_entry_basis
 from qp.signals.universe import TARGETS
 
 router = APIRouter(prefix="/api/signals", dependencies=[Depends(require_scope("signals:read"))])
@@ -146,12 +148,27 @@ def outcomes(
         .limit(limit)
         .offset(offset)
     ).all()
+    # The requested page can split the horizons of a decision. Compare its
+    # full set of recorded outcomes while preserving the original page.
+    siblings: dict[int, list[DecisionOutcome]] = defaultdict(list)
+    for outcome, _ in rows:
+        siblings[outcome.decision_id].append(outcome)
+    if rows:
+        remaining = select(DecisionOutcome).where(
+            DecisionOutcome.decision_id.in_(siblings.keys()),
+            DecisionOutcome.id.not_in([outcome.id for outcome, _ in rows]),
+            DecisionOutcome.fill_status == "filled",
+        )
+        for sibling in db.scalars(remaining):
+            siblings[sibling.decision_id].append(sibling)
+    entry_basis = {decision_id: compare_entry_basis(group) for decision_id, group in siblings.items()}
     return {
         "total": total,
         "rows": [
             {
                 "id": o.id,
                 "decision_id": o.decision_id,
+                "entry_basis": entry_basis[o.decision_id],
                 "code": d.code,
                 "name": d.name,
                 "decision_date": d.decision_date,
