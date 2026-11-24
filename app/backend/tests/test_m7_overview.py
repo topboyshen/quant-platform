@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from qp.models.market import HealthResult, QlibStatus, TradingDay
@@ -303,3 +303,29 @@ def test_overview_outbox_manual_source_is_not_natural(engine):
 
 def test_overview_requires_auth(client):
     assert client.get("/api/overview").status_code == 401
+
+
+def test_overview_chain_window_presence_is_today_job_not_today_row(engine, client, monkeypatch):
+    monkeypatch.setattr("qp.api.overview._now", lambda: NOW)
+    monkeypatch.setattr("qp.research.etf_score.expected_session", lambda _: DAY)
+    cleanup(engine)
+    try:
+        seed(engine)
+        with Session(engine) as session:
+            job = session.scalar(select(JobRun).where(JobRun.job_name == "signals.chain_window"))
+            assert job is not None
+            job.result = {
+                "verdict": "PASS",
+                "rows": [{"date": (DAY - dt.timedelta(days=4)).isoformat(), "status": "PASS"}],
+            }
+            session.commit()
+        data = _get(client, engine, ["signals:read"])
+        assert not any(issue["id"] == "signals:chain_window_missing" for issue in data["pending"])
+
+        with Session(engine) as session:
+            session.execute(delete(JobRun).where(JobRun.job_name == "signals.chain_window"))
+            session.commit()
+        data = _get(client, engine, ["signals:read"])
+        assert any(issue["id"] == "signals:chain_window_missing" for issue in data["pending"])
+    finally:
+        cleanup(engine)
