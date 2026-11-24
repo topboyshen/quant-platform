@@ -32,11 +32,13 @@ def _date(value: Any) -> dt.date | None:
 
 def research_digest_date(payload: dict[str, Any]) -> dt.date:
     """Business date: index-close trade date, else max close row, else generated_at date."""
-    cache = payload.get("index_close_cache") if isinstance(payload.get("index_close_cache"), dict) else {}
+    raw_cache = payload.get("index_close_cache")
+    cache: dict[str, Any] = raw_cache if isinstance(raw_cache, dict) else {}
     day = _date(cache.get("trade_date"))
     if day is not None:
         return day
-    rows = payload.get("index_closes") if isinstance(payload.get("index_closes"), list) else []
+    raw_rows = payload.get("index_closes")
+    rows: list[Any] = raw_rows if isinstance(raw_rows, list) else []
     days = [d for d in (_date(row.get("trade_date")) for row in rows if isinstance(row, dict)) if d]
     if days:
         return max(days)

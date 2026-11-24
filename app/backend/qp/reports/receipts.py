@@ -52,7 +52,7 @@ def load_delivered(deliveries_db: str | Path, executions_db: str | Path) -> list
         executions.close()
 
 
-def _day(value: str) -> dt.date | None:
+def _day(value: Any) -> dt.date | None:
     try:
         instant = dt.datetime.fromisoformat(str(value))
     except ValueError:
