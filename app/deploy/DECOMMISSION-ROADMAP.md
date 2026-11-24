@@ -1,8 +1,11 @@
-# Legacy decommission roadmap (2026-11-16)
+# Legacy decommission roadmap (2026-11-24)
 
-Status: **planning + freeze**. No legacy service, timer, container or data has
-been stopped or deleted by this repository. M9 provides stop-only tooling and
-requires separate authorization.
+Status: **feature freeze active; Phase 2 not started**. No legacy service,
+timer, container or data has been stopped or deleted by this repository. M9
+provides stop-only tooling and requires separate authorization.
+
+Current baseline: [`FREEZE-BASELINE-2026-11-24.md`](FREEZE-BASELINE-2026-11-24.md)
+(production `0.3.106`, freeze 2026-11-24 → earliest Phase 2 review 2026-12-08).
 
 Related: [`M9-DECOMMISSION-RUNBOOK.md`](M9-DECOMMISSION-RUNBOOK.md),
 [`ARCHITECTURE.md`](../../ARCHITECTURE.md), [`archive/README.md`](../../archive/README.md).
@@ -23,7 +26,8 @@ Related: [`M9-DECOMMISSION-RUNBOOK.md`](M9-DECOMMISSION-RUNBOOK.md),
 ## 2. Inventory and status
 
 Source of truth for runtime: `systemctl list-timers --all`, `docker ps`, and
-`qp decommission inventory`. The table below is a 2026-11-16 snapshot.
+`qp decommission inventory`. The table below is a 2026-11-16 module snapshot; the runtime inventory is refreshed
+in the freeze baseline above.
 
 | Module | Runtime path | Replacement | Status | Next action |
 |---|---|---|---|---|
@@ -54,8 +58,13 @@ Source of truth for runtime: `systemctl list-timers --all`, `docker ps`, and
 ### Phase 1 — freeze and inventory (current)
 
 - All new code in `app/`; legacy snapshots security-only.
+- **2026-11-24:** feature freeze re-baselined on production `0.3.106`; 2026-11-24
+  is a mixed-version day because `.105`/`.106` were activated after the open.
 - Run `qp decommission inventory` weekly/monthly and store the manifest with
-  its sha256.
+  its sha256. Latest: `/var/lib/qp/decommission-2026-11-24.json`,
+  sha256 `e98f4846…` (5 system timers, 0 containers, 13.5 MB captured paths).
+- User timers must be scanned separately as `ubuntu`; root-owned paths need a
+  root scan before Phase 2 evidence is complete.
 - Confirm each "active legacy" consumer with its timer/unit owner.
 - Exit: every active legacy module has a named replacement and a stop order.
 
