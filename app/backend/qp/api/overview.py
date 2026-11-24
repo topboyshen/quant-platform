@@ -290,6 +290,7 @@ def _signals_module(session: Session, day: dt.date, due: bool) -> dict[str, Any]
     acceptance_result = (acceptance.result or {}) if acceptance is not None else {}
     window = _latest_job(session, "signals.chain_window")
     window_result = (window.result or {}) if window is not None else {}
+    window_day = _job_day(window)
     window_row = next(
         (row for row in window_result.get("rows", []) if row.get("date") == day.isoformat()),
         None,
@@ -320,10 +321,13 @@ def _signals_module(session: Session, day: dt.date, due: bool) -> dict[str, Any]
         elif run_quality == "manual_recovered":
             gaps.append("notification_manual_recovery")
             status = "warning" if status == "ok" else status
-        if window_row is None:
+        # The window table covers the first five native sessions; a completed
+        # window legitimately has no row for today.  Presence is about today's
+        # job run, not about today appearing in the historical rows.
+        if window is None or window_day != day:
             gaps.append("chain_window_missing")
             status = "warning" if status == "ok" else status
-        elif window_row.get("status") == "FAIL":
+        elif window_result.get("verdict") == "FAIL" or (window_row is not None and window_row.get("status") == "FAIL"):
             gaps.append("chain_window_fail")
             status = "failed"
     summary = "今日 EOD 尚未到点" if not due else "无 EOD 运行"
