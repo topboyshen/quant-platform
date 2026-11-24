@@ -129,18 +129,24 @@ def _score_block(session: Session, horizon: int) -> dict | None:
 
 
 def _rotation_block(session: Session, today) -> dict | None:
-    day = session.scalar(
-        select(RotationShadowDay)
-        .where(RotationShadowDay.trade_date <= today)
-        .order_by(RotationShadowDay.trade_date.desc())
-        .limit(1)
+    rule_version, phase = "qp-rotation.v1", "forward"
+    days = select(RotationShadowDay).where(
+        RotationShadowDay.rule_version == rule_version,
+        RotationShadowDay.phase == phase,
+        RotationShadowDay.trade_date <= today,
     )
+    day = session.scalar(days.order_by(RotationShadowDay.trade_date.desc()).limit(1))
     if day is None:
         return None
-    first = session.scalar(select(RotationShadowDay).order_by(RotationShadowDay.trade_date.asc()).limit(1))
+    first = session.scalar(days.order_by(RotationShadowDay.trade_date.asc()).limit(1))
     run = session.scalar(
         select(RotationShadowRun)
-        .where(RotationShadowRun.execute_date <= today)
+        .where(
+            RotationShadowRun.rule_version == rule_version,
+            RotationShadowRun.phase == phase,
+            RotationShadowRun.status == "executed",
+            RotationShadowRun.execute_date <= today,
+        )
         .order_by(RotationShadowRun.execute_date.desc(), RotationShadowRun.id.desc())
         .limit(1)
     )
