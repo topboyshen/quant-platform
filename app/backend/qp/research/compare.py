@@ -352,8 +352,10 @@ def _check_idempotent(session: Session) -> dict[str, Any]:
     )
 
 
-ALLOWED_LIVE_PREFIXES = ("watchdog:", "daily-combined:", "etf-shadow:", "smoke:")
-ALLOWED_LIVE_JOBS = frozenset({"signals.watchdog", "signals.eod", "signals.eod_retry", "research.etf_shadow_report"})
+ALLOWED_LIVE_PREFIXES = ("watchdog:", "daily-combined:", "etf-shadow:", "attribution-weekly:", "smoke:")
+ALLOWED_LIVE_JOBS = frozenset(
+    {"signals.watchdog", "signals.eod", "signals.eod_retry", "research.etf_shadow_report", "signals.attribution_weekly"}
+)
 
 
 def _check_notify(session: Session) -> dict[str, Any]:
