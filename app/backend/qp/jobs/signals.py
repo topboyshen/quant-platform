@@ -350,13 +350,53 @@ def execution_digest_job(ctx: JobContext) -> dict:
     return out
 
 
-def _attribution_text(data: dict) -> str:
-    def pct(value: object) -> str:
-        try:
-            return f"{float(value) * 100:+.2f}%"
-        except (TypeError, ValueError):
-            return "—"
+def _attribution_pct(value: object) -> str:
+    try:
+        return f"{float(value) * 100:+.2f}%"
+    except (TypeError, ValueError):
+        return "—"
 
+
+def _attribution_pp(current: object, previous: object) -> str:
+    try:
+        return f"{(float(current) - float(previous)) * 100:+.2f}pp"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _attribution_changes(data: dict, previous: dict) -> list[dict]:
+    """Groups whose average excess worsened week over week (same bucket only)."""
+    changes: list[dict] = []
+    for dimension in data.get("group_by") or []:
+        old = {group["bucket"]: group for group in (previous.get("groups") or {}).get(dimension) or []}
+        for group in (data.get("groups") or {}).get(dimension) or []:
+            prior = old.get(group["bucket"])
+            if prior is None:
+                continue
+            current_excess = group.get("avg_excess_return")
+            prior_excess = prior.get("avg_excess_return")
+            if current_excess is None or prior_excess is None:
+                continue
+            delta = float(current_excess) - float(prior_excess)
+            if delta >= -0.002:
+                continue
+            changes.append(
+                {
+                    "dimension": dimension,
+                    "dimension_label": data["dimension_labels"][dimension],
+                    "bucket": group["bucket"],
+                    "n": group["n"],
+                    "excess_current": current_excess,
+                    "excess_previous": prior_excess,
+                    "excess_delta": round(delta, 6),
+                }
+            )
+    changes.sort(key=lambda item: item["excess_delta"])
+    return changes[:3]
+
+
+def _attribution_text(data: dict, previous: dict | None = None) -> str:
+    pct = _attribution_pct
     sample = data["sample"]
     overall = data["overall"]
     eligible = data["eligible"]
@@ -369,6 +409,35 @@ def _attribution_text(data: dict) -> str:
         f"合格：n={eligible['n']}，胜率 {pct(eligible['win_rate'])}，平均净收益 {pct(eligible['avg_net_return'])}，"
         f"平均超额 {pct(eligible['avg_excess_return'])}",
     ]
+    if previous is not None:
+        old_overall = previous.get("overall") or {}
+        old_eligible = previous.get("eligible") or {}
+        lines.append(
+            f"总体环比（截至 {previous.get('as_of')}）：胜率 "
+            f"{pct(old_overall.get('win_rate'))} → {pct(overall.get('win_rate'))}"
+            f"（{_attribution_pp(overall.get('win_rate'), old_overall.get('win_rate'))}）；平均超额 "
+            f"{pct(old_overall.get('avg_excess_return'))} → {pct(overall.get('avg_excess_return'))}"
+            f"（{_attribution_pp(overall.get('avg_excess_return'), old_overall.get('avg_excess_return'))}）"
+        )
+        lines.append(
+            f"合格环比：胜率 {pct(old_eligible.get('win_rate'))} → {pct(eligible.get('win_rate'))}"
+            f"（{_attribution_pp(eligible.get('win_rate'), old_eligible.get('win_rate'))}）；平均超额 "
+            f"{pct(old_eligible.get('avg_excess_return'))} → {pct(eligible.get('avg_excess_return'))}"
+            f"（{_attribution_pp(eligible.get('avg_excess_return'), old_eligible.get('avg_excess_return'))}）"
+        )
+        changes = _attribution_changes(data, previous)
+        if changes:
+            lines.append(
+                "恶化维度："
+                + "；".join(
+                    f"{item['dimension_label']}·{item['bucket']} 超额 "
+                    f"{pct(item['excess_previous'])} → {pct(item['excess_current'])}"
+                    f"（{_attribution_pp(item['excess_current'], item['excess_previous'])}）"
+                    for item in changes
+                )
+            )
+        else:
+            lines.append("恶化维度：无（同分组超额均未下降超过 0.2pp 或样本不可比）")
     for warning in data.get("warnings") or []:
         lines.append(f"警告：{warning.get('message') or warning.get('code')}")
     for dimension in data.get("group_by") or []:
@@ -400,9 +469,18 @@ def attribution_weekly_job(ctx: JobContext) -> dict:
             session,
             horizon=20,
             group_by=attribution.DIMENSIONS,
+            end=today,
             as_of=today,
         )
-        text = _attribution_text(data)
+        previous = attribution.report(
+            session,
+            horizon=20,
+            group_by=attribution.DIMENSIONS,
+            end=today - dt.timedelta(days=7),
+            as_of=today,
+        )
+        changes = _attribution_changes(data, previous)
+        text = _attribution_text(data, previous=previous)
         iso = today.isocalendar()
         week = f"{iso.year}-W{iso.week:02d}"
         payload = {
@@ -414,6 +492,13 @@ def attribution_weekly_job(ctx: JobContext) -> dict:
             "threshold": data["threshold"],
             "overall": data["overall"],
             "eligible": data["eligible"],
+            "previous_as_of": previous["as_of"],
+            "previous": {
+                "overall": previous["overall"],
+                "eligible": previous["eligible"],
+                "sample": previous["sample"],
+            },
+            "changes": changes,
             "warnings": data["warnings"],
             "text": text,
         }
