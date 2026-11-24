@@ -77,7 +77,7 @@ def require_job_success(
             .order_by(JobRun.started_at.desc(), JobRun.id.desc())
             .limit(1)
         )
-    base = {
+    base: dict[str, Any] = {
         "upstream": upstream,
         "checked_at": current.isoformat(),
         "latest_run_id": latest.id if latest is not None else None,

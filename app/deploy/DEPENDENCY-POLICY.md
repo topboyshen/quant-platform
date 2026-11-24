@@ -11,6 +11,21 @@ blocking, not advisory.
 | Time-boxed exception | Listed in `app/backend/dependency-exceptions.json` with `expires` and `reason`; expired exceptions fail the build |
 | Investigate | npm `moderate` / `low`; printed but non-blocking |
 
+## Moderate/low review cadence
+
+`moderate` / `low` npm advisories are not ignored: they are reviewed **every
+Monday** together with the weekly dependency audit. For each advisory that
+remains:
+
+1. Check whether the affected package is reachable from a production entry
+   point; record the path in the release receipt.
+2. If reachable, open a fix and merge it within **14 days** (or add a
+   time-boxed exception with an expiry and reason).
+3. If not reachable, record the acceptance in that week's release receipt and
+   review it again next Monday.
+
+`high` / `critical` remain blocking and are never deferred to this cadence.
+
 ## Exception record
 
 ```json

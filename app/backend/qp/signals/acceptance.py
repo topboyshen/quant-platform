@@ -118,8 +118,9 @@ def _outcome_backlog(session: Session, today: dt.date) -> dict[str, Any]:
 
     allowed: dict[dt.date, int] = {}
     if window_start is not None:
-        allowed = dict(
-            session.execute(
+        allowed = {
+            row[0]: int(row[1])
+            for row in session.execute(
                 select(TargetDecision.decision_date, func.count())
                 .where(
                     TargetDecision.decision_state == "allowed",
@@ -128,7 +129,7 @@ def _outcome_backlog(session: Session, today: dt.date) -> dict[str, Any]:
                 )
                 .group_by(TargetDecision.decision_date)
             ).all()
-        )
+        }
 
     materialised: dict[dt.date, dict[int, int]] = {}
     if window_start is not None:

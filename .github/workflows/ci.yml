@@ -38,13 +38,16 @@ jobs:
         env:
           QP_TEST_PGDATA: ${{ runner.temp }}/qp-pgdata
         run: python -m pytest -q --run-assets -m assets
-      - name: Mypy (new critical modules, blocking)
+      - name: Mypy (critical modules + market/reports, blocking)
         run: |
           python -m pip install mypy==2.4.1
-          mypy --ignore-missing-imports --follow-imports=skip \
+          # silent follows imports for real type information but reports errors only
+          # in the listed modules; the full-tree normal run below is report-only.
+          mypy --ignore-missing-imports --follow-imports=silent \
             qp/jobs/gates.py qp/signals/acceptance.py qp/signals/attribution.py \
             qp/api/overview.py qp/api/chain.py \
-            qp/signals/chain_base.py qp/signals/chain_writer.py qp/signals/chain_snapshot.py
+            qp/signals/chain_base.py qp/signals/chain_writer.py qp/signals/chain_snapshot.py \
+            qp/market qp/reports
       - name: Mypy (existing baseline, report-only)
         continue-on-error: true
         run: |
@@ -105,6 +108,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/frontend/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm run test
       - run: npm run build
 
