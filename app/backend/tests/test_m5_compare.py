@@ -243,3 +243,38 @@ def test_compare_fails_on_non_refused_live_llm_call(engine):
         assert r7["status"] == "FAIL"
     finally:
         cleanup(engine)
+
+
+def test_compare_allows_weekly_attribution_live_notification(engine):
+    cleanup(engine)
+    try:
+        reader = StubReader(source_tables())
+        seed(engine, reader)
+        with Session(engine) as session:
+            run = JobRun(
+                job_name="signals.attribution_weekly",
+                status="succeeded",
+                trigger="timer",
+                started_at=dt.datetime.now(dt.UTC),
+                finished_at=dt.datetime.now(dt.UTC),
+                result={},
+            )
+            session.add(run)
+            session.flush()
+            session.add(
+                Outbox(
+                    channel="telegram",
+                    recipient="signals",
+                    dedup_key="attribution-weekly:2026-W48",
+                    body="x",
+                    mode="live",
+                    status="sent",
+                    source_job_run_id=run.id,
+                )
+            )
+            session.commit()
+            result = compare_research(session, ledger=reader, phase2=reader, qd=reader)
+        r10 = next(c for c in result["checks"] if c["id"] == "R10")
+        assert r10["status"] == "PASS", r10
+    finally:
+        cleanup(engine)
