@@ -63,3 +63,24 @@ def test_attribution_text_lists_dimensions_and_warnings():
     assert "没有成熟且成交的结果" in text
     assert "资格：无样本" in text
     assert "板块：无样本" in text
+
+
+def test_attribution_text_renders_groups():
+    data = {
+        "horizon": 20,
+        "as_of": "2026-11-24",
+        "threshold": 30,
+        "sample": {"matured_filled": 3, "eligible_matured": 1},
+        "overall": {"n": 3, "win_rate": 0.5, "avg_net_return": 0.01, "avg_excess_return": 0.02},
+        "eligible": {"n": 1, "win_rate": 1.0, "avg_net_return": 0.03, "avg_excess_return": 0.04},
+        "warnings": [],
+        "group_by": ["sector"],
+        "dimension_labels": {"sector": "板块"},
+        "groups": {
+            "sector": [
+                {"bucket": "宽基", "n": 3, "win_rate": 0.5, "avg_excess_return": 0.02},
+            ]
+        },
+    }
+    text = _attribution_text(data)
+    assert "板块：宽基 n=3 胜率+50.00% 超额+2.00%" in text
