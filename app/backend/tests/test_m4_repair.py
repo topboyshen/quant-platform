@@ -232,6 +232,28 @@ def test_write_boundary_never_overwrites(engine):
         cleanup(engine)
 
 
+def test_collect_repair_total_rejects_source_errors_and_stale_values(monkeypatch):
+    from qp.signals import repair
+
+    def boom(_fn):
+        raise RuntimeError("tencent down")
+
+    monkeypatch.setattr(repair, "fetch_tencent_total", boom)
+    out = repair.collect_repair_total(DAY)
+    assert out["usable"] is False and out["source"] == "tencent"
+    assert out["status"]["message"].startswith("tencent:RuntimeError")
+
+    monkeypatch.setattr(repair, "fetch_tencent_total", lambda _fn: (1.0, DAY.isoformat()))
+    out = repair.collect_repair_total(DAY)
+    assert out["usable"] is False
+    assert "越界" in out["status"]["message"]
+
+    monkeypatch.setattr(repair, "fetch_tencent_total", lambda _fn: (20000.0, (DAY - dt.timedelta(days=1)).isoformat()))
+    out = repair.collect_repair_total(DAY)
+    assert out["usable"] is False
+    assert "观测日不是当日" in out["status"]["message"]
+
+
 def test_repair_jobs_are_registered():
     assert "signals.total_amount_repair" in JOBS
     hint = JOBS["signals.total_amount_repair"].schedule_hint or ""
