@@ -1,6 +1,6 @@
 # M4 Live 切换 Runbook（Swing 信号通知）
 
-状态：2026-11-13 起执行。范围仅限 **M4 信号链的真实 Telegram 通知**。
+状态：2026-11-13 起执行；2026-11-25 22:44 CST 核对通过（live 通知与 timer）。范围仅限 **M4 信号链的真实 Telegram 通知**。
 
 ## 1. 范围与前置事实
 
@@ -20,7 +20,9 @@ signals.watchdog 15:40/15:50
 ```
 
 - `QP_NOTIFY_MODE=shadow` 保持全局默认；运维健康告警仍只进 shadow。
-- `QP_SIGNALS_NOTIFY_MODE=live` 只让 watchdog 的 failure/daily 两类消息变为 live。
+- `QP_SIGNALS_NOTIFY_MODE=live` 让信号链通知变为 live：watchdog 的 failure/daily、
+  17:40 ETF 研究观察（`etf-shadow`；combined 模式为 `daily-combined`）和每周绩效归因
+  （`attribution-weekly`）。由 `QP_NOTIFY_MODE` 管控的运维/健康通知仍保持 shadow。
 - 同一 `dedup_key`（`watchdog:<date>:daily|failure`）只入队一次；同日重跑不会重复发送。
 
 ## 3. 密钥与配置
@@ -84,6 +86,17 @@ select id,outbox_id,at,mode,ok,detail from notify.delivery_attempt order by id d
 - 失败行最多重试 `QP_NOTIFY_MAX_ATTEMPTS` 次后转 `failed`，不会无限重发；
 - 旧 shadow 行保持 `shadowed`，不得出现 `mode=live` 的历史补发；
 - `ops.job_run` 中 `notify.send` 为 `succeeded`（网络抖动时 `retry>0` 但仍成功）。
+
+**2026-11-25 22:44 CST 核对**：
+
+- env：`QP_NOTIFY_MODE=shadow`、`QP_SIGNALS_NOTIFY_MODE=live`、`QP_NOTIFY_KILL_SWITCH=0`，
+  `/etc/qp/notify.disabled` 不存在。
+- outbox：18 条 `live/sent`、219 条 `shadow/shadowed`，无 pending/failed；最近 live 为
+  `watchdog:2026-11-25:daily`（15:52 发送）、`etf-shadow:2026-11-25`（17:42 发送）、
+  `attribution-weekly:2026-W48`（11-24 发送）。
+- `delivery_attempt`：outbox 237 `live`、`ok=true`、latency 930 ms、`message_id=4744`。
+- timers：42/42 个 qp timer active，关键 timer 均 enabled；`qp-notify.timer` 每 2 分钟运行，
+  最近 `notify.send` 均为 `succeeded`；`systemctl --failed` 为 0。
 
 ## 6. 紧急停止
 
