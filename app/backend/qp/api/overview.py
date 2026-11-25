@@ -132,12 +132,18 @@ def _same_day_failures(session: Session, day: dt.date) -> list[dict[str, Any]]:
     ``succeeded`` while its own verdict is FAIL (research.compare), so the job
     status alone is not enough.
     """
+    start = dt.datetime.combine(day, dt.time.min, tzinfo=CST)
+    end = start + dt.timedelta(days=1)
     rows = list(
         session.scalars(
             select(JobRun)
-            .where(JobRun.status.in_(("failed", "blocked", "succeeded")))
+            .where(
+                JobRun.started_at >= start,
+                JobRun.started_at < end,
+                JobRun.status.in_(("failed", "blocked", "succeeded")),
+            )
             .order_by(JobRun.started_at.desc(), JobRun.id.desc())
-            .limit(300)
+            .limit(500)
         )
     )
     out: list[dict[str, Any]] = []
