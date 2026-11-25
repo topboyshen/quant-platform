@@ -24,7 +24,7 @@ describe('cross-horizon entry basis', () => {
       await flushPromises()
       expect(wrapper.findComponent(NPagination).exists()).toBe(false)
       const cells = wrapper.get('tbody tr').findAll('td').map(td => td.text())
-      expect(cells.slice(4, 7)).toEqual(['-0.54%', '1.00%', '-1.54%'])
+      expect(cells.slice(4, 10)).toEqual(['无依据', '-0.54%', '—', '未校验', '1.00%', '-1.54%'])
       const evidence = cells[cells.length - 1]
       expect(evidence).toContain('入场依据冲突')
       expect(evidence).toContain('入场开盘价 1日 0.53 · 3日 0.528 · 5日 0.528')

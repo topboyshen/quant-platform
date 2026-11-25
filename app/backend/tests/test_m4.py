@@ -253,3 +253,6 @@ def test_macro_and_approved_and_digest(engine):
         assert a.status == "accepted" and a.risk_check == {"ok": True}
         g = s.get(ExecutionDigest, dt.date(2026, 11, 17))
         assert g.push_state == "shadowed" and g.body == {"items": []}
+    with Session(engine) as s:
+        s.execute(delete(RiskState).where(RiskState.observed_at == RUN))
+        s.commit()

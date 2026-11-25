@@ -172,6 +172,7 @@ def test_newest_close_plan_is_persisted_and_not_executed_early(book):
                 raw={"level": "ok"},
             )
         )
+        s.commit()
         out = init(s)
         assert out["ok"]
         s.commit()

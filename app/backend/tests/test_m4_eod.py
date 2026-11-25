@@ -633,6 +633,9 @@ def test_load_risk_state_refreshes_when_stale_and_fails_closed(engine, monkeypat
         state = load_risk_state(session, now=now + 10_000, fetch_fn=boom, override_path="/nonexistent/override.json")
     assert state["level"] == "unavailable"
     assert state["message"].startswith("RISK_REFRESH_FAILED")
+    with Session(engine) as session:
+        session.execute(delete(RiskState))
+        session.commit()
 
 
 def test_run_eod_with_critical_risk_blocks_everything(engine):

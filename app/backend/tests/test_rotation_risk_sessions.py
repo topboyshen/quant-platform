@@ -107,7 +107,7 @@ def test_uncommitted_risk_is_invisible_and_later_commit_does_not_rebind(engine, 
             planner.commit()
             plan_id = init["plan_id"]
             frozen = planner.get(RotationShadowRun, plan_id)
-            assert frozen.detail["risk_binding"]["status"] == "assessment_pending"
+            assert frozen.detail["risk_binding"]["status"] == "missing"
             assert frozen.detail["risk_binding"]["history_diagnostic"] == "absent"
             assert frozen.detail.get("risk_observation_id") is None
         holder.commit()
@@ -119,7 +119,7 @@ def test_uncommitted_risk_is_invisible_and_later_commit_does_not_rebind(engine, 
             assert step.get("error") != "calendar_day_unknown"
             plan = retry.get(RotationShadowRun, plan_id)
             assert plan.detail.get("risk_observation_id") is None
-            assert plan.detail["risk_binding"]["status"] == "assessment_pending"
+            assert plan.detail["risk_binding"]["status"] == "missing"
             assert plan.detail["risk_binding"]["history_diagnostic"] == "absent"
         monkeypatch.setattr(H.rot, "now_cst", lambda: dt.datetime(2028, 12, 1, 16, tzinfo=CST))
         with Session(engine) as executor:
@@ -448,7 +448,7 @@ def test_pending_risk_does_not_add_or_rotate_in_but_allows_strategy_reduction(en
             cleanup.commit()
 
 
-def test_empty_risk_table_is_assessment_pending_with_absent_history(engine):
+def test_empty_risk_table_is_missing_with_absent_history(engine):
     decided = dt.datetime.combine(BASE, dt.time(15, 50), CST)
     try:
         with Session(engine) as session:
@@ -463,7 +463,7 @@ def test_empty_risk_table_is_assessment_pending_with_absent_history(engine):
             print(f"default_transaction_isolation={default_isolation}")
             print(f"snapshot_isolation={binding.get('snapshot_isolation')}")
             assert default_isolation == "read committed"
-            assert binding["status"] == "assessment_pending"
+            assert binding["status"] == "missing"
             assert binding["history_diagnostic"] == "absent"
             assert binding["snapshot_isolation"] == "repeatable read"
             assert plan.detail.get("risk_observation_id") is None
@@ -526,7 +526,7 @@ def test_commit_after_snapshot_and_before_select_returns_is_not_bound(engine):
         with Session(engine) as session:
             plan = session.get(RotationShadowRun, outcome["init"]["plan_id"])
             assert plan.detail.get("risk_observation_id") is None
-            assert plan.detail["risk_binding"]["status"] == "assessment_pending"
+            assert plan.detail["risk_binding"]["status"] == "missing"
             assert plan.detail["risk_binding"]["history_diagnostic"] == "absent"
             assert plan.detail["risk_binding"]["snapshot_isolation"] == "repeatable read"
             assert session.get(RiskState, late_id) is not None

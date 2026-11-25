@@ -60,9 +60,9 @@ SECTORS = {target.code: target.sector for target in TARGETS}
 CODES = tuple(NAMES)
 GROWTH_CODES = {code for code in CODES if is_growth_risk_target(SECTORS.get(code), NAMES.get(code))}
 NO_NEW_RISK = frozenset({"critical", "warning", "unavailable"})
-# Existing freshness parameter. Calendar days, not trading days, and not extended
-# across weekends or holidays. Anchored to the plan decision cutoff, not the
-# execution-day end.
+# Risk observations older than this window are reported as stale. Calendar days,
+# not trading days, and not extended across weekends or holidays.
+RISK_FRESH_CALENDAR_DAYS = 4
 RISK_RULE_VERSION = "qp-rotation-risk.v1"
 # Repo timers, not an assumed 15:00 close. EOD writes RiskState.observed_at from its
 # own clock. The rotation job freezes the plan later the same afternoon.
@@ -701,15 +701,29 @@ def bind_same_day_risk(rows: Sequence[Any], signal_date: dt.date, decided_at: dt
     """
     decided = _aware(decided_at)
     visible: list[tuple[dt.datetime, Any]] = []
+    same_day: list[tuple[dt.datetime, Any]] = []
     for row in rows:
         observed = _aware(row.observed_at)
         created = _aware(row.created_at)
-        if observed <= decided and created <= decided and observed.astimezone(CST).date() == signal_date:
+        if observed <= decided and created <= decided:
             visible.append((observed, row))
+            if observed.astimezone(CST).date() == signal_date:
+                same_day.append((observed, row))
+    if same_day:
+        observed, row = max(same_day, key=lambda item: (item[0], _aware(item[1].created_at), item[1].id or 0))
+        return {
+            "status": "fresh",
+            "level": str(row.level),
+            "observation_id": row.id,
+            "observed_at": observed,
+            "created_at": _aware(row.created_at),
+            "decided_at": decided,
+            "used_previous_ok": False,
+        }
     if not visible:
         return {
-            "status": "assessment_pending",
-            "history_diagnostic": "absent" if not rows else "not_qualified",
+            "status": "missing",
+            "history_diagnostic": "absent",
             "level": None,
             "observation_id": None,
             "observed_at": None,
@@ -718,12 +732,25 @@ def bind_same_day_risk(rows: Sequence[Any], signal_date: dt.date, decided_at: dt
             "used_previous_ok": False,
         }
     observed, row = max(visible, key=lambda item: (item[0], _aware(item[1].created_at), item[1].id or 0))
+    stale_before = decided - dt.timedelta(days=RISK_FRESH_CALENDAR_DAYS)
+    if observed < stale_before:
+        return {
+            "status": "stale",
+            "history_diagnostic": "stale",
+            "level": str(row.level),
+            "observation_id": row.id,
+            "observed_at": observed,
+            "created_at": _aware(row.created_at),
+            "decided_at": decided,
+            "used_previous_ok": False,
+        }
     return {
-        "status": "fresh",
-        "level": str(row.level),
-        "observation_id": row.id,
-        "observed_at": observed,
-        "created_at": _aware(row.created_at),
+        "status": "assessment_pending",
+        "history_diagnostic": "not_qualified",
+        "level": None,
+        "observation_id": None,
+        "observed_at": None,
+        "created_at": None,
         "decided_at": decided,
         "used_previous_ok": False,
     }
@@ -747,12 +774,14 @@ def _selection_from_plan(plan: RotationShadowRun) -> dict[str, Any]:
     binding = detail.get("risk_binding")
     if not detail.get("decided_at") or not isinstance(binding, dict):
         return _unverified_selection()
+    observed = binding.get("observed_at")
+    created = binding.get("created_at")
     return {
         "status": binding.get("status") or "unverified",
         "level": binding.get("level"),
         "observation_id": binding.get("observation_id"),
-        "observed_at": None,
-        "created_at": None,
+        "observed_at": _aware(dt.datetime.fromisoformat(observed)) if observed else None,
+        "created_at": _aware(dt.datetime.fromisoformat(created)) if created else None,
         "decided_at": _aware(dt.datetime.fromisoformat(detail["decided_at"])),
         "used_previous_ok": False,
         "history_diagnostic": binding.get("history_diagnostic"),

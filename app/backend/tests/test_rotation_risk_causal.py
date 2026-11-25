@@ -109,7 +109,7 @@ def test_missing_observation_blocks_new_risk_without_forging_unavailable(engine,
     assert actual == {
         "opened_new_exposure": False,
         "valued": True,
-        "reason": "assessment_pending",
+        "reason": "missing",
         "history_diagnostic": "absent",
         "level": None,
         "forced_liquidation": False,
@@ -129,9 +129,9 @@ def test_stale_observation_blocks_new_risk_and_keeps_the_real_level(engine, monk
         _finish(engine)
     assert actual["opened_new_exposure"] is False
     assert actual["valued"] is True
-    assert actual["reason"] == "assessment_pending"
-    assert actual["level"] is None
-    assert actual["level"] != "unavailable"
+    assert actual["reason"] == "stale"
+    assert actual["history_diagnostic"] == "stale"
+    assert actual["level"] == "ok"
     assert actual["rule_version"] == "qp-rotation-risk.v1"
 
 
@@ -163,8 +163,8 @@ def test_later_inserted_row_is_not_visible_to_the_plan(engine, monkeypatch):
     finally:
         _finish(engine)
     assert actual["opened_new_exposure"] is False
-    assert actual["reason"] == "assessment_pending"
-    assert actual["history_diagnostic"] == "not_qualified"
+    assert actual["reason"] == "missing"
+    assert actual["history_diagnostic"] == "absent"
     assert actual["level"] is None
 
 
@@ -179,8 +179,8 @@ def test_observation_after_decision_cutoff_is_not_used(engine, monkeypatch):
     finally:
         _finish(engine)
     assert actual["opened_new_exposure"] is False
-    assert actual["reason"] == "assessment_pending"
-    assert actual["history_diagnostic"] == "not_qualified"
+    assert actual["reason"] == "missing"
+    assert actual["history_diagnostic"] == "absent"
     assert actual["level"] is None
 
 
@@ -261,7 +261,7 @@ def test_observation_arriving_after_decision_is_not_bound(engine, monkeypatch):
             plan = session.get(_HELPERS.rot.RotationShadowRun, init["plan_id"])
             assert str(plan.detail.get("decided_at", "")).startswith(f"{BASE.isoformat()}T15:50")
             assert plan.detail.get("risk_observation_id") is None
-            assert plan.detail["risk_binding"]["status"] == "assessment_pending"
+            assert plan.detail["risk_binding"]["status"] == "missing"
             assert plan.detail["risk_binding"]["history_diagnostic"] == "absent"
     finally:
         _finish(engine)
@@ -283,3 +283,25 @@ def test_missing_same_day_assessment_does_not_reuse_yesterdays_ok(engine, monkey
     assert actual["reason"] == "assessment_pending"
     assert actual["level"] is None
     assert actual["level"] != "ok"
+
+
+def test_four_calendar_day_boundary_is_pending_not_stale():
+    from types import SimpleNamespace
+
+    decided = dt.datetime.combine(BASE, dt.time(15, 50), CST)
+    four_days = SimpleNamespace(
+        id=1,
+        level="ok",
+        observed_at=decided - dt.timedelta(days=4),
+        created_at=decided - dt.timedelta(days=4),
+    )
+    five_days = SimpleNamespace(
+        id=2,
+        level="ok",
+        observed_at=decided - dt.timedelta(days=5),
+        created_at=decided - dt.timedelta(days=5),
+    )
+    pending = _HELPERS.rot.bind_same_day_risk([four_days], BASE, decided)
+    stale = _HELPERS.rot.bind_same_day_risk([five_days], BASE, decided)
+    assert (pending["status"], pending["history_diagnostic"]) == ("assessment_pending", "not_qualified")
+    assert (stale["status"], stale["history_diagnostic"], stale["level"]) == ("stale", "stale", "ok")
