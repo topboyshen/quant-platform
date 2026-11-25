@@ -21,6 +21,20 @@
           </n-space>
         </n-card>
 
+        <n-card v-if="data.same_day_failures.length" title="同日曾失败（已由后续运行恢复）" size="small">
+          <n-space vertical size="small">
+            <n-alert v-for="item in data.same_day_failures" :key="`${item.job_name}:${item.run_id}`"
+                     type="warning" :show-icon="true">
+              <n-space align="center" size="small" :wrap="true">
+                <n-tag size="small" type="warning">{{ item.status }}</n-tag>
+                <n-text strong>{{ item.job_name }}</n-text>
+                <n-text depth="3">run {{ item.run_id }} · {{ fmt(item.started_at) }}</n-text>
+                <n-text depth="3">后续成功 run {{ item.recovered_by_run_id }}</n-text>
+              </n-space>
+            </n-alert>
+          </n-space>
+        </n-card>
+
         <n-card title="当前待处理" size="small">
           <n-empty v-if="!data.pending.length" description="没有待处理异常" />
           <n-space v-else vertical size="small">
@@ -174,6 +188,8 @@ interface Overview {
   access: { kind: string; name: string; scopes: string[] }
   modules: Record<string, ModuleData>
   pending: Issue[]
+  same_day_failures: { job_name: string; run_id: number; status: string; started_at: string | null;
+    recovered_by_run_id: number }[]
   recent_quality: QualityRow[]
 }
 
