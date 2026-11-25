@@ -294,12 +294,28 @@ npm run smoke    # Playwright 冒烟（需要可登录的真实数据库）
 | #74 | `9a108cc` | `0.3.118-outcome-window-6f60f5a8` | 日历收益窗口、共享 OHLC 校验、`--reconcile` | [`RELEASE-NOTES-2026-11-25-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-25-zh-CN.md)；直接 |
 | #75 | `23333cb` | 未发版（文档） | 补 0.3.118 发布记录 | 仓库提交 |
 
+### 8.4 2026-11-25 生产运行状态核对
+
+核对时间 2026-11-25 22:44 CST：
+
+- **通知模式**：`QP_NOTIFY_MODE=shadow`、`QP_SIGNALS_NOTIFY_MODE=live`、
+  `QP_NOTIFY_KILL_SWITCH=0`，`/etc/qp/notify.disabled` 不存在。
+- **outbox**：18 条 `live/sent`、219 条 `shadow/shadowed`，无 pending/failed；
+  最近 live 包括 `watchdog:2026-11-25:daily`、`etf-shadow:2026-11-25`、
+  `attribution-weekly:2026-W48`。`delivery_attempt` 记录 outbox 237 为
+  `live`、`ok=true`、`latency_ms=930`、`message_id=4744`。
+- **定时器**：42/42 个 qp timer active，关键 timer 均 enabled；`qp-notify.timer`
+  每 2 分钟运行，最近 `notify.send` 均为 `succeeded`；`systemctl --failed` 为 0。
+- **口径修正**：`M4-LIVE-RUNBOOK.md` 原写“live 只让 watchdog 的 failure/daily 变为
+  live”，与实际不符；ETF 研究观察与每周绩效归因也使用
+  `QP_SIGNALS_NOTIFY_MODE`（代码与 `CHAIN-SHADOW-RUNBOOK.md` 一致）。runbook 已改为
+  列出这三类；运维/健康通知仍由 `QP_NOTIFY_MODE=shadow` 保持 shadow。
+
 ## 9. 不能确认
 
 1. **#56 的部署验收**：`0.3.109` 仍只有间接记录；其代码已进入 `.110`，但没有自身收据。
 2. **#59 的部署状态**：已随 `0.3.112` 部署，收据见 `qp-c13-readme-deploy-20261125/`。
 3. **更早 PR 的版本归属**：PR #20–#52 中，已核对到直接收据的有 #44（`0.3.103`）、#46（`0.3.104`）、#47（`0.3.105`）、#48（`0.3.106`）；其余未逐条核对到发布版本。
-4. **当前生产环境**：当前为 `0.3.118-outcome-window-6f60f5a8`（2026-11-25 21:28 激活），health 200、`qp-api` active；live 通知模式和定时器状态未在本次记录中核对。
-5. **测试数量与覆盖率的最新实测值**：本文档未运行测试；收据中的数字属于各次发布时点；`ARCHITECTURE.md` §6 的测试数字是 2026-11-21 的记录，`app/README.md` 的覆盖率门槛 80% 与 CI 配置的 85% 不一致。
-6. **仓库自身的开源/授权状态**：根目录没有 LICENSE 文件。
-7. **远端仓库是否对外公开**：`origin` 为 `https://github.com/topboyshen/quant-platform.git`，可见性未核实。
+4. **测试数量与覆盖率的最新实测值**：本文档未运行测试；收据中的数字属于各次发布时点；`ARCHITECTURE.md` §6 的测试数字是 2026-11-21 的记录，`app/README.md` 的覆盖率门槛 80% 与 CI 配置的 85% 不一致。
+5. **仓库自身的开源/授权状态**：根目录没有 LICENSE 文件。
+6. **远端仓库是否对外公开**：`origin` 为 `https://github.com/topboyshen/quant-platform.git`，可见性未核实。
