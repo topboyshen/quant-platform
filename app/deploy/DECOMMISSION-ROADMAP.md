@@ -33,20 +33,20 @@ in the freeze baseline above.
 
 | Module | Runtime path | Replacement | Status | Next action |
 |---|---|---|---|---|
-| `signals/trading-radar` | `~/trading-radar` | `app/` signals + `/next/` | **retired runtime**; only `radar-quantdinger-postgres/redis` remain | keep data; decide pg/redis retention at Phase 4 |
+| `signals/trading-radar` | `~/trading-radar` | `app/` signals + `/next/` | **mostly retired**; `quant-approved-signals.service` still active (8094); `radar-quantdinger-*` containers up | confirm approved-signals intake consumer; decide pg/redis retention at Phase 4 |
 | `execution/quantdinger` | `~/QuantDinger` | none (vendor) | **retired runtime** | keep snapshot; no new work |
-| `research/astock` | `~/AStock_AI_System` | `app/` morning shadow (M8) | **active legacy** | M9 stop authorization; confirm no report consumer |
-| `signals/signal-bus` | `~/signal-bus` | `app/` signals/notify | **active legacy** | M9 stop authorization |
+| `research/astock` | `~/AStock_AI_System` | `app/` morning shadow (M8) | **inactive producer**; morning cron commented `SUPERSEDED_2026-09-08` | M9 stop authorization; confirm no report consumer |
+| `signals/signal-bus` | `~/signal-bus` | `app/` signals/notify | **no active unit/process found** (2026-11-25 scan); path retained | confirm consumers and rollback before any stop |
 | `reports/daily-report-tracking` | `~/releases/daily-report-tracking-release-20261109.2/candidate` | `app/` reports + 17:40 combined | **frozen source**; files may still be read | stop producers first, then freeze imports |
-| `market-data/research-data` | `~/research-data` | `app/market` imports | **active legacy** | replace remaining collectors; keep qlib history |
-| `market-data/qlib-scripts` | `~/qlib/scripts` | external qlib; `app/market.qlib_check` reads status | **active external** | do not fold into repo; monitor only |
-| `research/research-ledger` | `/opt/research-ledger` | read-only `research.import_ledger` | **frozen import-only** | keep as source until import retires |
-| `research/research-system-phase2` | `/opt/research-system-phase2` | read-only `research.import_phase2` | **frozen import-only** | same |
-| `ops/dashboard` | `~/ops/dashboard` | `app/frontend` `/next/` | **active ops** | not in this decommission wave |
+| `market-data/research-data` | `~/research-data` | `app/market` imports | **active legacy**; ubuntu cron 22:30 snapshot | replace remaining collectors; keep qlib history |
+| `market-data/qlib-scripts` | `~/qlib/scripts` | external qlib; `app/market.qlib_check` reads status | **active external**; cron 22:00/06:30/09:15 | do not fold into repo; monitor only |
+| `research/research-ledger` | `/opt/research-ledger` | read-only `research.import_ledger` | **active import source** (`research-ledger.service`, 18769); qp timer 09:40 | keep as source until import retires |
+| `research/research-system-phase2` | `/opt/research-system-phase2` | read-only `research.import_phase2` | **active import source** (`research-system-phase2.service`, 18768) | same |
+| `ops/dashboard` | `~/ops/dashboard` | `app/frontend` `/next/` | **absent on nnG8** (already moved); `/next/` replacement | no stop action |
 | `ops/opt/*`, `ops/nginx` | `/opt/*`, `/etc/nginx` | mixed | **active ops** | not in this wave |
 | `web/qd-frontend` | QD frontend build tree | `/next/` | **retired runtime** | keep snapshot for reference |
-| `web/workbench` | `/opt/nng8-dashboard` | `/next/` | **frozen** | archive after dashboard retirement |
-| `web/shell` | new entry shell | `/next/` | **frozen** | keep for historical layout |
+| `web/workbench` | `/opt/nng8-dashboard` | `/next/` | **absent** (path not present on nnG8) | archive after dashboard retirement |
+| `web/shell` | new entry shell | `/next/` | **frozen**; repo-only | keep for historical layout |
 
 ## 3. Phases
 
@@ -69,6 +69,10 @@ in the freeze baseline above.
 - Run `qp decommission inventory` weekly/monthly and store the manifest with
   its sha256. Latest: `/var/lib/qp/decommission-2026-11-24.json`,
   sha256 `e98f4846…` (5 system timers, 0 containers, 13.5 MB captured paths).
+- 2026-11-25 read-only scan (units, timers, containers, cron, processes, nginx,
+  paths) is recorded in
+  [`M9-EXIT-EVIDENCE-2026-11-25.md`](M9-EXIT-EVIDENCE-2026-11-25.md); several
+  statuses above were corrected from it.
 - User timers must be scanned separately as `ubuntu`; root-owned paths need a
   root scan before Phase 2 evidence is complete.
 - Confirm each "active legacy" consumer with its timer/unit owner.

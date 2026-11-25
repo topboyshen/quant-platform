@@ -1,6 +1,6 @@
 # 备份与恢复 Runbook
 
-状态：**已执行恢复演练（2026-11-23 10:52/10:53 CST，PASS，本地 + 异地副本；DB 恢复 4–7s，升级 1s，API 冷启动 1.65s；另完成 0.3.97 独立 stage venv/DB 演练）**；异地副本已启用（Mac 每日拉取）。
+状态：**已执行恢复演练（2026-11-23 10:52/10:53 CST，本地 + 异地副本，DB/API；2026-11-25 22:21 CST 隔离宿主 MS02u 从 Quant-Server 异地副本恢复到登录页，分段合计约 19s，PASS）**；异地副本已启用（Quant-Server 推送 + Mac 每日拉取）。
 
 ## 1. 备份
 
@@ -52,22 +52,25 @@ sudo /usr/local/sbin/qp-restore-drill \
 | 2026-11-23 10:53 | 异地 `qp-20261123T035002.dump`（5.1MB，sha256 `fae24593…`） | **PASS** | 0017；恢复 4s、升级 1s；异地副本可恢复；同一恢复点 11-20 |
 | 2026-11-23 10:54 | 同上 dump，`qp_restore_appdrill` | **PASS** | 恢复 4s + 升级 1s；用恢复副本启动临时 `qp-api`，`/api/health` 冷启动 **1.65s**，返回 `db:true` |
 | 2026-11-23 13:02 | 0.3.97 release bundle + `qp-pre-0.3.97-20261123T1252.dump` | **PASS** | 独立 `/opt/qp-stage` release/venv（venv **19s**）+ scratch DB 恢复 5s/升级 1s；stage API health **1.63s**；db check 0017；清理 stage |
+| 2026-11-25 22:21 | 异地 `qp-20261125T035003.dump`（5,434,600 B，sha256 `cac6a1fd…`） | **PASS** | 隔离宿主 MS02u（WSL，独立 test 集群）；恢复 **1.95s**、升级 **0.54s**；104 relations / 20 signals triggers / 0 孤儿；恢复点 11-24，1,440 决策 / 3,700 结果 / 1,440 链；API **0.68s**、静态页 **0.11s**、Playwright 登录页 **0.64s**；acceptance WARN（仅 notifications shadow）；分段合计 **约 19s**，详见 [`RESTORE-DRILL-2026-11-25.md`](RESTORE-DRILL-2026-11-25.md) |
 
 报告：`/home/ubuntu/qp-restore-drill-20261123/report.txt`、
 `/home/ubuntu/qp-restore-drill-offsite-20261123/report.txt`（2026-11-23）；
 本地副本在 `qp-p0-restore-20261123/`。
 
-RTO 口径：这里是同机 scratch 库的**数据库恢复 + API 冷启动**（dump→restore→migrate→API health），不是整机重建 RTO；整机还需 OS/release venv、env/secrets、TLS、timers 与前端/外部 smoke。2026-11-23 的 DB 恢复 4–7s、升级 1s、API 1.65s，不能单独称为平台 RTO。
+RTO 口径：这里是 scratch 库的**数据库恢复 + API 冷启动**（dump→restore→migrate→API health）；2026-11-25 的隔离宿主演练进一步覆盖静态页与浏览器登录页，分段合计约 19s。这仍不是整机重建 RTO；整机还需 OS/release venv、env/secrets、TLS、timers 与前端/外部 smoke。演练口径：异地副本 → 登录页 **≤ 15 分钟**；数据损失窗口 **≤ 1 个自然日**（每日 03:50 备份）。2026-11-23 的 DB 恢复 4–7s、升级 1s、API 1.65s 和 2026-11-25 的约 19s，都不能单独称为平台 RTO。
 
 结论：夜间 dump 在迁移之后需要先 `qp db upgrade` 再切流量；这是恢复流程的固定一步，已写入 §4。
 
 ## 3. 异地副本
 
-- 位置：Mac `~/Library/Application Support/qp-offsite-backups/`（不放在 `~/Documents`：launchd 进程受 macOS TCC 限制）
-- 调度：LaunchAgent `com.mirasim.qp-offsite-backup`，每天 09:20 拉取最新 dump，保留 14 份
-- 脚本：`~/.local/bin/qp-offsite-backup.sh`；拉取后本地/远端 sha256 必须一致，否则失败退出
-- 日志：`~/Library/Logs/qp-offsite-backup.log`
-- 手工验证：
+- Quant-Server（`111.229.252.186`）`/home/ubuntu/qp-offsite-backups/`：生产 `qp-offsite-push.timer`
+  推送。2026-11-25 演练使用该副本，dump 的 sha256 与生产一致。
+- Mac `~/Library/Application Support/qp-offsite-backups/`（不放在 `~/Documents`：launchd 进程受 macOS TCC 限制）
+- Mac 调度：LaunchAgent `com.mirasim.qp-offsite-backup`，每天 09:20 拉取最新 dump，保留 14 份
+- Mac 脚本：`~/.local/bin/qp-offsite-backup.sh`；拉取后本地/远端 sha256 必须一致，否则失败退出
+- Mac 日志：`~/Library/Logs/qp-offsite-backup.log`
+- 手工验证（Mac）：
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.mirasim.qp-offsite-backup
@@ -100,4 +103,5 @@ sudo -u qp bash -c 'set -a; . /etc/qp/qp.env; set +a; \
 
 - 演练只读生产、只写 scratch 库，结束即 `drop database`（`--keep` 可保留排查）。
 - dump 含用户密码哈希与通知正文，按机密对待：不入 git、不发聊天、不放到 `~/Documents`。
-- 异地副本只有 Mac 一份；如 Mac 长期离线，应在另一台常在线主机再加一份拉取。
+- 异地副本至少有 Quant-Server 推送和 Mac 拉取两份；2026-11-25 演练只验证了
+  Quant-Server。任一份长期离线时，应确认另一份仍在更新。
