@@ -79,3 +79,44 @@ describe('cross-horizon entry basis', () => {
     } finally { wrapper.unmount() }
   })
 })
+
+describe('outcome page errors', () => {
+  it('keeps displaying the current page when a superseded page request fails', async () => {
+    const recent = { total: 201, rows: [{ id: 201, code: '510300' }] }
+    let rejectOlderPage!: (error: Error) => void
+    const olderPage = new Promise<never>((_, reject) => { rejectOlderPage = reject })
+    const request = vi.mocked(api).mockReset()
+      .mockResolvedValueOnce(recent)
+      .mockReturnValueOnce(olderPage)
+      .mockResolvedValueOnce(recent)
+    const wrapper = mount(Outcomes)
+    try {
+      await flushPromises()
+      const pageButtons = wrapper.getComponent(NPagination).findAll('.n-pagination-item--clickable')
+      await pageButtons[1].trigger('click')
+      expect(request).toHaveBeenLastCalledWith('/signals/outcomes?limit=200&offset=200')
+      await pageButtons[0].trigger('click')
+      await flushPromises()
+      expect(request).toHaveBeenLastCalledWith('/signals/outcomes?limit=200&offset=0')
+
+      rejectOlderPage(new Error('旧页请求失败'))
+      await flushPromises()
+
+      expect(wrapper.getComponent(NPagination).props('page')).toBe(1)
+      expect(wrapper.get('tbody').text()).toContain('510300')
+      expect(wrapper.text()).not.toContain('旧页请求失败')
+    } finally { wrapper.unmount() }
+  })
+
+  it('shows the latest request error instead of an empty result', async () => {
+    vi.mocked(api).mockReset().mockRejectedValueOnce(new Error('当前页请求失败'))
+    const wrapper = mount(Outcomes)
+    try {
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('当前页请求失败')
+      expect(wrapper.text()).not.toContain('暂无结果记录')
+      expect(wrapper.find('tbody').exists()).toBe(false)
+    } finally { wrapper.unmount() }
+  })
+})
