@@ -307,17 +307,20 @@ def test_replay_step_and_manual_cli_do_not_rebind(engine, monkeypatch):
                 .values(rule_version=H.rot.RULE)
             )
             session.commit()
-        assert cmd_signals_rotation_shadow(
-            SimpleNamespace(
-                seed_bars=None,
-                initialize=None,
-                phase="forward",
-                until=START.isoformat(),
-                step=False,
-                date=None,
-                summary=False,
+        assert (
+            cmd_signals_rotation_shadow(
+                SimpleNamespace(
+                    seed_bars=None,
+                    initialize=None,
+                    phase="forward",
+                    until=START.isoformat(),
+                    step=False,
+                    date=None,
+                    summary=False,
+                )
             )
-        ) == 0
+            == 0
+        )
         with Session(engine) as session:
             plan = session.get(RotationShadowRun, plan_id)
             assert plan.detail["risk_observation_id"] == bound_id
@@ -568,9 +571,7 @@ def test_morning_initialize_binds_prior_signal_day_risk(engine):
             assert binding["observation_id"] is not None
             assert plan.detail.get("decided_at", "").startswith(f"{H.ROTATION_START.isoformat()}T08:00")
         with Session(engine) as executor:
-            with patch.object(
-                H.rot, "now_cst", return_value=dt.datetime.combine(H.ROTATION_START, dt.time(16), CST)
-            ):
+            with patch.object(H.rot, "now_cst", return_value=dt.datetime.combine(H.ROTATION_START, dt.time(16), CST)):
                 replay = H.rot.replay(
                     executor, until=H.ROTATION_START, phase="forward", rule_version="qp-rotation.contract"
                 )
