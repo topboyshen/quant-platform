@@ -24,6 +24,7 @@ from qp.models.base import utcnow
 from qp.models.core import AuditEvent, User
 from qp.models.notify import Outbox
 from qp.models.ops import HealthCheck, JobDef, JobRun
+from qp.release import release_info
 
 app = FastAPI(title="quant-platform", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -107,7 +108,13 @@ def health() -> dict[str, Any]:
             c.execute(text("SELECT 1"))
     except Exception:
         db_ok = False
-    return {"status": "ok" if db_ok else "degraded", "db": db_ok, "version": __version__}
+    info = release_info()
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "db": db_ok,
+        "version": info["version"],
+        "package_version": __version__,
+    }
 
 
 class LoginIn(BaseModel):

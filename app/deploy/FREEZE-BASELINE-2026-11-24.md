@@ -5,17 +5,20 @@ two-week stability window before any M9 Phase 2 stop is considered.
 
 ## 1. Freeze window
 
-- Production release: `0.3.108-attribution-wow-cutoff-0341a9e4`
-- Production deploy commit: `deedf4ea4e0bedb13ba1a7662a287f4267a4355b`
-- Freeze start: **2026-11-24 12:00 CST**
-- Earliest Phase 2 stop review: **2026-12-08** (14 full days, no rollback)
+- Production release: `0.3.115-day-window-e66f231f`
+- Production deploy commit: `ee310c9dfdba1a962183d97b02e4a07a03638668`
+- Freeze start: **2026-11-25 08:45 CST** (re-baselined at `.115`; 2026-11-24 remains a mixed-version day)
+- Earliest Phase 2 stop review: **2026-12-09** (14 full days from the `.115` re-baseline)
 - Allowed during freeze: production incident fixes, security fixes, evidence
   corrections and documentation. New features and UI expansion are paused.
 
 The 2026-11-24 business day is a **mixed-version day**: `.105` 09:02, `.106`
-09:43, `.107` 15:12 and `.108` 15:20 CST were all activated after the 09:30
-open. Do not count it as a clean baseline day for a single release. `.107/.108`
-are the user-authorized C4 weekly-attribution exception; feature freeze remains. The 10-trading-day observation window
+09:43, `.107` 15:12, `.108` 15:20, `.109` 16:50, `.110` 18:51 and `.111`
+19:09 CST were all activated after the 09:30 open. 2026-11-25 added `.112`–
+`.115` before the open. None of these days is a clean single-release baseline.
+`.107/.108` were the user-authorized C4 exception; `.112`–`.115` are incident/
+report-correctness fixes. No cosmetic or feature release is allowed before the
+2026-12-09 review. The 10-trading-day observation window
 (2026-11-18 → 2026-12-01) continues separately.
 
 ## 2. Inventory snapshot

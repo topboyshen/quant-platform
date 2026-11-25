@@ -168,3 +168,22 @@ def test_acceptance_job_gate_and_day_paths(monkeypatch, ctx):
     monkeypatch.setattr(acceptance, "evaluate", lambda *_a, **_k: {"verdict": "WARN"})
     out = signals.acceptance_job(ctx)
     assert out["ok"] is True and out["upstream_gate"]["ok"] is True
+
+
+def test_shadow_outcomes_keeps_eastmoney_failure_as_warning(monkeypatch, ctx):
+    from qp.signals import shadow
+
+    monkeypatch.setattr(
+        shadow,
+        "collect",
+        lambda *_a, **_k: {
+            "benchmark_ok": True,
+            "benchmark_attempts": [
+                {"source": "eastmoney_push2his", "error": "FetchError"},
+                {"source": "tencent_kline", "error": ""},
+            ],
+        },
+    )
+    out = signals.shadow_outcomes_job(ctx)
+    assert out["ok"] is True
+    assert out["benchmark_warnings"] == ["eastmoney_push2his:FetchError"]

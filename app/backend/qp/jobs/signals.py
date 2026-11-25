@@ -274,6 +274,11 @@ def rule_shadow_outcomes_job(ctx: JobContext) -> dict:
     with Session(ctx.engine) as session:
         out = rule_shadow.collect(session, as_of=now_cst().date())
         session.commit()
+    out["benchmark_warnings"] = [
+        f"{attempt.get('source')}:{attempt.get('error')}"
+        for attempt in out.get("benchmark_attempts") or []
+        if attempt.get("error")
+    ]
     out["ok"] = bool(out.get("benchmark_ok"))
     return out
 
@@ -310,6 +315,11 @@ def shadow_outcomes_job(ctx: JobContext) -> dict:
     with Session(ctx.engine) as session:
         out = shadow.collect(session, as_of=now_cst().date())
         session.commit()
+    out["benchmark_warnings"] = [
+        f"{attempt.get('source')}:{attempt.get('error')}"
+        for attempt in out.get("benchmark_attempts") or []
+        if attempt.get("error")
+    ]
     out["ok"] = bool(out.get("benchmark_ok"))
     return out
 
