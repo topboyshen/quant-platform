@@ -27,6 +27,7 @@ export interface AttrReport {
   threshold: number
   group_by: string[]
   overall: AttrStats
+  executable?: AttrStats
   eligible: AttrStats
   sample: { matured_filled: number; eligible_matured: number }
   groups: Record<string, AttrGroup[]>

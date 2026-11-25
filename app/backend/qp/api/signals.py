@@ -33,6 +33,11 @@ from qp.models.signals import (
     TrendSignal,
 )
 from qp.signals.entry_basis import compare_entry_basis
+from qp.signals.return_roles import (
+    ROLE_LABELS,
+    executable_net_return,
+    resolve_role,
+)
 from qp.signals.universe import TARGETS
 
 router = APIRouter(prefix="/api/signals", dependencies=[Depends(require_scope("signals:read"))])
@@ -41,6 +46,36 @@ DEFAULT_SHADOW_DIR = "/var/lib/qp/shadow-reports"
 
 def _num(value: Any) -> float | None:
     return float(value) if value is not None else None
+
+
+def _return_view(
+    *,
+    details: dict[str, Any] | None,
+    fill_status: str | None,
+    net_return: float | None,
+    decision_state: str | None = None,
+    risk_action: str | None = None,
+    source: str | None = None,
+) -> dict[str, Any]:
+    """Expose role and the executable number. The recorded net_return stays."""
+    role = resolve_role(
+        details=details,
+        decision_state=decision_state,
+        risk_action=risk_action,
+        source=source,
+    )
+    approved = role == "executable"
+    return {
+        "net_return": net_return,
+        "return_role": role,
+        "return_role_label": ROLE_LABELS[role],
+        "executable": approved,
+        "approval_status": "approved" if approved else "not_approved",
+        "executable_net_return": executable_net_return(role, fill_status, net_return),
+        "fill_validation": "incomplete",
+        "fill_confirmed": False,
+        "confirmed_net_return": None,
+    }
 
 
 def _run(r: EodRun) -> dict[str, Any]:
@@ -175,7 +210,13 @@ def outcomes(
                 "horizon_sessions": o.horizon_sessions,
                 "entry_date": o.entry_date,
                 "exit_date": o.exit_date,
-                "net_return": _num(o.net_return),
+                **_return_view(
+                    details=o.details,
+                    fill_status=o.fill_status,
+                    net_return=_num(o.net_return),
+                    decision_state=d.decision_state,
+                    risk_action=d.risk_action,
+                ),
                 "benchmark_return": _num(o.benchmark_return),
                 "excess_return": _num(o.excess_return),
                 "fill_status": o.fill_status,
@@ -232,6 +273,12 @@ def rule_shadow_samples(
                 "net_return": _num(row.net_return),
                 "excess_return": _num(row.excess_return),
                 "fill_status": row.fill_status,
+                **_return_view(
+                    details=row.details,
+                    fill_status=row.fill_status,
+                    net_return=_num(row.net_return),
+                    source="rule_shadow",
+                ),
             }
     return {
         "rule_version": rule_version,
@@ -282,6 +329,12 @@ def shadow_samples(
                 "net_return": _num(row.net_return),
                 "excess_return": _num(row.excess_return),
                 "fill_status": row.fill_status,
+                **_return_view(
+                    details=row.details,
+                    fill_status=row.fill_status,
+                    net_return=_num(row.net_return),
+                    source="shadow",
+                ),
             }
     return {
         "total": total,

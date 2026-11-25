@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from qp.market.kline import DailyBar, KlineResult
 from qp.models.market import TradingDay
 from qp.models.signals import (
+    RiskState,
     RotationShadowAccount,
     RotationShadowBar,
     RotationShadowDay,
@@ -54,6 +55,7 @@ def book(engine, monkeypatch):
             s.execute(delete(RotationShadowAccount))
             s.execute(delete(RotationShadowBar))
             s.execute(delete(TradingDay).where(TradingDay.source == "m14-test"))
+            s.execute(delete(RiskState).where(RiskState.message == "m14-timing"))
             s.commit()
 
     cleanup()
@@ -155,6 +157,22 @@ def test_selection_uses_only_signal_day_and_fixed_top8(book):
 def test_newest_close_plan_is_persisted_and_not_executed_early(book):
     engine, _ = book
     with Session(engine) as s:
+        # A fresh ok observation must be visible before the signal close; a missing
+        # observation now blocks new fills and would hide the timing assertion.
+        seen = dt.datetime.combine(BASE, dt.time(14, 0), dt.timezone(dt.timedelta(hours=8)))
+        s.add(
+            RiskState(
+                observed_at=seen,
+                created_at=seen,
+                level="ok",
+                values={},
+                sources={},
+                override=False,
+                message="m14-timing",
+                raw={"level": "ok"},
+            )
+        )
+        s.commit()
         out = init(s)
         assert out["ok"]
         s.commit()

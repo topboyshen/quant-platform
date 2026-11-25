@@ -32,12 +32,14 @@ from qp.market.http import FetchError, fetch
 from qp.market.kline import DailyBar, exchange_prefixed_code
 from qp.models.market import TradingDay
 from qp.models.signals import (
+    RiskState,
     RotationShadowAccount,
     RotationShadowBar,
     RotationShadowDay,
     RotationShadowRun,
 )
-from qp.signals.eod import now_cst
+from qp.signals.eod import CST, now_cst
+from qp.signals.risk import is_growth_risk_target
 from qp.signals.universe import TARGETS
 
 RULE = "qp-rotation.v1"
@@ -54,7 +56,30 @@ SLIPPAGE = 0.0005
 LOT = 100
 MIN_AMOUNT = 5_000_000.0
 NAMES = {target.code: target.name for target in TARGETS}
+SECTORS = {target.code: target.sector for target in TARGETS}
 CODES = tuple(NAMES)
+GROWTH_CODES = {code for code in CODES if is_growth_risk_target(SECTORS.get(code), NAMES.get(code))}
+NO_NEW_RISK = frozenset({"critical", "warning", "unavailable"})
+# Risk observations older than this window are reported as stale. Calendar days,
+# not trading days, and not extended across weekends or holidays.
+RISK_FRESH_CALENDAR_DAYS = 4
+RISK_RULE_VERSION = "qp-rotation-risk.v1"
+# Repo timers, not an assumed 15:00 close. EOD writes RiskState.observed_at from its
+# own clock. The rotation job freezes the plan later the same afternoon.
+SCHEDULE_CONTRACT = {
+    "risk_observation": "signals.eod Mon-Fri 15:30 CST, retry 15:48; observed_at is the now captured at run_eod entry",
+    "plan_freeze": (
+        "signals.rotation_shadow Mon-Fri 15:50 and 16:40 CST; a new REPEATABLE READ snapshot "
+        "is established before decided_at = now_cst(); only rows in that snapshot can be bound"
+    ),
+    "execution": "next open session, using only the risk binding stored when the plan was frozen",
+}
+VISIBILITY_LIMITATION = (
+    "The bound row is one returned by the REPEATABLE READ snapshot taken before decided_at. "
+    "A commit after that snapshot is not bound, even if its timestamps are earlier. "
+    "created_at is the writer's transaction_timestamp(), not a publication receipt and not commit order. "
+    "Historical plans without a stored decided_at are unverified; their clocks are not reconstructed."
+)
 
 
 class DataIssue(ValueError):
@@ -492,10 +517,46 @@ def _input_digest(frames: dict[str, Frame], day: dt.date) -> str:
     return _digest(payload)
 
 
+def _binding_record(selection: dict[str, Any]) -> dict[str, Any]:
+    observed = selection.get("observed_at")
+    created = selection.get("created_at")
+    decided = selection.get("decided_at")
+    return {
+        "status": selection["status"],
+        "level": selection.get("level"),
+        "observation_id": selection.get("observation_id"),
+        "observed_at": None if observed is None else observed.isoformat(),
+        "created_at": None if created is None else created.isoformat(),
+        "decided_at": None if decided is None else decided.isoformat(),
+        "used_previous_ok": False,
+        "history_diagnostic": selection.get("history_diagnostic"),
+        "snapshot_isolation": selection.get("snapshot_isolation"),
+    }
+
+
 def _plan(
     session: Session, account: RotationShadowAccount, frames: dict[str, Frame], day: dt.date, execute: dt.date | None
 ) -> RotationShadowRun:
     selected, universe = _selection(frames, day)
+    decided_at, snapshot_isolation, rows = _read_risk_snapshot(session)
+    # The observation must belong to the plan's signal date, but the plan itself
+    # can be frozen later: initialize() freezes the next-open plan the following
+    # morning, and a holiday can separate signal date and decision date.
+    # bind_same_day_risk() already enforces observed_at.date() == day.
+    binding = bind_same_day_risk(rows, day, decided_at)
+    binding["snapshot_isolation"] = snapshot_isolation
+    detail = {
+        "parameters_sha256": _digest(account.parameters),
+        "input_sha256": _input_digest(frames, day),
+        "ew_weights": _ew_weights(frames, day),
+        "risk_rule_version": RISK_RULE_VERSION,
+        "risk_observation_id": binding.get("observation_id"),
+        "risk_binding": _binding_record(binding),
+        "schedule": SCHEDULE_CONTRACT,
+        "visibility_limitation": VISIBILITY_LIMITATION,
+    }
+    if binding["status"] != "unverified":
+        detail["decided_at"] = decided_at.isoformat()
     row = RotationShadowRun(
         rule_version=account.rule_version,
         phase=account.phase,
@@ -505,11 +566,7 @@ def _plan(
         universe=universe,
         top_k=TOP_K,
         selected=selected,
-        detail={
-            "parameters_sha256": _digest(account.parameters),
-            "input_sha256": _input_digest(frames, day),
-            "ew_weights": _ew_weights(frames, day),
-        },
+        detail=detail,
     )
     session.add(row)
     session.flush()
@@ -608,8 +665,198 @@ def initialize(
     }
 
 
+def _aware(value: dt.datetime) -> dt.datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=CST)
+    return value.astimezone(CST)
+
+
+def _read_risk_snapshot(session: Session) -> tuple[dt.datetime, str, list[Any]]:
+    """Read risk_state from a snapshot established before decided_at is sampled.
+
+    The caller's transaction stays at the engine default. This opens a separate
+    REPEATABLE READ transaction, runs one statement to establish its snapshot,
+    then samples now_cst(). The following read cannot see a commit that lands
+    after that snapshot, including one that commits while this read waits.
+    """
+    bind = session.get_bind()
+    with bind.connect().execution_options(isolation_level="REPEATABLE READ") as conn:
+        with conn.begin():
+            conn.execute(text("SELECT 1"))
+            decided_at = now_cst()
+            rows = list(
+                conn.execute(select(RiskState.id, RiskState.level, RiskState.observed_at, RiskState.created_at))
+            )
+            isolation = str(conn.execute(text("SHOW transaction_isolation")).scalar_one())
+    return decided_at, isolation, rows
+
+
+def bind_same_day_risk(rows: Sequence[Any], signal_date: dt.date, decided_at: dt.datetime) -> dict[str, Any]:
+    """Choose a same-day row from an already-taken snapshot.
+
+    The snapshot, not a later SELECT, is the visibility boundary. Yesterday's ok
+    is not a substitute. Same-day ties use observed_at, then created_at, then id.
+    That key is not commit order: observed_at is the EOD entry clock, created_at
+    is the writer's transaction start, and id is only a stable tie-break.
+    """
+    decided = _aware(decided_at)
+    visible: list[tuple[dt.datetime, Any]] = []
+    same_day: list[tuple[dt.datetime, Any]] = []
+    for row in rows:
+        observed = _aware(row.observed_at)
+        created = _aware(row.created_at)
+        if observed <= decided and created <= decided:
+            visible.append((observed, row))
+            if observed.astimezone(CST).date() == signal_date:
+                same_day.append((observed, row))
+    if same_day:
+        observed, row = max(same_day, key=lambda item: (item[0], _aware(item[1].created_at), item[1].id or 0))
+        return {
+            "status": "fresh",
+            "level": str(row.level),
+            "observation_id": row.id,
+            "observed_at": observed,
+            "created_at": _aware(row.created_at),
+            "decided_at": decided,
+            "used_previous_ok": False,
+        }
+    if not visible:
+        return {
+            "status": "missing",
+            "history_diagnostic": "absent",
+            "level": None,
+            "observation_id": None,
+            "observed_at": None,
+            "created_at": None,
+            "decided_at": decided,
+            "used_previous_ok": False,
+        }
+    observed, row = max(visible, key=lambda item: (item[0], _aware(item[1].created_at), item[1].id or 0))
+    stale_before = decided - dt.timedelta(days=RISK_FRESH_CALENDAR_DAYS)
+    if observed < stale_before:
+        return {
+            "status": "stale",
+            "history_diagnostic": "stale",
+            "level": str(row.level),
+            "observation_id": row.id,
+            "observed_at": observed,
+            "created_at": _aware(row.created_at),
+            "decided_at": decided,
+            "used_previous_ok": False,
+        }
+    return {
+        "status": "assessment_pending",
+        "history_diagnostic": "not_qualified",
+        "level": None,
+        "observation_id": None,
+        "observed_at": None,
+        "created_at": None,
+        "decided_at": decided,
+        "used_previous_ok": False,
+    }
+
+
+def _unverified_selection() -> dict[str, Any]:
+    return {
+        "status": "unverified",
+        "level": None,
+        "observation_id": None,
+        "observed_at": None,
+        "created_at": None,
+        "decided_at": None,
+        "used_previous_ok": False,
+    }
+
+
+def _selection_from_plan(plan: RotationShadowRun) -> dict[str, Any]:
+    """Use the binding frozen with the plan. Do not invent a clock or re-query."""
+    detail = plan.detail or {}
+    binding = detail.get("risk_binding")
+    if not detail.get("decided_at") or not isinstance(binding, dict):
+        return _unverified_selection()
+    observed = binding.get("observed_at")
+    created = binding.get("created_at")
+    return {
+        "status": binding.get("status") or "unverified",
+        "level": binding.get("level"),
+        "observation_id": binding.get("observation_id"),
+        "observed_at": _aware(dt.datetime.fromisoformat(observed)) if observed else None,
+        "created_at": _aware(dt.datetime.fromisoformat(created)) if created else None,
+        "decided_at": _aware(dt.datetime.fromisoformat(detail["decided_at"])),
+        "used_previous_ok": False,
+        "history_diagnostic": binding.get("history_diagnostic"),
+        "snapshot_isolation": binding.get("snapshot_isolation"),
+    }
+
+
+def _increase_blocked(selection: dict[str, Any], codes: set[str]) -> set[str]:
+    """Codes that must not be opened or increased. Reductions stay allowed."""
+    if selection["status"] in {"missing", "stale", "assessment_pending", "unverified"}:
+        return set(codes)
+    level = selection.get("level")
+    if level == "ok":
+        return set()
+    if level == "growth_blocked":
+        return {code for code in codes if code in GROWTH_CODES}
+    return set(codes)
+
+
+def _risk_gate_record(selection: dict[str, Any], blocked: set[str]) -> dict[str, Any]:
+    status = selection["status"]
+    level = selection.get("level")
+    if status in {"missing", "stale", "assessment_pending", "unverified"}:
+        exposure = "blocked"
+    elif level == "growth_blocked":
+        exposure = "growth_capped"
+    elif level == "ok":
+        exposure = "open"
+    else:
+        exposure = "blocked"
+    observed = selection.get("observed_at")
+    created = selection.get("created_at")
+    decided = selection.get("decided_at")
+    return {
+        "rule_version": RISK_RULE_VERSION,
+        "level": level,
+        "reason": status,
+        "new_exposure": exposure,
+        "increase_blocked": sorted(blocked),
+        "forced_liquidation": False,
+        "benchmarks_ungated": True,
+        "benchmark_policy": "ungated_control",
+        "ew_policy": "ungated_control",
+        "decided_at": None if decided is None else decided.isoformat(),
+        "observation_id": selection.get("observation_id"),
+        "observation_observed_at": None if observed is None else observed.isoformat(),
+        "observation_created_at": None if created is None else created.isoformat(),
+        "schedule": SCHEDULE_CONTRACT,
+        "same_day_assessment_required": True,
+        "previous_ok_is_substitute": False,
+        "history_diagnostic": selection.get("history_diagnostic"),
+        "snapshot_isolation": selection.get("snapshot_isolation"),
+        "visibility": "repeatable-read snapshot taken before decided_at; same-day filter applies only inside it",
+        "visibility_limitation": VISIBILITY_LIMITATION,
+        "effective_boundary": "new plans and day rows only; existing nav and historical plans are not rewritten",
+        "nav_rewritten": False,
+    }
+
+
+def _cap_increases(desired: dict[str, int], shares: dict[str, int], blocked: set[str]) -> dict[str, int]:
+    capped = dict(desired)
+    for code in blocked:
+        capped[code] = min(capped.get(code, 0), shares.get(code, 0))
+        if capped[code] <= 0:
+            capped.pop(code, None)
+    return capped
+
+
 def _trade(
-    cash: float, shares: dict[str, int], target: dict[str, float], bars: dict[str, DailyBar]
+    cash: float,
+    shares: dict[str, int],
+    target: dict[str, float],
+    bars: dict[str, DailyBar],
+    *,
+    increase_blocked: set[str] | None = None,
 ) -> tuple[float, list[dict[str, Any]], float, float]:
     """Real raw-price lots; sell every reduction before any buy, both sides costed."""
     needed = set(shares) | set(target)
@@ -624,6 +871,8 @@ def _trade(
         for code, weight in target.items()
         if weight > 0
     }
+    if increase_blocked:
+        desired = _cap_increases(desired, shares, increase_blocked)
     traded = 0.0
     fills = []
     for side in ("sell", "buy"):
@@ -744,6 +993,8 @@ def replay(
         if len(due) > 1 or any(p.execute_date is not None and p.execute_date < day for p in plans.values()):
             return _quality(account, day, "pending_plan_clock_conflict")
         plan = due[0] if due else None
+        selection: dict[str, Any] | None = None
+        increase_blocked: set[str] = set()
         if plan is not None:
             # Only infer next date for a plan persisted before the calendar horizon.
             if _next_open(session, plan.signal_date) != day:
@@ -751,6 +1002,10 @@ def replay(
             if plan.detail.get("parameters_sha256") != _digest(account.parameters):
                 return _quality(account, day, "plan_parameters_changed")
             target = {s["code"]: float(s["weight"]) for s in plan.selected}
+            selection = _selection_from_plan(plan)
+            increase_blocked = _increase_blocked(selection, set(shares) | set(target))
+            if selection["status"] != "unverified":
+                plan.detail = {**plan.detail, "risk_gate": _risk_gate_record(selection, increase_blocked)}
             # Daily OHLC lock is an explicitly conservative fill approximation.
             for code in (
                 set(shares)
@@ -768,7 +1023,7 @@ def replay(
                     change = bars[code].open / f.bars[j - 1].close - 1
                     if abs(change) >= 0.095:
                         return _quality(account, day, "涨跌停无法确认成交，纸面账本暂停", missing_codes=[code])
-            cash, fills, traded, value_open = _trade(cash, shares, target, bars)
+            cash, fills, traded, value_open = _trade(cash, shares, target, bars, increase_blocked=increase_blocked)
             plan.status = "executed"
             plan.execute_date = day
             plan.fills = fills
@@ -811,6 +1066,22 @@ def replay(
                 "input_sha256": _digest(
                     [[c, str(day), b.open, b.high, b.low, b.close, b.volume] for c, b in sorted(bars.items())]
                 ),
+                "risk_gate": _risk_gate_record(selection, increase_blocked)
+                if selection is not None
+                else {
+                    "rule_version": RISK_RULE_VERSION,
+                    "reason": "no_rebalance",
+                    "level": None,
+                    "new_exposure": "no_order",
+                    "forced_liquidation": False,
+                    "benchmarks_ungated": True,
+                    "benchmark_policy": "ungated_control",
+                    "ew_policy": "ungated_control",
+                    "nav_rewritten": False,
+                    "effective_boundary": (
+                        "new day rows written by this process only; existing nav rows are not rewritten"
+                    ),
+                },
             },
         )
         session.add(row)
@@ -891,6 +1162,16 @@ def _run_dict(run: RotationShadowRun) -> dict[str, Any]:
         "selected": run.selected,
         "fills": run.fills,
         "detail": run.detail,
+    }
+
+
+def _performance_versions(days: Sequence[RotationShadowDay]) -> dict[str, Any]:
+    ruled = sum(1 for row in days if (row.detail or {}).get("risk_gate", {}).get("rule_version") == RISK_RULE_VERSION)
+    return {
+        "current_rule": RISK_RULE_VERSION,
+        "ruled_days": ruled,
+        "unmarked_days": len(days) - ruled,
+        "nav_rewritten": False,
     }
 
 
@@ -996,6 +1277,11 @@ def summary(
         "next_rebalance_date": str(next_signal) if next_signal else None,
         "next_execute_date": str(next_execute) if next_execute else None,
         "quality": account.quality,
+        "risk_gate": latest.detail.get("risk_gate"),
+        "risk_rule_version": RISK_RULE_VERSION,
+        "performance_versions": _performance_versions(days),
+        "benchmark_policy": "ungated_control",
+        "ew_policy": "ungated_control",
     }
     if series:
         result["series"] = [

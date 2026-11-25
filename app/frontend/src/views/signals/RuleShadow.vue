@@ -1,8 +1,8 @@
 <template>
   <n-space vertical>
     <n-text depth="3">
-      实验规则 qp-swing.v2：日线放量突破 MA60（成交量 ≥ 2×20 日均量）。只写影子表，
-      不影响实盘决策、通知或记录链。共 {{ total }} 条 · 结果 {{ summary?.outcomes ?? 0 }} 条
+      实验规则 qp-swing.v2：日线放量突破 MA60（成交量 ≥ 2×20 日均量）。收益是未过闸反事实，
+      不是可执行策略收益。只写影子表，不进入正式决策、通知或记录链。共 {{ total }} 条 · 结果 {{ summary?.outcomes ?? 0 }} 条
       <template v-if="summary?.last_sample_date"> · 最后样本 {{ summary.last_sample_date }}</template>
     </n-text>
     <AsyncState :loading="loading" :error="error" :empty="!loading && !error && !rows.length"

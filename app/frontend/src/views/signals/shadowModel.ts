@@ -7,6 +7,15 @@ export interface ShadowCell {
   net_return: number | null
   excess_return: number | null
   fill_status: string
+  return_role?: string | null
+  executable_net_return?: number | null
+}
+
+export const RETURN_ROLE_LABEL: Record<string, string> = {
+  executable: '可执行',
+  counterfactual_ungated: '未过闸反事实',
+  research_counterfactual: '非信号研究',
+  unknown: '无依据',
 }
 
 export interface ShadowSample {
@@ -29,8 +38,17 @@ export function pct(value: number | null | undefined): string {
   return value == null ? '—' : (value * 100).toFixed(2) + '%'
 }
 
+export function returnRoleLabel(role: string | null | undefined): string {
+  if (!role) return '无依据'
+  return RETURN_ROLE_LABEL[role] || role
+}
+
 export function horizonCell(sample: { outcomes: Record<string, ShadowCell> }, horizon: number): string {
   const value = sample.outcomes[String(horizon)]
   if (!value) return '待到期'
-  return value.fill_status === 'filled' ? pct(value.net_return) : '未成交'
+  if (value.fill_status !== 'filled') return '未成交'
+  const text = pct(value.net_return)
+  if (!value.return_role || value.return_role === 'unknown') return `无依据 ${text}`
+  if (value.return_role === 'executable') return `获准未校验 ${text}`
+  return `反事实 ${text}`
 }

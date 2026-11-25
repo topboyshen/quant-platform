@@ -4,7 +4,7 @@
       <div>
         <div class="eyebrow">C13 · 独立模拟账户</div>
         <h3 id="rotation-title">轮动影子 <span class="paper-label">仅纸面观察</span></h3>
-        <p>250 交易日动量 · Top 8 等权 · 每 20 交易日调仓 · 无市场过滤</p>
+        <p>250 交易日动量 · Top 8 等权 · 每 20 交易日调仓 · 执行前限制新增风险，不强制清仓</p>
       </div>
       <button class="control" :disabled="loading" @click="load">{{ loading ? '读取中…' : '刷新记录' }}</button>
     </header>
@@ -27,6 +27,8 @@
           ? '前一交易日仅作资金基线，不计观察天数；不继承回放盈亏与持仓。'
           : '回放净值、调仓与交易日均属于历史区间，不计入前向观察。' }}
           本页始终为模拟，不发送通知，不进入实盘或正式记录链。
+          新计划先取风险表的可重复读快照，再记录 decided_at，只绑定该快照中的当天评估。快照之后才提交的行不会补绑。没有合格同日评估时主状态是 assessment_pending。昨天的 ok 不能代替尚未完成的当天评估。critical、warning、unavailable 不新开仓、不加仓；growth_blocked 不新增成长类仓位。已有持仓继续估值，策略减仓仍允许。
+          买入持有和等权基准是无风控对照，不能与过闸净值混作同一业绩。未带 qp-rotation-risk.v1 的历史净值不会被重写。
         </p>
       </div>
     </aside>

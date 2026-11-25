@@ -3,8 +3,8 @@
     <n-pagination v-if="total > PAGE_SIZE" :page="page" :item-count="total" :page-size="PAGE_SIZE"
                   :page-slot="5" @update:page="loadPage" />
     <AsyncState :loading="loading" :error="error" :empty="!loading && !error && !rows.length" emptyText="暂无结果记录">
-      <n-text depth="3">共 {{ total }} 条</n-text>
-      <n-data-table :columns="columns" :data="rows" :loading="loading" size="small" :scroll-x="1120" />
+      <n-text depth="3">共 {{ total }} 条。获准交易不是确认成交；撮合校验未完成，确认成交收益不参与汇总。</n-text>
+      <n-data-table :columns="columns" :data="rows" :loading="loading" size="small" :scroll-x="1360" />
     </AsyncState>
   </n-space>
 </template>
@@ -23,6 +23,9 @@ interface EntryBasis {
 interface Outcome {
   id: number; code: string; name: string; decision_date: string; horizon_sessions: number
   net_return: number | null; benchmark_return: number | null; excess_return: number | null; fill_status: string
+  return_role?: string | null; return_role_label?: string | null
+  approval_status?: string | null; executable_net_return?: number | null
+  fill_validation?: string | null; confirmed_net_return?: number | null
   entry_basis?: EntryBasis | null
 }
 const rows = ref<Outcome[]>([])
@@ -56,7 +59,10 @@ const columns = [
   { title: '名称', key: 'name' },
   { title: '决策日', key: 'decision_date', width: 110 },
   { title: '持有', key: 'horizon_sessions', width: 70 },
-  { title: '净收益', key: 'net_return', width: 100, render: (r: Outcome) => pct(r.net_return) },
+  { title: '收益角色', key: 'return_role_label', width: 120, render: (r: Outcome) => r.return_role_label || '无依据' },
+  { title: '记录净收益', key: 'net_return', width: 110, render: (r: Outcome) => pct(r.net_return) },
+  { title: '获准记录收益', key: 'executable_net_return', width: 130, render: (r: Outcome) => r.approval_status === 'approved' ? pct(r.executable_net_return ?? null) : '—' },
+  { title: '确认成交收益', key: 'confirmed_net_return', width: 130, render: () => '未校验' },
   { title: '基准', key: 'benchmark_return', width: 100, render: (r: Outcome) => pct(r.benchmark_return) },
   { title: '超额', key: 'excess_return', width: 100, render: (r: Outcome) => pct(r.excess_return) },
   { title: '成交', key: 'fill_status', width: 90 },
