@@ -142,7 +142,7 @@ def evaluate(snap: dict, unit_rows: list[dict], age_min: float) -> list[tuple[st
                 )
             )
     for c in snap.get("containers") or []:
-        if c.get("name") in RETIRED_CONTAINERS:
+        if not c.get("name") or c.get("name") in RETIRED_CONTAINERS:
             continue
         if c.get("state") != "running" or c.get("health") not in (None, "healthy"):
             f.append(
@@ -221,6 +221,9 @@ def recovery_evidence(snap: dict, unit_rows: list[dict], age_min: float, open_ke
             ):
                 recovered.add(key)
         elif key.startswith("container:"):
+            if key == "container:None":
+                recovered.add(key)  # malformed legacy alert from a nameless collector row
+                continue
             c = containers.get(key)
             if c and c.get("name") in RETIRED_CONTAINERS:
                 recovered.add(key)  # retired: an old alert is obsolete, not a recovery claim
@@ -349,7 +352,8 @@ def inventory(ctx: JobContext) -> dict:
                 sum(
                     1
                     for c in snap.get("containers") or []
-                    if c.get("name") not in RETIRED_CONTAINERS
+                    if c.get("name")
+                    and c.get("name") not in RETIRED_CONTAINERS
                     and (c.get("state") != "running" or c.get("health") not in (None, "healthy"))
                 ),
             ),
