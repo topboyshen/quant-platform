@@ -55,6 +55,8 @@ class OutcomeSettings:
     slippage_rate: float = 0.0005
     stamp_duty_rate: float = 0.0  # ETF default: stamp duty exempt
     limit_up_unfilled_ratio: float = 0.095
+    limit_down_unfilled_ratio: float = 0.095
+    one_tick_range_ratio: float = 0.002
 
 
 def _as_date(value: Any) -> dt.date:
@@ -106,6 +108,107 @@ def _unfilled(
             "fill_reason": reason,
         },
     }
+
+
+def _uncertain(
+    decision: dict[str, Any],
+    *,
+    horizon: int,
+    as_of: dt.date,
+    entry_bar: DailyBar,
+    exit_date: dt.date,
+    prior_close: float,
+    reason: str,
+    settings: OutcomeSettings,
+) -> dict[str, Any]:
+    entry_open = float(entry_bar.open)
+    return {
+        "decision_id": decision["decision_id"],
+        "horizon_sessions": horizon,
+        "evaluation_as_of": as_of,
+        "entry_date": entry_bar.date,
+        "exit_date": exit_date,
+        "entry_price": entry_open,
+        "exit_price": None,
+        "gross_return": None,
+        "net_return": None,
+        "benchmark_return": None,
+        "excess_return": None,
+        "fill_status": "uncertain",
+        "fill_reason": reason,
+        "details": {
+            "evaluation_as_of": as_of.isoformat(),
+            "benchmark_code": settings.benchmark_code,
+            "entry_open": entry_open,
+            "prior_close": prior_close,
+            "gap_return": entry_open / prior_close - 1,
+            "day_range_ratio": (float(entry_bar.high) - float(entry_bar.low)) / entry_open,
+            "queue_state": "uncertain",
+            "daily_bar_cannot_confirm_fill": True,
+            "price_basis": "uncertain",
+            "fill_reason": reason,
+        },
+    }
+
+
+def _pending_exit(
+    decision: dict[str, Any],
+    *,
+    horizon: int,
+    as_of: dt.date,
+    entry_bar: DailyBar,
+    exit_bar: DailyBar,
+    benchmark_entry: DailyBar | None,
+    benchmark_exit: DailyBar | None,
+    prior_close: float,
+    settings: OutcomeSettings,
+) -> dict[str, Any]:
+    entry_open = float(entry_bar.open)
+    exit_close = float(exit_bar.close)
+    entry_fill = entry_open * (1 + settings.slippage_rate)
+    benchmark_return = None
+    if benchmark_entry is not None and benchmark_exit is not None:
+        benchmark_return = float(benchmark_exit.close) / float(benchmark_entry.open) - 1
+    return {
+        "decision_id": decision["decision_id"],
+        "horizon_sessions": horizon,
+        "evaluation_as_of": as_of,
+        "entry_date": entry_bar.date,
+        "exit_date": exit_bar.date,
+        "entry_price": entry_open,
+        "exit_price": None,
+        "gross_return": None,
+        "net_return": None,
+        "benchmark_return": benchmark_return,
+        "excess_return": None,
+        "fill_status": "unfilled",
+        "fill_reason": "limit_down_no_executable_liquidity",
+        "details": {
+            "evaluation_as_of": as_of.isoformat(),
+            "benchmark_code": settings.benchmark_code,
+            "entry_open": entry_open,
+            "entry_fill": entry_fill,
+            "exit_close": exit_close,
+            "exit_fill": None,
+            "exit_state": "pending",
+            "position_retained": True,
+            "unrealized_return": exit_close / entry_fill - 1,
+            "prior_close": prior_close,
+            "price_basis": "uncertain",
+            "fill_reason": "limit_down_no_executable_liquidity",
+        },
+    }
+
+
+def _one_tick_limit_move(entry_bar: DailyBar, prior_close: float, settings: OutcomeSettings) -> bool:
+    gap = float(entry_bar.open) / prior_close - 1
+    day_range = (float(entry_bar.high) - float(entry_bar.low)) / float(entry_bar.open)
+    return abs(gap) >= settings.limit_up_unfilled_ratio and day_range <= settings.one_tick_range_ratio
+
+
+def _sealed_limit_down(exit_bar: DailyBar, previous_close: float, settings: OutcomeSettings) -> bool:
+    sealed = float(exit_bar.high) <= float(exit_bar.low) * 1.000001
+    return sealed and float(exit_bar.close) / previous_close - 1 <= -settings.limit_down_unfilled_ratio
 
 
 def _filled(
@@ -179,6 +282,8 @@ def _filled(
             "mae": mae,
             "fees_return": fee_return,
             "slippage_return": slippage_return,
+            "price_basis": "raw" if decision.get("price_basis") == "raw" else "uncertain",
+            "price_basis_source": decision.get("price_basis") or "not_provided",
             "fill_reason": "next_session_open",
         },
     }
@@ -213,6 +318,7 @@ def evaluate_decision(
         prior_close = None
 
     terminal_unfilled_reason = ""
+    terminal_uncertain_reason = ""
     if entry_bar is None:
         terminal_unfilled_reason = "suspended_or_no_next_session_bar"
     elif prior_close is None or prior_close <= 0:
@@ -222,6 +328,8 @@ def evaluate_decision(
         and float(entry_bar.low) >= float(entry_bar.open) * 0.999
     ):
         terminal_unfilled_reason = "limit_up_no_executable_liquidity"
+    elif _one_tick_limit_move(entry_bar, prior_close, settings):
+        terminal_uncertain_reason = "queue_uncertain"
 
     results: list[dict[str, Any]] = []
     for horizon in HORIZONS:
@@ -240,6 +348,21 @@ def evaluate_decision(
                 )
             )
             continue
+        if terminal_uncertain_reason:
+            assert entry_bar is not None and prior_close is not None
+            results.append(
+                _uncertain(
+                    decision,
+                    horizon=horizon,
+                    as_of=as_of,
+                    entry_bar=entry_bar,
+                    exit_date=exit_date,
+                    prior_close=prior_close,
+                    reason=terminal_uncertain_reason,
+                    settings=settings,
+                )
+            )
+            continue
         exit_bar = code_by_date.get(exit_date)
         benchmark_entry = benchmark_by_date.get(entry_date)
         benchmark_exit = benchmark_by_date.get(exit_date)
@@ -251,6 +374,22 @@ def evaluate_decision(
                     as_of=as_of,
                     entry_date=entry_date,
                     reason="exit_bar_missing_or_suspended",
+                    settings=settings,
+                )
+            )
+            continue
+        previous_exit_close = next((float(bar.close) for bar in reversed(code_bars) if bar.date < exit_bar.date), None)
+        if previous_exit_close is not None and _sealed_limit_down(exit_bar, previous_exit_close, settings):
+            results.append(
+                _pending_exit(
+                    decision,
+                    horizon=horizon,
+                    as_of=as_of,
+                    entry_bar=entry_bar,
+                    exit_bar=exit_bar,
+                    benchmark_entry=benchmark_entry,
+                    benchmark_exit=benchmark_exit,
+                    prior_close=prior_close,
                     settings=settings,
                 )
             )

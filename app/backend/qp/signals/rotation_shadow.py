@@ -539,11 +539,12 @@ def _plan(
 ) -> RotationShadowRun:
     selected, universe = _selection(frames, day)
     decided_at, snapshot_isolation, rows = _read_risk_snapshot(session)
-    if _aware(decided_at).astimezone(CST).date() != day:
-        binding = _unverified_selection()
-    else:
-        binding = bind_same_day_risk(rows, day, decided_at)
-        binding["snapshot_isolation"] = snapshot_isolation
+    # The observation must belong to the plan's signal date, but the plan itself
+    # can be frozen later: initialize() freezes the next-open plan the following
+    # morning, and a holiday can separate signal date and decision date.
+    # bind_same_day_risk() already enforces observed_at.date() == day.
+    binding = bind_same_day_risk(rows, day, decided_at)
+    binding["snapshot_isolation"] = snapshot_isolation
     detail = {
         "parameters_sha256": _digest(account.parameters),
         "input_sha256": _input_digest(frames, day),

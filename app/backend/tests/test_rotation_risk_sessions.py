@@ -535,3 +535,49 @@ def test_commit_after_snapshot_and_before_select_returns_is_not_bound(engine):
         with Session(engine) as cleanup:
             _cleanup_all(cleanup)
             cleanup.commit()
+
+
+def test_morning_initialize_binds_prior_signal_day_risk(engine):
+    """The next-open plan may be frozen the following morning.
+
+    The signal date is the prior session; the risk observation belongs to that
+    signal date, not to the morning on which initialize() runs.
+    """
+    with Session(engine) as setup:
+        _cleanup_all(setup)
+        H._seed_rotation(setup)
+        H._risk(setup, H.ROTATION_BASE, "ok")
+        setup.commit()
+    try:
+        with Session(engine) as planner:
+            stamp = dt.datetime.combine(H.ROTATION_START, dt.time(8), CST)
+            with patch.object(H.rot, "now_cst", return_value=stamp):
+                out = H.rot.initialize(
+                    planner,
+                    start_date=H.ROTATION_START,
+                    phase="forward",
+                    rule_version="qp-rotation.contract",
+                    codes=H.ROTATION_CODES,
+                )
+            assert out.get("ok") is True, out
+            planner.commit()
+            plan = planner.get(RotationShadowRun, out["plan_id"])
+            binding = plan.detail["risk_binding"]
+            assert binding["status"] == "fresh", binding
+            assert binding["level"] == "ok"
+            assert binding["observation_id"] is not None
+            assert plan.detail.get("decided_at", "").startswith(f"{H.ROTATION_START.isoformat()}T08:00")
+        with Session(engine) as executor:
+            with patch.object(
+                H.rot, "now_cst", return_value=dt.datetime.combine(H.ROTATION_START, dt.time(16), CST)
+            ):
+                replay = H.rot.replay(
+                    executor, until=H.ROTATION_START, phase="forward", rule_version="qp-rotation.contract"
+                )
+            assert replay.get("ok") is True, replay
+            executor.commit()
+            assert H._positions(executor, H.ROTATION_START)
+    finally:
+        with Session(engine) as cleanup:
+            _cleanup_all(cleanup)
+            cleanup.commit()
