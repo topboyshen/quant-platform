@@ -37,6 +37,17 @@ Sources:
 - Legacy research timers `research-trading-calendar-refresh.timer`,
   `research-index-close-cache.timer` and `research-ledger-healthcheck.timer` are
   enabled and active; their oneshot services are inactive between runs.
+- qp is a confirmed consumer of the legacy research data:
+  `qp-market-read.service` (06:45/17:00/23:25) runs
+  `python -m qp.collect.market`, which reads `research-data/snapshot.db`,
+  `core-market.db`, the research-data health file and Qlib `.day.bin`; the
+  subsequent `market.ingest_legacy` run reports 10 items and 0 mismatches.
+  Qlib reference dates in the latest snapshot are **2026-11-24**.
+- The `research-data` producer is **degraded**: its health file is `critical` /
+  `FROZEN` (generated 2026-11-12, effective 2026-10-08), `snapshot.db` was last
+  written 2026-09-29 and `core-market.db` 2026-11-12; the 22:30 cron has been
+  `deferred` since 2026-11-16 with `independent trading calendar evidence
+  invalid or stale`.
 
 ## 2. Per-service evidence
 
@@ -46,8 +57,8 @@ Sources:
 | `research/astock` | path exists; morning cron commented `SUPERSEDED_2026-09-08`; no active unit/process | old Telegram delivery disabled; no active timer found | qp M8 morning shadow | commented cron line can be restored; no active producer to restart | **inactive** — no runtime to stop |
 | `signals/signal-bus` | path exists; no unit/process/timer/cron; references only in archived work dirs | no active consumer found in systemd/nginx/cron | qp signals/notify | not applicable while inactive; archived scripts reference `~/signal-bus/scripts` | **inactive** — historical references only |
 | `reports/daily-report-tracking` | frozen source path exists; **consumer defined**: `quant-research-daily-summary.service` (static, inactive, no timer, no journal in 30 days) runs `run_scheduled.sh` | consumer service exists but is not scheduled or running | qp reports (`reports.import_daily`, manual only) | `systemctl start quant-research-daily-summary.service`; files retained | **inactive** — consumer defined but not scheduled |
-| `market-data/research-data` | path exists; ubuntu cron 22:30 nightly snapshot | qlib / research consumers not individually confirmed | qp market imports | restore the 22:30 cron line | **partial** |
-| `market-data/qlib-scripts` | ubuntu cron 22:00 update, 06:30 retry, 09:15 prune | active data producer; consumers not individually confirmed | qp `market.qlib_check` / market imports | restore the three cron lines | **partial** |
+| `market-data/research-data` | path exists; ubuntu cron 22:30 active but **degraded**: `snapshot.db` 2026-09-29, `core-market.db` 2026-11-12, health `critical`/`FROZEN` (generated 2026-11-12); runs deferred since 2026-11-16 (`independent trading calendar evidence invalid or stale`) | **qp consumer confirmed**: `qp-market-read.service` (06:45/17:00/23:25) reads `snapshot.db` / `core-market.db` / health; `market.ingest_legacy` 10 items / 0 mismatch; Qlib reference dates 2026-11-24 | qp Qlib/market mirror; producer not replaced; AStock calendar is the dependency | restore the 22:30 cron line; fix independent calendar evidence before retirement | **partial** — producer degraded, consumer confirmed |
+| `market-data/qlib-scripts` | ubuntu cron 22:00 update, 06:30 retry, 09:15 prune; Qlib data mtime 2026-11-24 | **qp consumer confirmed**: `market.read` reads `.day.bin`; reference dates 2026-11-24; `market.qlib_check` latest EOD 2026-11-24 | qp read-only mirror (no data copy) | restore the three cron lines | **partial** — source active, mirror current |
 | `research/research-ledger` | `research-ledger.service` active, `127.0.0.1:18769`; healthcheck timer | qp `qp-research-ledger.timer` imports ledger at 09:40 | `research.import_ledger` | `systemctl start research-ledger.service` | **confirmed** for unit/consumer |
 | `research/research-system-phase2` | `research-system-phase2.service` active, `127.0.0.1:18768` | qp `research.import_phase2` job | `research.import_phase2` | `systemctl start research-system-phase2.service` | **confirmed** for unit/consumer |
 | `ops/dashboard` | path absent | none (moved) | `/next/` | none needed | **complete** |
@@ -73,16 +84,27 @@ The 2026-11-25 follow-up scan closed or narrowed the previous gaps:
   `systemctl start quant-research-daily-summary.service`.
 - Legacy research timers are enabled/active; calendar and index-close have qp
   replacements, while the ledger healthcheck remains source-specific.
+- `research-data` / `qlib`: qp is a confirmed consumer via
+  `qp-market-read.service` and `market.ingest_legacy` (10 items, 0 mismatches);
+  Qlib reference dates are 2026-11-24. The `research-data` producer itself is
+  degraded (health `critical`/`FROZEN`, snapshot 2026-09-29, core DB 2026-11-12,
+  deferred since 2026-11-16), so the qp mirror is only as fresh as its legacy
+  inputs. The AStock calendar is the stale dependency; qp `market.calendar`
+  exists but is not wired into the research-data replacement.
 
 ## 4. Remaining M9 checklist gaps
 
 For every row still marked **partial** or **inactive**, the corresponding
 `M9-EXECUTION-CHECKLIST.md` fields are not complete:
 
-- **Consumer switched**: no end-to-end proof that `research-data` / `qlib`
-  consumers read qp only; the qp replacements for the legacy research timers are
-  not fully cut over. `trading-radar`'s intake still receives whatever the
-  QuantDinger side sends.
+- **Consumer switched**: qp is a confirmed consumer of `research-data` / `qlib`,
+  but the replacement producers are not qp-owned; the qp replacements for the
+  legacy research timers are not fully cut over. `trading-radar`'s intake still
+  receives whatever the QuantDinger side sends.
+- **Data freshness**: `research-data` health is `critical` / `FROZEN`
+  (2026-11-12), `snapshot.db` is from 2026-09-29 and `core-market.db` from
+  2026-11-12; Qlib is current to 2026-11-24. Retirement is blocked until an
+  independent calendar/health source replaces the stale AStock dependency.
 - **Rollback tested**: restart commands, unit files, enabled/static states and
   container status are verified, but no actual stop/start or mock-unit drill was
   run for the legacy units (requires separate authorization).
