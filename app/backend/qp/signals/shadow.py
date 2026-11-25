@@ -29,6 +29,7 @@ from qp.signals.outcomes import (
     evaluate_decision,
     normalise_bars,
 )
+from qp.signals.return_roles import COUNTERFACTUAL_UNGATED, stamp
 
 _COLUMNS = [
     "decision_date",
@@ -237,6 +238,8 @@ def collect(
             if not outcomes:
                 summary["not_mature"] += 1
                 continue
+            for item in outcomes:
+                item["details"] = stamp(item.get("details"), COUNTERFACTUAL_UNGATED)
             inserted = _persist(session, outcomes)
             summary["inserted"] += len(inserted)
             summary["unfilled"] += sum(1 for status in inserted.values() if status == "unfilled")
@@ -261,4 +264,6 @@ def summary(session: Session) -> dict[str, Any]:
         "outcomes": int(outcomes),
         "last_sample_date": last.isoformat() if last else None,
         "last_outcome_date": last_outcome.isoformat() if last_outcome else None,
+        "return_role": "counterfactual_ungated",
+        "executable": False,
     }

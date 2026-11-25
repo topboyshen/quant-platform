@@ -29,6 +29,7 @@ from qp.signals.outcomes import (
     evaluate_decision,
     normalise_bars,
 )
+from qp.signals.return_roles import COUNTERFACTUAL_UNGATED, stamp
 from qp.signals.universe import TARGETS, Target
 
 V2_RULE = "qp-swing.v2"
@@ -311,6 +312,8 @@ def collect(
             if not outcomes:
                 summary["not_mature"] += 1
                 continue
+            for row in outcomes:
+                row["details"] = stamp(row.get("details"), COUNTERFACTUAL_UNGATED)
             inserted = _persist(session, outcomes)
             summary["inserted"] += len(inserted)
             summary["unfilled"] += sum(1 for status in inserted.values() if status == "unfilled")
@@ -343,4 +346,6 @@ def summary(session: Session, rule_version: str = V2_RULE) -> dict[str, Any]:
         "samples": int(samples),
         "outcomes": int(outcomes),
         "last_sample_date": last.isoformat() if last else None,
+        "return_role": "counterfactual_ungated",
+        "executable": False,
     }

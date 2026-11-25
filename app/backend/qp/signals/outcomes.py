@@ -39,6 +39,7 @@ from qp.models.market import TradingDay
 from qp.models.signals import DecisionOutcome, TargetDecision
 from qp.signals import chain
 from qp.signals.eod import now_cst
+from qp.signals.return_roles import role_for_decision, stamp
 
 HORIZONS: tuple[int, ...] = (1, 3, 5, 10, 20)
 DEFAULT_BENCHMARK = "510300"
@@ -455,6 +456,9 @@ def evaluate_pending(
             if not outcomes:
                 summary["not_mature"] += 1
                 continue
+            role = role_for_decision(decision.decision_state, decision.risk_action)
+            for row in outcomes:
+                row["details"] = stamp(row.get("details"), role)
             inserted = _persist(session, outcomes)
             summary["inserted"] += len(inserted)
             summary["unfilled"] += sum(1 for status in inserted.values() if status == "unfilled")

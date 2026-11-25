@@ -4,7 +4,7 @@
       <div>
         <div class="eyebrow">C13 · 独立模拟账户</div>
         <h3 id="rotation-title">轮动影子 <span class="paper-label">仅纸面观察</span></h3>
-        <p>250 交易日动量 · Top 8 等权 · 每 20 交易日调仓 · 无市场过滤</p>
+        <p>250 交易日动量 · Top 8 等权 · 每 20 交易日调仓 · 执行前限制新增风险，不强制清仓</p>
       </div>
       <button class="control" :disabled="loading" @click="load">{{ loading ? '读取中…' : '刷新记录' }}</button>
     </header>
@@ -27,6 +27,7 @@
           ? '前一交易日仅作资金基线，不计观察天数；不继承回放盈亏与持仓。'
           : '回放净值、调仓与交易日均属于历史区间，不计入前向观察。' }}
           本页始终为模拟，不发送通知，不进入实盘或正式记录链。
+          近期风控为 critical、warning 或 unavailable 时不新开仓、不加仓；growth_blocked 时不新增成长类仓位。已有持仓继续估值，策略自身的减仓仍允许。等权基准和买入持有基准不套用这道闸。
         </p>
       </div>
     </aside>

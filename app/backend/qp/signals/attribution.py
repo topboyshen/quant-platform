@@ -22,6 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from qp.signals.chain import ELIGIBILITY_POLICY, HORIZONS, SAMPLE_THRESHOLD
+from qp.signals.return_roles import EXECUTABLE, role_for_chain_row
 
 CST = dt.timezone(dt.timedelta(hours=8))
 DIMENSIONS = ("eligibility", "sector", "signal_type", "origin", "signal_state", "risk_state")
@@ -294,7 +295,10 @@ def build_report(
             item["signal_types"] = ["unknown"]
         enriched.append(item)
     matured = [row for row in enriched if _is_matured(row)]
+    for row in matured:
+        row["return_role"] = role_for_chain_row(row)
     eligible = [row for row in matured if row.get("verdict") == "eligible"]
+    executable_rows = [row for row in matured if row.get("return_role") == EXECUTABLE]
     triggered = [row for row in matured if row.get("signal_state") == "triggered"]
     signal_type_known = sum(1 for row in matured if row.get("signal_types") != ["unknown"])
     native_matured = sum(1 for row in matured if row.get("origin") == "native")
@@ -317,12 +321,14 @@ def build_report(
         "group_by": list(dimensions),
         "dimension_labels": {dimension: DIMENSION_LABELS[dimension] for dimension in dimensions},
         "definitions": {
-            "overall": "所有成熟且成交的结果，含未触发基线",
+            "overall": "所有成熟且成交的结果，含未触发基线和未过闸样本，不是可执行收益",
+            "executable": "有资格、已触发且风控未阻断的成熟成交，才是可执行收益",
             "eligible": "当前资格判定为 eligible 的成熟结果",
             "triggered": "当前信号状态为 triggered 的成熟结果",
             "sample_status": "eligible_n 达到阈值才为 sufficient",
         },
         "overall": _stats(matured),
+        "executable": _stats(executable_rows),
         "eligible": _stats(eligible),
         "triggered": _stats(triggered),
         "sample": {
@@ -385,8 +391,12 @@ def markdown(data: dict[str, Any]) -> str:
         f"- 截至：{data['as_of']}；范围：{data.get('start') or '全部'} → {data.get('end') or '全部'}",
         f"- 成熟且成交：{data['sample']['matured_filled']}；合格：{data['sample']['eligible_matured']}"
         f"；阈值：{data['threshold']}",
-        f"- 总体：胜率 {_pct(data['overall']['win_rate'])}，平均净收益 {_pct(data['overall']['avg_net_return'])}，"
+        f"- 总体（含研究/未过闸，不是可执行收益）：胜率 {_pct(data['overall']['win_rate'])}，"
+        f"平均净收益 {_pct(data['overall']['avg_net_return'])}，"
         f"平均超额 {_pct(data['overall']['avg_excess_return'])}",
+        f"- 可执行：胜率 {_pct(data['executable']['win_rate'])}，"
+        f"平均净收益 {_pct(data['executable']['avg_net_return'])}，"
+        f"平均超额 {_pct(data['executable']['avg_excess_return'])}",
         f"- 合格样本：胜率 {_pct(data['eligible']['win_rate'])}，平均净收益 {_pct(data['eligible']['avg_net_return'])}，"
         f"平均超额 {_pct(data['eligible']['avg_excess_return'])}",
         "",

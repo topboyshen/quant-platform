@@ -23,6 +23,7 @@ interface EntryBasis {
 interface Outcome {
   id: number; code: string; name: string; decision_date: string; horizon_sessions: number
   net_return: number | null; benchmark_return: number | null; excess_return: number | null; fill_status: string
+  return_role?: string | null; return_role_label?: string | null; executable_net_return?: number | null
   entry_basis?: EntryBasis | null
 }
 const rows = ref<Outcome[]>([])
@@ -56,7 +57,9 @@ const columns = [
   { title: '名称', key: 'name' },
   { title: '决策日', key: 'decision_date', width: 110 },
   { title: '持有', key: 'horizon_sessions', width: 70 },
-  { title: '净收益', key: 'net_return', width: 100, render: (r: Outcome) => pct(r.net_return) },
+  { title: '收益角色', key: 'return_role_label', width: 120, render: (r: Outcome) => r.return_role_label || '无依据' },
+  { title: '记录净收益', key: 'net_return', width: 110, render: (r: Outcome) => pct(r.net_return) },
+  { title: '可执行净收益', key: 'executable_net_return', width: 120, render: (r: Outcome) => pct(r.executable_net_return ?? null) },
   { title: '基准', key: 'benchmark_return', width: 100, render: (r: Outcome) => pct(r.benchmark_return) },
   { title: '超额', key: 'excess_return', width: 100, render: (r: Outcome) => pct(r.excess_return) },
   { title: '成交', key: 'fill_status', width: 90 },

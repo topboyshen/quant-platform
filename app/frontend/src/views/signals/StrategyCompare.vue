@@ -32,9 +32,10 @@
                   :empty-text="showBaseline ? '没有满足样本门槛的归因分组' : '没有非基线分组满足样本门槛（仅基线分组已隐藏）'">
         <template v-if="report">
           <n-space size="small" style="margin-bottom: 12px">
-            <n-tag size="small">总体 n={{ report.overall.n }}</n-tag>
-            <n-tag size="small">总体胜率 {{ pct(report.overall.win_rate) }}</n-tag>
-            <n-tag size="small">总体净收益 {{ pct(report.overall.avg_net_return) }}</n-tag>
+            <n-tag size="small">可执行 n={{ report.executable?.n ?? 0 }}</n-tag>
+            <n-tag size="small">可执行净收益 {{ pct(report.executable?.avg_net_return ?? null) }}</n-tag>
+            <n-tag size="small">总体含研究样本 n={{ report.overall.n }}</n-tag>
+            <n-tag size="small">总体净收益（非可执行） {{ pct(report.overall.avg_net_return) }}</n-tag>
             <n-tag size="small">总体超额 {{ pct(report.overall.avg_excess_return) }}</n-tag>
             <n-tag size="small" type="warning">合格样本 {{ report.sample.eligible_matured }}/{{ report.threshold }}</n-tag>
           </n-space>

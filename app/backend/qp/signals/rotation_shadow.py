@@ -32,12 +32,14 @@ from qp.market.http import FetchError, fetch
 from qp.market.kline import DailyBar, exchange_prefixed_code
 from qp.models.market import TradingDay
 from qp.models.signals import (
+    RiskState,
     RotationShadowAccount,
     RotationShadowBar,
     RotationShadowDay,
     RotationShadowRun,
 )
-from qp.signals.eod import now_cst
+from qp.signals.eod import CST, now_cst
+from qp.signals.risk import is_growth_risk_target
 from qp.signals.universe import TARGETS
 
 RULE = "qp-rotation.v1"
@@ -54,7 +56,10 @@ SLIPPAGE = 0.0005
 LOT = 100
 MIN_AMOUNT = 5_000_000.0
 NAMES = {target.code: target.name for target in TARGETS}
+SECTORS = {target.code: target.sector for target in TARGETS}
 CODES = tuple(NAMES)
+GROWTH_CODES = {code for code in CODES if is_growth_risk_target(SECTORS.get(code), NAMES.get(code))}
+NO_NEW_RISK = frozenset({"critical", "warning", "unavailable"})
 
 
 class DataIssue(ValueError):
@@ -608,8 +613,66 @@ def initialize(
     }
 
 
+def _execution_risk_level(session: Session, day: dt.date) -> str | None:
+    """Latest risk observation on the execution day or the previous few sessions.
+
+    A missing row is not treated as ``unavailable``: there is no basis to invent a
+    block. An explicit critical/warning/unavailable/growth_blocked row is a basis.
+    """
+    start = dt.datetime.combine(day - dt.timedelta(days=4), dt.time.min, tzinfo=CST)
+    end = dt.datetime.combine(day, dt.time.max, tzinfo=CST)
+    row = session.scalar(
+        select(RiskState)
+        .where(RiskState.observed_at >= start, RiskState.observed_at <= end)
+        .order_by(RiskState.observed_at.desc())
+        .limit(1)
+    )
+    return None if row is None else str(row.level)
+
+
+def _increase_blocked(level: str | None, codes: set[str]) -> set[str]:
+    """Codes that must not be opened or increased. Reductions stay allowed."""
+    if not level or level == "ok":
+        return set()
+    if level == "growth_blocked":
+        return {code for code in codes if code in GROWTH_CODES}
+    return set(codes)
+
+
+def _risk_gate_record(level: str | None, blocked: set[str]) -> dict[str, Any]:
+    if not level:
+        exposure = "no_observation"
+    elif level == "ok":
+        exposure = "open"
+    elif level == "growth_blocked":
+        exposure = "growth_capped"
+    else:
+        exposure = "blocked"
+    return {
+        "level": level,
+        "new_exposure": exposure,
+        "increase_blocked": sorted(blocked),
+        "forced_liquidation": False,
+        "benchmarks_ungated": True,
+    }
+
+
+def _cap_increases(desired: dict[str, int], shares: dict[str, int], blocked: set[str]) -> dict[str, int]:
+    capped = dict(desired)
+    for code in blocked:
+        capped[code] = min(capped.get(code, 0), shares.get(code, 0))
+        if capped[code] <= 0:
+            capped.pop(code, None)
+    return capped
+
+
 def _trade(
-    cash: float, shares: dict[str, int], target: dict[str, float], bars: dict[str, DailyBar]
+    cash: float,
+    shares: dict[str, int],
+    target: dict[str, float],
+    bars: dict[str, DailyBar],
+    *,
+    increase_blocked: set[str] | None = None,
 ) -> tuple[float, list[dict[str, Any]], float, float]:
     """Real raw-price lots; sell every reduction before any buy, both sides costed."""
     needed = set(shares) | set(target)
@@ -624,6 +687,8 @@ def _trade(
         for code, weight in target.items()
         if weight > 0
     }
+    if increase_blocked:
+        desired = _cap_increases(desired, shares, increase_blocked)
     traded = 0.0
     fills = []
     for side in ("sell", "buy"):
@@ -744,6 +809,8 @@ def replay(
         if len(due) > 1 or any(p.execute_date is not None and p.execute_date < day for p in plans.values()):
             return _quality(account, day, "pending_plan_clock_conflict")
         plan = due[0] if due else None
+        risk_level = _execution_risk_level(session, day)
+        increase_blocked: set[str] = set()
         if plan is not None:
             # Only infer next date for a plan persisted before the calendar horizon.
             if _next_open(session, plan.signal_date) != day:
@@ -751,6 +818,7 @@ def replay(
             if plan.detail.get("parameters_sha256") != _digest(account.parameters):
                 return _quality(account, day, "plan_parameters_changed")
             target = {s["code"]: float(s["weight"]) for s in plan.selected}
+            increase_blocked = _increase_blocked(risk_level, set(shares) | set(target))
             # Daily OHLC lock is an explicitly conservative fill approximation.
             for code in (
                 set(shares)
@@ -768,12 +836,16 @@ def replay(
                     change = bars[code].open / f.bars[j - 1].close - 1
                     if abs(change) >= 0.095:
                         return _quality(account, day, "涨跌停无法确认成交，纸面账本暂停", missing_codes=[code])
-            cash, fills, traded, value_open = _trade(cash, shares, target, bars)
+            cash, fills, traded, value_open = _trade(cash, shares, target, bars, increase_blocked=increase_blocked)
             plan.status = "executed"
             plan.execute_date = day
             plan.fills = fills
             plan.nav_before = round(value_open, 4)
             plan.turnover = round(traded / value_open, 4) if value_open > 0 else 0
+            plan.detail = {
+                **plan.detail,
+                "risk_gate": _risk_gate_record(risk_level, increase_blocked),
+            }
             ew["cash"], ew_fills, _, _ = _trade(ew["cash"], ew["shares"], dict(plan.detail["ew_weights"]), bars)
             bench_fills = []
             if index < 0:  # buy-and-hold, not silently rebalanced every 20 days
@@ -811,6 +883,7 @@ def replay(
                 "input_sha256": _digest(
                     [[c, str(day), b.open, b.high, b.low, b.close, b.volume] for c, b in sorted(bars.items())]
                 ),
+                "risk_gate": _risk_gate_record(risk_level, increase_blocked),
             },
         )
         session.add(row)
@@ -996,6 +1069,7 @@ def summary(
         "next_rebalance_date": str(next_signal) if next_signal else None,
         "next_execute_date": str(next_execute) if next_execute else None,
         "quality": account.quality,
+        "risk_gate": latest.detail.get("risk_gate"),
     }
     if series:
         result["series"] = [
