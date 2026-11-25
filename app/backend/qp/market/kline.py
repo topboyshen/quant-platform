@@ -1,8 +1,11 @@
 """Daily K-line sources for M4 (SHADOW): Eastmoney -> Tencent -> Sina -> akshare.
 
-Pure stdlib + ``qp.market.http``. The normalisation rules mirror the legacy fetcher:
-ascending unique dates (last wins), positive closes, and an exact ``required_date``
-check for EOD. A source that only has the previous session is treated as a
+Pure stdlib + ``qp.market.http``. Normalisation keeps ascending unique dates (last
+valid row wins) and drops rows whose OHLC cannot describe a real session: every
+price must be finite and positive, ``low <= open/close <= high``. Dropped rows are
+reported through ``rejected`` so callers can name the symbol, source and date
+instead of silently treating the day as absent. An exact ``required_date`` check
+for EOD is unchanged; a source that only has the previous session is treated as a
 publication lag and may trigger one bounded wait per decision date.
 """
 
@@ -57,6 +60,27 @@ class KlineResult:
     source: str = ""
     attempts: list[dict] = field(default_factory=list)
     publication_lag: bool = False
+    rejected: list[dict] = field(default_factory=list)
+
+
+def bar_invalid_reason(bar: DailyBar) -> str | None:
+    """Return why a daily bar cannot describe a real session, or ``None``.
+
+    Shared by the fetch path and the outcome path so a self-contradictory bar
+    (for example high 9 / low 11) can never reach a return calculation.
+    """
+    prices = (bar.open, bar.high, bar.low, bar.close)
+    if not all(math.isfinite(value) for value in prices):
+        return "non_finite_price"
+    if any(value <= 0 for value in prices):
+        return "non_positive_price"
+    if bar.high < bar.low:
+        return "high_below_low"
+    if not bar.low <= bar.open <= bar.high:
+        return "open_out_of_range"
+    if not bar.low <= bar.close <= bar.high:
+        return "close_out_of_range"
+    return None
 
 
 def resolve_secid(code: str) -> str:
@@ -133,11 +157,16 @@ def parse_sina_klines(items: list[dict]) -> list[DailyBar]:
     return bars
 
 
-def normalize_bars(bars: list[DailyBar]) -> list[DailyBar]:
+def normalize_bars(bars: list[DailyBar], *, rejected: list[dict] | None = None) -> list[DailyBar]:
+    """Keep coherent rows only; append ``{date, reason}`` for each dropped row."""
     seen: dict[dt.date, DailyBar] = {}
     for bar in sorted(bars, key=lambda b: b.date):
-        if bar.close > 0 and math.isfinite(bar.close):
-            seen[bar.date] = bar
+        reason = bar_invalid_reason(bar)
+        if reason is not None:
+            if rejected is not None:
+                rejected.append({"date": bar.date.isoformat(), "reason": reason})
+            continue
+        seen[bar.date] = bar
     return list(seen.values())
 
 
@@ -247,17 +276,20 @@ class KlineFetcher:
     def _attempt(self, code: str, required_date: dt.date | None, previous_session: dt.date | None) -> KlineResult:
         out = KlineResult()
         for name, fetch in self.sources:
-            attempt = {"source": name, "rows": 0, "latest_date": None, "error": ""}
+            attempt = {"source": name, "rows": 0, "latest_date": None, "error": "", "rejected": 0}
+            rejected: list[dict] = []
             try:
-                bars = normalize_bars(fetch(code, self.days))
+                bars = normalize_bars(fetch(code, self.days), rejected=rejected)
             except Exception as exc:  # source isolation: one adapter never kills the run
                 attempt["error"] = type(exc).__name__
                 out.attempts.append(attempt)
                 continue
+            out.rejected.extend({"code": code, "source": name, **item} for item in rejected)
             attempt["rows"], attempt["latest_date"] = len(bars), (bars[-1].date.isoformat() if bars else None)
+            attempt["rejected"] = len(rejected)
             out.attempts.append(attempt)
             if not bars:
-                attempt["error"] = "empty"
+                attempt["error"] = "all_bars_invalid" if rejected else "empty"
                 continue
             if required_date is not None and bars[-1].date != required_date:
                 if previous_session is not None and bars[-1].date == previous_session:

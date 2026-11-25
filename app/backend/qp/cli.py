@@ -433,6 +433,25 @@ def cmd_signals_shadow_outcomes(a) -> int:
     return 0
 
 
+def cmd_signals_outcomes(a) -> int:
+    """Collect pending outcomes, or reconcile recorded rows with the trading calendar."""
+    import datetime as dt
+
+    from qp.db import session_scope
+    from qp.signals.outcomes import evaluate_pending, reconcile_recorded
+
+    as_of = dt.date.fromisoformat(a.as_of) if a.as_of else None
+    day = dt.date.fromisoformat(a.date) if a.date else None
+    with session_scope() as s:
+        if a.reconcile:
+            out = reconcile_recorded(s, as_of=as_of, limit=a.limit, decision_date=day, dry_run=a.dry_run)
+        else:
+            out = evaluate_pending(s, as_of=as_of, limit=a.limit, decision_date=day)
+        s.commit()
+    print(json.dumps(out, ensure_ascii=False, default=str))
+    return 0 if out.get("ok", True) else 1
+
+
 def cmd_signals_acceptance(a) -> int:
     """M4 live acceptance invariants for one decision date (default: latest run)."""
     import datetime as dt
@@ -537,6 +556,13 @@ def main(argv: list[str] | None = None) -> int:
     so = sg.add_parser("shadow-outcomes")
     so.add_argument("--as-of", default=None)
     so.set_defaults(fn=cmd_signals_shadow_outcomes)
+    ou = sg.add_parser("outcomes")
+    ou.add_argument("--as-of", default=None)
+    ou.add_argument("--date", default=None)
+    ou.add_argument("--limit", type=int, default=500)
+    ou.add_argument("--reconcile", action="store_true", help="append chain revisions for recorded rows")
+    ou.add_argument("--dry-run", action="store_true", help="list affected rows without appending revisions")
+    ou.set_defaults(fn=cmd_signals_outcomes)
     rs = sg.add_parser("rule-shadow")
     rs.add_argument("--date", default=None)
     rs.add_argument("--since", default=None)

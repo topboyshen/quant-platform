@@ -24,10 +24,16 @@ from qp.signals.eod import now_cst
 from qp.signals.indicators import Bar, volume_breakout
 from qp.signals.outcomes import (
     DEFAULT_HISTORY_DAYS,
+    DETAIL_LIMIT,
     HORIZONS,
+    WINDOW_BENCHMARK,
+    WINDOW_CALENDAR,
     OutcomeSettings,
     evaluate_decision,
+    frame_for,
+    load_trading_sessions,
     normalise_bars,
+    rejection_map,
 )
 from qp.signals.return_roles import COUNTERFACTUAL_UNGATED, stamp
 from qp.signals.universe import TARGETS, Target
@@ -267,27 +273,47 @@ def collect(
     as_of = as_of or now_cst().date()
     fetcher = fetcher or KlineFetcher(days=DEFAULT_HISTORY_DAYS)
     pending = _pending(session, as_of=as_of, limit=limit, rule_version=rule_version)
+    sessions = load_trading_sessions(session, decision_dates=[row.decision_date for row in pending], as_of=as_of)
+    sessions_for_eval = sessions or None
     summary: dict[str, Any] = {
         "checked": 0,
         "inserted": 0,
         "not_mature": 0,
+        "waiting_data": 0,
         "unfilled": 0,
         "failed": 0,
         "benchmark_ok": False,
         "as_of": as_of.isoformat(),
+        "window_basis": None,
+        "invalid_bars": [],
+        "invalid_bar_count": 0,
+        "data_gaps": [],
+        "data_gap_count": 0,
     }
     if not pending:
         summary["benchmark_ok"] = True
         return summary
+    summary["window_basis"] = WINDOW_CALENDAR if sessions_for_eval else WINDOW_BENCHMARK
+    invalid_bars: list[dict[str, Any]] = []
+    all_gaps: list[dict[str, Any]] = []
     try:
-        benchmark = normalise_bars(fetcher.get(settings.benchmark_code).bars, as_of=as_of)
+        result = fetcher.get(settings.benchmark_code)
+        local: list[dict] = []
+        benchmark = normalise_bars(result.bars, as_of=as_of, rejected=local)
+        source = getattr(result, "source", "") or ""
+        benchmark_rejected = list(getattr(result, "rejected", []) or []) + [
+            {"code": settings.benchmark_code, "source": source, **item} for item in local
+        ]
+        invalid_bars.extend(benchmark_rejected)
+        benchmark_rejections = rejection_map(benchmark_rejected)
     except Exception:
         benchmark = []
+        benchmark_rejections = {}
     if not benchmark:
         summary["failed"] = len(pending)
         return summary
     summary["benchmark_ok"] = True
-    frames: dict[str, list[Any]] = {}
+    frames: dict[str, tuple[list[Any], dict[dt.date, str]]] = {}
     completed: dict[int, set[int]] = {}
     for signal_id, horizon in session.execute(
         select(RuleShadowOutcome.signal_id, RuleShadowOutcome.horizon_sessions).where(
@@ -299,18 +325,33 @@ def collect(
         summary["checked"] += 1
         try:
             if signal.code not in frames:
-                frames[signal.code] = normalise_bars(fetcher.get(signal.code).bars, as_of=as_of)
+                frames[signal.code] = frame_for(fetcher, signal.code, as_of=as_of, invalid=invalid_bars)
+            code_bars, code_rejections = frames[signal.code]
             payload = {
                 "decision_id": signal.id,
                 "decision_date": signal.decision_date,
                 "reference_close": (float(signal.reference_close) if signal.reference_close is not None else None),
                 "completed_horizons": completed.get(signal.id, set()),
             }
+            gaps: list[dict[str, Any]] = []
             outcomes = evaluate_decision(
-                payload, code_bars=frames[signal.code], benchmark_bars=benchmark, as_of=as_of, settings=settings
+                payload,
+                code_bars=code_bars,
+                benchmark_bars=benchmark,
+                as_of=as_of,
+                settings=settings,
+                sessions=sessions_for_eval,
+                code_rejections=code_rejections,
+                benchmark_rejections=benchmark_rejections,
+                data_gaps=gaps,
             )
+            for gap in gaps:
+                gap["code"] = signal.code
+            all_gaps.extend(gaps)
             if not outcomes:
                 summary["not_mature"] += 1
+                if gaps:
+                    summary["waiting_data"] += 1
                 continue
             for row in outcomes:
                 row["details"] = stamp(row.get("details"), COUNTERFACTUAL_UNGATED)
@@ -319,6 +360,10 @@ def collect(
             summary["unfilled"] += sum(1 for status in inserted.values() if status == "unfilled")
         except Exception:
             summary["failed"] += 1
+    summary["invalid_bars"] = invalid_bars[:DETAIL_LIMIT]
+    summary["invalid_bar_count"] = len(invalid_bars)
+    summary["data_gaps"] = all_gaps[:DETAIL_LIMIT]
+    summary["data_gap_count"] = len(all_gaps)
     return summary
 
 

@@ -5,7 +5,7 @@ days later.  The execution model follows the legacy ``SwingOutcomeEvaluator`` be
 the shadow compare matrix (C6) compares dates, fill status and returns against the
 legacy rows:
 
-* the entry session is the first benchmark session after the decision date and the
+* the entry session is the first trading session after the decision date and the
   entry price is that session's open plus slippage;
 * the exit price is the horizon session's close minus slippage;
 * benchmark 510300 uses the same entry open / exit close convention;
@@ -13,20 +13,29 @@ legacy rows:
 * a missing entry/exit bar or an unexecutable limit-up gap is recorded as
   ``unfilled`` with a reason - never as a zero return.
 
-The contract line "入场/出场用对应交易日收盘" conflicts with the legacy evaluator and
-with C6 row-level parity; this module follows the legacy behaviour and documents the
-divergence instead of silently inventing a different P&L series.
+The session sequence comes from the ``qp`` trading calendar when the caller supplies
+one (``evaluate_pending`` loads it).  Benchmark bars only supply prices: a missing or
+invalid benchmark bar is reported as a data gap and the horizon stays unrecorded, so
+a missing day can never move the entry/exit dates or produce a normal fill.  With no
+calendar rows the evaluator falls back to benchmark dates, preserving the legacy
+row-level comparison during backfill.
+
+OHLC validity is shared with the fetch path (``qp.market.kline.bar_invalid_reason``):
+rows where high < low or open/close fall outside [low, high] are rejected and the
+reason is carried into the outcome status instead of being used for a return.
 
 Rows are append-only: ``(decision_id, horizon_sessions)`` is unique and re-runs only
 fill horizons that are still missing.  Multiple horizons of one decision are one trade
-observed at several holding periods, never several trades.
+observed at several holding periods, never several trades.  Corrections to rows that
+were already written are appended to the record chain by ``reconcile_recorded``; the
+``decision_outcome`` row itself is never rewritten.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import math
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,7 +43,8 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from qp.market.kline import DailyBar, KlineFetcher, KlineResult
+from qp.market.kline import DailyBar, KlineFetcher, KlineResult, bar_invalid_reason
+from qp.models.chain import ChainOutcome
 from qp.models.market import TradingDay
 from qp.models.signals import DecisionOutcome, TargetDecision
 from qp.signals import chain
@@ -44,6 +54,9 @@ from qp.signals.return_roles import role_for_decision, stamp
 HORIZONS: tuple[int, ...] = (1, 3, 5, 10, 20)
 DEFAULT_BENCHMARK = "510300"
 DEFAULT_HISTORY_DAYS = 420
+WINDOW_CALENDAR = "calendar"
+WINDOW_BENCHMARK = "benchmark_bars"
+DETAIL_LIMIT = 100
 
 
 @dataclass(frozen=True)
@@ -67,13 +80,20 @@ def _as_date(value: Any) -> dt.date:
     return dt.date.fromisoformat(str(value)[:10])
 
 
-def normalise_bars(bars: Iterable[DailyBar], *, as_of: dt.date) -> list[DailyBar]:
-    """Keep observable, positive-close bars, unique by date (last wins), ascending."""
+def normalise_bars(bars: Iterable[DailyBar], *, as_of: dt.date, rejected: list[dict] | None = None) -> list[DailyBar]:
+    """Keep observable, coherent bars, unique by date (last wins), ascending.
+
+    ``rejected`` receives ``{date, reason}`` for every row dropped by the shared
+    OHLC check; callers add the symbol and source when they report the gap.
+    """
     seen: dict[dt.date, DailyBar] = {}
     for bar in bars:
-        if bar.date > as_of or not math.isfinite(bar.close) or bar.close <= 0:
+        if bar.date > as_of:
             continue
-        if not all(math.isfinite(value) and value > 0 for value in (bar.open, bar.high, bar.low)):
+        reason = bar_invalid_reason(bar)
+        if reason is not None:
+            if rejected is not None:
+                rejected.append({"date": bar.date.isoformat(), "reason": reason})
             continue
         seen[bar.date] = bar
     return [seen[day] for day in sorted(seen)]
@@ -289,6 +309,58 @@ def _filled(
     }
 
 
+def _window_dates(
+    decision_date: dt.date,
+    benchmark_bars: Sequence[DailyBar],
+    as_of: dt.date,
+    sessions: Sequence[dt.date] | None,
+) -> list[dt.date]:
+    source = sessions if sessions is not None else [bar.date for bar in benchmark_bars]
+    return sorted({day for day in source if decision_date < day <= as_of})
+
+
+def _missing_bar_reason(
+    day: dt.date,
+    rejections: Mapping[dt.date, str] | None,
+    *,
+    default: str,
+    prefix: str,
+) -> str:
+    reason = (rejections or {}).get(day)
+    return f"{prefix}:{reason}" if reason else default
+
+
+def _record_benchmark_gaps(
+    decision: dict[str, Any],
+    *,
+    horizon: int,
+    entry_date: dt.date,
+    exit_date: dt.date,
+    benchmark_by_date: Mapping[dt.date, DailyBar],
+    benchmark_rejections: Mapping[dt.date, str] | None,
+    data_gaps: list[dict[str, Any]] | None,
+) -> bool:
+    """Record missing benchmark bars for one horizon; return True when absent."""
+    missing: dict[dt.date, list[str]] = {}
+    for side, day in (("entry", entry_date), ("exit", exit_date)):
+        if day not in benchmark_by_date:
+            missing.setdefault(day, []).append(side)
+    for day, sides in sorted(missing.items()):
+        invalid = (benchmark_rejections or {}).get(day)
+        gap: dict[str, Any] = {
+            "decision_id": decision["decision_id"],
+            "horizon": horizon,
+            "date": day.isoformat(),
+            "sides": sides,
+            "reason": "benchmark_bar_invalid" if invalid else "benchmark_bar_missing",
+        }
+        if invalid:
+            gap["invalid_reason"] = invalid
+        if data_gaps is not None:
+            data_gaps.append(gap)
+    return bool(missing)
+
+
 def evaluate_decision(
     decision: dict[str, Any],
     *,
@@ -296,17 +368,29 @@ def evaluate_decision(
     benchmark_bars: Sequence[DailyBar],
     as_of: dt.date,
     settings: OutcomeSettings | None = None,
+    sessions: Sequence[dt.date] | None = None,
+    code_rejections: Mapping[dt.date, str] | None = None,
+    benchmark_rejections: Mapping[dt.date, str] | None = None,
+    data_gaps: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Return the matured, not-yet-recorded horizons for one decision (legacy parity)."""
+    """Return the matured, not-yet-recorded horizons for one decision.
+
+    ``sessions`` is the canonical trading-session sequence (decision date excluded,
+    ``as_of`` bounded).  Without it the evaluator falls back to benchmark bar dates,
+    which preserves legacy row-level parity but shifts windows when a benchmark day
+    is missing.  A missing or rejected benchmark bar at a horizon's entry/exit date
+    appends a structured entry to ``data_gaps`` and leaves the horizon unrecorded.
+    """
     settings = settings or OutcomeSettings()
     decision_date = _as_date(decision["decision_date"])
     completed = {int(value) for value in (decision.get("completed_horizons") or set())}
-    sessions = [bar.date for bar in benchmark_bars if decision_date < bar.date <= as_of]
-    if not sessions:
+    window = _window_dates(decision_date, benchmark_bars, as_of, sessions)
+    basis = WINDOW_CALENDAR if sessions is not None else WINDOW_BENCHMARK
+    if not window:
         return []
     code_by_date = {bar.date: bar for bar in code_bars}
     benchmark_by_date = {bar.date: bar for bar in benchmark_bars}
-    entry_date = sessions[0]
+    entry_date = window[0]
     entry_bar = code_by_date.get(entry_date)
     reference = decision.get("reference_close")
     prior_rows = [bar for bar in code_bars if bar.date <= decision_date]
@@ -320,7 +404,12 @@ def evaluate_decision(
     terminal_unfilled_reason = ""
     terminal_uncertain_reason = ""
     if entry_bar is None:
-        terminal_unfilled_reason = "suspended_or_no_next_session_bar"
+        terminal_unfilled_reason = _missing_bar_reason(
+            entry_date,
+            code_rejections,
+            default="suspended_or_no_next_session_bar",
+            prefix="entry_bar_invalid",
+        )
     elif prior_close is None or prior_close <= 0:
         terminal_unfilled_reason = "decision_reference_close_missing"
     elif (
@@ -333,9 +422,19 @@ def evaluate_decision(
 
     results: list[dict[str, Any]] = []
     for horizon in HORIZONS:
-        if horizon in completed or len(sessions) < horizon:
+        if horizon in completed or len(window) < horizon:
             continue
-        exit_date = sessions[horizon - 1]
+        exit_date = window[horizon - 1]
+        if _record_benchmark_gaps(
+            decision,
+            horizon=horizon,
+            entry_date=entry_date,
+            exit_date=exit_date,
+            benchmark_by_date=benchmark_by_date,
+            benchmark_rejections=benchmark_rejections,
+            data_gaps=data_gaps,
+        ):
+            continue
         if terminal_unfilled_reason:
             results.append(
                 _unfilled(
@@ -364,8 +463,6 @@ def evaluate_decision(
             )
             continue
         exit_bar = code_by_date.get(exit_date)
-        benchmark_entry = benchmark_by_date.get(entry_date)
-        benchmark_exit = benchmark_by_date.get(exit_date)
         if exit_bar is None:
             results.append(
                 _unfilled(
@@ -373,12 +470,19 @@ def evaluate_decision(
                     horizon=horizon,
                     as_of=as_of,
                     entry_date=entry_date,
-                    reason="exit_bar_missing_or_suspended",
+                    reason=_missing_bar_reason(
+                        exit_date,
+                        code_rejections,
+                        default="exit_bar_missing_or_suspended",
+                        prefix="exit_bar_invalid",
+                    ),
                     settings=settings,
                 )
             )
             continue
         previous_exit_close = next((float(bar.close) for bar in reversed(code_bars) if bar.date < exit_bar.date), None)
+        benchmark_entry = benchmark_by_date[entry_date]
+        benchmark_exit = benchmark_by_date[exit_date]
         if previous_exit_close is not None and _sealed_limit_down(exit_bar, previous_exit_close, settings):
             results.append(
                 _pending_exit(
@@ -393,8 +497,6 @@ def evaluate_decision(
                     settings=settings,
                 )
             )
-            continue
-        if benchmark_entry is None or benchmark_exit is None:
             continue
         assert prior_close is not None and entry_bar is not None
         results.append(
@@ -411,6 +513,8 @@ def evaluate_decision(
                 settings=settings,
             )
         )
+    for row in results:
+        row["details"]["window_basis"] = basis
     return results
 
 
@@ -520,11 +624,65 @@ def _completed_horizons(session: Session, decision_ids: Sequence[int]) -> dict[i
     return result
 
 
-def _bars(fetcher: Any, code: str, *, as_of: dt.date) -> list[DailyBar]:
+def load_trading_sessions(session: Session, *, decision_dates: Iterable[dt.date], as_of: dt.date) -> list[dt.date]:
+    """Open ``qp`` sessions after the earliest decision, bounded by ``as_of``.
+
+    Empty means there is no usable calendar; callers then fall back to benchmark
+    dates so legacy backfills keep their row-level comparison.
+    """
+    dates = list(decision_dates)
+    if not dates:
+        return []
+    start = min(dates)
+    # A calendar that begins after the decision cannot prove the next session; using
+    # it would shift the window silently, so fall back to the legacy basis instead.
+    first = session.scalar(select(func.min(TradingDay.date)).where(TradingDay.origin == "qp"))
+    if first is None or first > start:
+        return []
+    return list(
+        session.scalars(
+            select(TradingDay.date)
+            .where(
+                TradingDay.origin == "qp",
+                TradingDay.is_open.is_(True),
+                TradingDay.date > start,
+                TradingDay.date <= as_of,
+            )
+            .order_by(TradingDay.date)
+        ).all()
+    )
+
+
+def rejection_map(rejected: Iterable[dict]) -> dict[dt.date, str]:
+    reasons: dict[dt.date, str] = {}
+    for item in rejected:
+        try:
+            reasons[dt.date.fromisoformat(str(item["date"])[:10])] = str(item["reason"])
+        except (KeyError, ValueError):
+            continue
+    return reasons
+
+
+def frame_for(
+    fetcher: Any,
+    code: str,
+    *,
+    as_of: dt.date,
+    invalid: list[dict[str, Any]] | None = None,
+) -> tuple[list[DailyBar], dict[dt.date, str]]:
+    """Fetch and normalise one symbol, reporting rejected rows with its identity."""
     result = fetcher.get(code)
     if not isinstance(result, KlineResult):
         raise TypeError("outcome fetcher must return KlineResult")
-    return normalise_bars(result.bars, as_of=as_of)
+    local: list[dict] = []
+    bars = normalise_bars(result.bars, as_of=as_of, rejected=local)
+    source = getattr(result, "source", "") or ""
+    rejected = list(getattr(result, "rejected", []) or []) + [
+        {"code": code, "source": source, **item} for item in local
+    ]
+    if invalid is not None:
+        invalid.extend(rejected)
+    return bars, rejection_map(rejected)
 
 
 def evaluate_pending(
@@ -546,10 +704,15 @@ def evaluate_pending(
     decisions = _pending_decisions(
         session, limit=limit, decision_date=decision_date, allowed_only=chain_on, as_of=as_of
     )
+    calendar = load_trading_sessions(
+        session, decision_dates=[decision.decision_date for decision in decisions], as_of=as_of
+    )
+    sessions_for_eval: list[dt.date] | None = calendar or None
     summary: dict[str, Any] = {
         "checked": 0,
         "inserted": 0,
         "not_mature": 0,
+        "waiting_data": 0,
         "unfilled": 0,
         "failed": 0,
         "benchmark_ok": False,
@@ -558,42 +721,75 @@ def evaluate_pending(
         "benchmark_source": None,
         "benchmark_attempts": [],
         "benchmark_error": None,
+        "window_basis": None,
+        "invalid_bars": [],
+        "invalid_bar_count": 0,
+        "data_gaps": [],
+        "data_gap_count": 0,
     }
     if not decisions:
         summary["benchmark_ok"] = True
         return summary
+    summary["window_basis"] = WINDOW_CALENDAR if sessions_for_eval else WINDOW_BENCHMARK
+    invalid_bars: list[dict[str, Any]] = []
+    all_gaps: list[dict[str, Any]] = []
     try:
         result = fetcher.get(settings.benchmark_code)
         if not isinstance(result, KlineResult):
             raise TypeError("outcome fetcher must return KlineResult")
-        benchmark = normalise_bars(result.bars, as_of=as_of)
+        local: list[dict] = []
+        benchmark = normalise_bars(result.bars, as_of=as_of, rejected=local)
+        source = result.source or ""
+        benchmark_rejected = list(getattr(result, "rejected", []) or []) + [
+            {"code": settings.benchmark_code, "source": source, **item} for item in local
+        ]
+        invalid_bars.extend(benchmark_rejected)
+        benchmark_rejections = rejection_map(benchmark_rejected)
         summary["benchmark_source"] = result.source or None
         summary["benchmark_attempts"] = result.attempts or []
     except Exception as exc:
         benchmark = []
+        benchmark_rejections = {}
         summary["benchmark_error"] = type(exc).__name__
     if not benchmark:
         summary["failed"] = len(decisions)
+        summary["invalid_bars"] = invalid_bars[:DETAIL_LIMIT]
+        summary["invalid_bar_count"] = len(invalid_bars)
         return summary
     summary["benchmark_ok"] = True
     completed = _completed_horizons(session, [decision.id for decision in decisions])
-    frames: dict[str, list[DailyBar]] = {}
+    frames: dict[str, tuple[list[DailyBar], dict[dt.date, str]]] = {}
     for decision in decisions:
         summary["checked"] += 1
         try:
             if decision.code not in frames:
-                frames[decision.code] = _bars(fetcher, decision.code, as_of=as_of)
+                frames[decision.code] = frame_for(fetcher, decision.code, as_of=as_of, invalid=invalid_bars)
+            code_bars, code_rejections = frames[decision.code]
             payload = {
                 "decision_id": decision.id,
                 "decision_date": decision.decision_date,
                 "reference_close": (float(decision.reference_close) if decision.reference_close is not None else None),
                 "completed_horizons": completed.get(decision.id, set()),
             }
+            gaps: list[dict[str, Any]] = []
             outcomes = evaluate_decision(
-                payload, code_bars=frames[decision.code], benchmark_bars=benchmark, as_of=as_of, settings=settings
+                payload,
+                code_bars=code_bars,
+                benchmark_bars=benchmark,
+                as_of=as_of,
+                settings=settings,
+                sessions=sessions_for_eval,
+                code_rejections=code_rejections,
+                benchmark_rejections=benchmark_rejections,
+                data_gaps=gaps,
             )
+            for gap in gaps:
+                gap["code"] = decision.code
+            all_gaps.extend(gaps)
             if not outcomes:
                 summary["not_mature"] += 1
+                if gaps:
+                    summary["waiting_data"] += 1
                 continue
             role = role_for_decision(decision.decision_state, decision.risk_action)
             for row in outcomes:
@@ -616,4 +812,216 @@ def evaluate_pending(
                         )
         except Exception:
             summary["failed"] += 1
+    summary["invalid_bars"] = invalid_bars[:DETAIL_LIMIT]
+    summary["invalid_bar_count"] = len(invalid_bars)
+    summary["data_gaps"] = all_gaps[:DETAIL_LIMIT]
+    summary["data_gap_count"] = len(all_gaps)
+    return summary
+
+
+def _same_number(left: Any, right: Any) -> bool:
+    if left is None or right is None:
+        return left is None and right is None
+    # Numeric(18, 8) rounds stored returns; allow half a unit in the last place.
+    return abs(float(left) - float(right)) <= 1e-7
+
+
+def _recorded_row_matches(stored: DecisionOutcome, row: Mapping[str, Any]) -> bool:
+    return (
+        str(stored.fill_status) == str(row["fill_status"])
+        and stored.entry_date == row.get("entry_date")
+        and stored.exit_date == row.get("exit_date")
+        and _same_number(stored.net_return, row.get("net_return"))
+        and _same_number(stored.benchmark_return, row.get("benchmark_return"))
+        and _same_number(stored.excess_return, row.get("excess_return"))
+    )
+
+
+def _latest_chain_outcome(session: Session, *, decision_uid: str, horizon: int) -> ChainOutcome | None:
+    return session.scalar(
+        select(ChainOutcome)
+        .where(ChainOutcome.decision_uid == decision_uid, ChainOutcome.horizon_sessions == horizon)
+        .order_by(ChainOutcome.revision.desc())
+        .limit(1)
+    )
+
+
+def _chain_row_matches(latest: ChainOutcome, row: Mapping[str, Any]) -> bool:
+    expected_state = "filled" if row["fill_status"] == "filled" else "unfilled"
+    return (
+        latest.execution_state == expected_state
+        and latest.entry_date == row.get("entry_date")
+        and latest.exit_date == row.get("exit_date")
+        and _same_number(latest.net_return, row.get("net_return"))
+    )
+
+
+def reconcile_recorded(
+    session: Session,
+    *,
+    as_of: dt.date | None = None,
+    limit: int = 200,
+    fetcher: Any | None = None,
+    decision_date: dt.date | None = None,
+    settings: OutcomeSettings | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Compare recorded outcomes with the calendar window and append chain revisions.
+
+    ``decision_outcome`` is never updated.  A horizon whose stored dates or returns
+    differ from the calendar-based recomputation gets an append-only
+    ``chain_outcome`` revision, so ``data_gaps`` that later fill in stay traceable
+    and repeated runs do not append the same correction twice.  ``dry_run`` only
+    lists the affected rows (impact assessment before a release).
+    """
+    settings = settings or OutcomeSettings()
+    as_of = as_of or now_cst().date()
+    summary: dict[str, Any] = {
+        "ok": False,
+        "dry_run": dry_run,
+        "checked": 0,
+        "affected": 0,
+        "revised": 0,
+        "would_revise": 0,
+        "unchanged": 0,
+        "waiting_data": 0,
+        "unavailable": 0,
+        "failed": 0,
+        "window_basis": WINDOW_CALENDAR,
+        "affected_rows": [],
+        "data_gap_count": 0,
+    }
+    if not chain.enabled():
+        summary["skipped"] = "record_chain_disabled"
+        return summary
+    fetcher = fetcher or KlineFetcher(days=DEFAULT_HISTORY_DAYS)
+    stmt = (
+        select(TargetDecision)
+        .join(DecisionOutcome, DecisionOutcome.decision_id == TargetDecision.id)
+        .where(TargetDecision.decision_state == "allowed")
+        .distinct()
+        .order_by(TargetDecision.decision_date, TargetDecision.code)
+        .limit(max(1, int(limit)))
+    )
+    if decision_date is not None:
+        stmt = stmt.where(TargetDecision.decision_date == decision_date)
+    decisions = list(session.execute(stmt).scalars())
+    if not decisions:
+        summary["ok"] = True
+        return summary
+    sessions = load_trading_sessions(
+        session, decision_dates=[decision.decision_date for decision in decisions], as_of=as_of
+    )
+    if not sessions:
+        summary["skipped"] = "trading_calendar_missing"
+        return summary
+    invalid_bars: list[dict[str, Any]] = []
+    try:
+        result = fetcher.get(settings.benchmark_code)
+        if not isinstance(result, KlineResult):
+            raise TypeError("outcome fetcher must return KlineResult")
+        local: list[dict] = []
+        benchmark = normalise_bars(result.bars, as_of=as_of, rejected=local)
+        benchmark_rejections = rejection_map(
+            list(getattr(result, "rejected", []) or [])
+            + [{"code": settings.benchmark_code, "source": result.source or "", **item} for item in local]
+        )
+    except Exception as exc:
+        benchmark = []
+        benchmark_rejections = {}
+        summary["benchmark_error"] = type(exc).__name__
+    if not benchmark:
+        summary["skipped"] = "benchmark_unavailable"
+        return summary
+    gaps: list[dict[str, Any]] = []
+    affected_rows: list[dict[str, Any]] = []
+    frames: dict[str, tuple[list[DailyBar], dict[dt.date, str]]] = {}
+    for decision in decisions:
+        summary["checked"] += 1
+        try:
+            if decision.code not in frames:
+                frames[decision.code] = frame_for(fetcher, decision.code, as_of=as_of, invalid=invalid_bars)
+            code_bars, code_rejections = frames[decision.code]
+            stored_rows = list(
+                session.scalars(select(DecisionOutcome).where(DecisionOutcome.decision_id == decision.id)).all()
+            )
+            stored = {int(row.horizon_sessions): row for row in stored_rows}
+            decision_gaps: list[dict[str, Any]] = []
+            recomputed = {
+                int(row["horizon_sessions"]): row
+                for row in evaluate_decision(
+                    {
+                        "decision_id": decision.id,
+                        "decision_date": decision.decision_date,
+                        "reference_close": (
+                            float(decision.reference_close) if decision.reference_close is not None else None
+                        ),
+                        "completed_horizons": set(),
+                    },
+                    code_bars=code_bars,
+                    benchmark_bars=benchmark,
+                    as_of=as_of,
+                    settings=settings,
+                    sessions=sessions,
+                    code_rejections=code_rejections,
+                    benchmark_rejections=benchmark_rejections,
+                    data_gaps=decision_gaps,
+                )
+            }
+            gaps.extend(decision_gaps)
+            for horizon, row in sorted(recomputed.items()):
+                stored_row = stored.get(horizon)
+                if stored_row is None:
+                    continue
+                if _recorded_row_matches(stored_row, row):
+                    summary["unchanged"] += 1
+                    continue
+                summary["affected"] += 1
+                detail = {
+                    "decision_id": decision.id,
+                    "code": decision.code,
+                    "horizon": horizon,
+                    "stored": {
+                        "entry_date": stored_row.entry_date.isoformat() if stored_row.entry_date else None,
+                        "exit_date": stored_row.exit_date.isoformat() if stored_row.exit_date else None,
+                        "fill_status": stored_row.fill_status,
+                    },
+                    "recomputed": {
+                        "entry_date": row["entry_date"].isoformat() if row.get("entry_date") else None,
+                        "exit_date": row["exit_date"].isoformat() if row.get("exit_date") else None,
+                        "fill_status": row["fill_status"],
+                    },
+                }
+                affected_rows.append(detail)
+                uid = chain.decision_uid_for(session, decision.decision_date, decision.code)
+                if not uid:
+                    summary["unavailable"] += 1
+                    continue
+                latest = _latest_chain_outcome(session, decision_uid=uid, horizon=horizon)
+                if latest is not None and _chain_row_matches(latest, row):
+                    summary["unchanged"] += 1
+                    continue
+                if dry_run:
+                    summary["would_revise"] += 1
+                    continue
+                if chain.append_outcome_revision(
+                    session,
+                    decision_uid=uid,
+                    horizon=horizon,
+                    row=row,
+                    expected=chain.expected_maturity(session, uid, horizon),
+                    as_of=as_of,
+                ):
+                    summary["revised"] += 1
+                else:
+                    summary["unavailable"] += 1
+            for horizon in stored:
+                if horizon not in recomputed:
+                    summary["waiting_data"] += 1
+        except Exception:
+            summary["failed"] += 1
+    summary["ok"] = summary["failed"] == 0
+    summary["affected_rows"] = affected_rows[:DETAIL_LIMIT]
+    summary["data_gap_count"] = len(gaps)
+    summary["invalid_bar_count"] = len(invalid_bars)
     return summary
