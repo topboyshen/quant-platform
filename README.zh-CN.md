@@ -227,6 +227,7 @@ npm run smoke    # Playwright 冒烟（需要可登录的真实数据库）
 
 ## 7. 文档索引
 
+- [Quant Platform 工程评分与优化方案](app/deploy/PLATFORM-SCORECARD-2026-11-25.md) (2026-11-25)
 - `ARCHITECTURE.md` — 架构、数据流、生产日时间表、失败语义、恢复 RTO。
 - `app/README.md` — 内核快速说明、模式与边界。
 - `app/deploy/FREEZE-BASELINE-2026-11-24.md` — 冻结基线、生产发布记录、清单快照。
