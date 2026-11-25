@@ -8,6 +8,9 @@ Current freeze baseline: production `0.3.118-outcome-window-6f60f5a8`, freeze
 **2026-11-25 11:03 CST → 2026-12-09**. Do not execute any Phase 2 row before
 2026-12-09 and the separate authorization;
 see [`FREEZE-BASELINE-2026-11-24.md`](FREEZE-BASELINE-2026-11-24.md).
+Per-service consumer/replacement/rollback evidence:
+[`M9-EXIT-EVIDENCE-2026-11-25.md`](M9-EXIT-EVIDENCE-2026-11-25.md); `partial` or
+`missing` rows are hard stops.
 
 ## 1. Pre-flight (once)
 

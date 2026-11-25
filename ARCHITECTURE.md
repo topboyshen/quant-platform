@@ -219,8 +219,10 @@ A failed run is retried by the next slot; failures are recorded in
 - Security: ruff `E/F/I/UP/B` + `ruff format --check` + Gitleaks full-history
   scan. Dependency audit is blocking under
   [`app/deploy/DEPENDENCY-POLICY.md`](app/deploy/DEPENDENCY-POLICY.md), with
-  time-boxed exceptions. Mypy blocks on a whitelist of new critical modules;
-  the full jobs/signals/models run remains report-only as an existing baseline.
+  time-boxed exceptions. Mypy blocks on a whitelist of critical modules plus
+  `qp/market`, `qp/reports` and `qp/models`; `qp/jobs` and `qp/signals` remain
+  report-only. Baseline and gate check:
+  [`app/deploy/TYPE-CHECK-BASELINE.md`](app/deploy/TYPE-CHECK-BASELINE.md).
 
 ## 7. Recovery and RTO
 
@@ -242,9 +244,31 @@ rebuild):
 | recovery point | EOD 2026-11-17, 1,240 decisions / 3,700 outcomes / 1,240 chain |
 | acceptance | WARN (known A8 historical notification check), drill PASS |
 
-This is **database recovery RTO**, not full-host RTO. A full-host rebuild also
-needs OS/release venv, env/secrets, TLS, timers and smoke; measure that separately
-before claiming a host-level RTO. Report: `/home/ubuntu/qp-restore-drill-20261118/report.txt`.
+**Measured 2026-11-25 22:21 CST** (isolated host MS02u, offsite copy, current
+`main` `a2d615a`):
+
+| Step | Measured |
+|---|---:|
+| offsite copy (5.2 MB) | 14.5 s |
+| restore | 1.95 s |
+| migration replay | 0.54 s |
+| acceptance | 0.55 s |
+| API cold start | 0.68 s |
+| static page ready | 0.11 s |
+| browser login page (Playwright) | 0.64 s |
+| segment sum | **~19 s** |
+
+Recovery point 2026-11-24 (1,440 decisions / 3,700 outcomes / 1,440 chain;
+104 relations / 20 signals triggers / 0 orphans); acceptance WARN (shadow
+notifications only). Drill target: offsite copy → login page ≤ 15 minutes;
+data-loss window ≤ 1 natural day. Full-host rebuild is still not covered.
+Report: [`app/deploy/RESTORE-DRILL-2026-11-25.md`](app/deploy/RESTORE-DRILL-2026-11-25.md).
+
+This is **database/application recovery**, not full-host RTO. A full-host rebuild
+also needs OS/release venv, env/secrets, TLS, timers and smoke; measure that
+separately before claiming a host-level RTO. Reports:
+`/home/ubuntu/qp-restore-drill-20261118/report.txt` (2026-11-18) and
+[`app/deploy/RESTORE-DRILL-2026-11-25.md`](app/deploy/RESTORE-DRILL-2026-11-25.md) (2026-11-25).
 
 ## 8. Documentation index
 
@@ -255,6 +279,9 @@ before claiming a host-level RTO. Report: `/home/ubuntu/qp-restore-drill-2026111
 - `app/deploy/DEPLOY-LOCK.md` — runtime/test locks and release venv install.
 - `app/deploy/KNOWN-LIMITATIONS.md` — accepted limitations and monitoring.
 - `app/deploy/DECOMMISSION-ROADMAP.md` — legacy retirement.
+- `app/deploy/M9-EXIT-EVIDENCE-2026-11-25.md` — per-service consumer/replacement/rollback evidence.
+- `app/deploy/RESTORE-DRILL-2026-11-25.md` — isolated-host restore drill to login page.
+- `app/deploy/TYPE-CHECK-BASELINE.md` — blocking mypy modules and report-only baseline.
 - `app/deploy/JOB-GATES.md` — same-day upstream gates and rollback.
 - `app/deploy/RELEASE-ACTIVATION.md` — health/smoke-gated release switch.
 - `archive/README.md` — archive policy.

@@ -231,6 +231,9 @@ npm run smoke    # Playwright 冒烟（需要可登录的真实数据库）
 - `ARCHITECTURE.md` — 架构、数据流、生产日时间表、失败语义、恢复 RTO。
 - `app/README.md` — 内核快速说明、模式与边界。
 - `app/deploy/FREEZE-BASELINE-2026-11-24.md` — 冻结基线、生产发布记录、清单快照。
+- `app/deploy/RESTORE-DRILL-2026-11-25.md` — 隔离宿主恢复演练（数据库/API/登录页）。
+- `app/deploy/M9-EXIT-EVIDENCE-2026-11-25.md` — M9 逐服务消费者、替代路径与回滚证据。
+- `app/deploy/TYPE-CHECK-BASELINE.md` — mypy 阻断模块与报告基线。
 - `app/deploy/DECOMMISSION-ROADMAP.md` — 旧栈退役阶段与门禁。
 - `app/deploy/KNOWN-LIMITATIONS.md` — 已接受的限制。
 - `app/deploy/RELEASE-ACTIVATION.md` — 发布激活与回滚语义。
