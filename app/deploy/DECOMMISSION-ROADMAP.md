@@ -5,7 +5,9 @@ timer, container or data has been stopped or deleted by this repository. M9
 provides stop-only tooling and requires separate authorization.
 
 Current baseline: [`FREEZE-BASELINE-2026-11-24.md`](FREEZE-BASELINE-2026-11-24.md)
-(production `0.3.106`, freeze 2026-11-24 → earliest Phase 2 review 2026-12-08).
+— the single source for the current production release, freeze start and earliest
+Phase 2 review (currently `0.3.118-outcome-window-6f60f5a8`, freeze
+2026-11-25 11:03 CST → earliest review 2026-12-09).
 
 Related: [`M9-DECOMMISSION-RUNBOOK.md`](M9-DECOMMISSION-RUNBOOK.md),
 [`ARCHITECTURE.md`](../../ARCHITECTURE.md), [`archive/README.md`](../../archive/README.md).
@@ -58,8 +60,12 @@ in the freeze baseline above.
 ### Phase 1 — freeze and inventory (current)
 
 - All new code in `app/`; legacy snapshots security-only.
-- **2026-11-24:** feature freeze re-baselined on production `0.3.106`; 2026-11-24
-  is a mixed-version day because `.105`/`.106` were activated after the open.
+- **2026-11-24:** feature freeze re-baselined on production `0.3.106`; `.105`/`.106`
+  were activated after the open (mixed-version day).
+- **2026-11-25:** freeze window re-baselined at `0.3.115` 11:03 CST; `.112`–`.118`
+  are in-freeze correctness fixes. Current production is
+  `0.3.118-outcome-window-6f60f5a8`; earliest Phase 2 review is 2026-12-09
+  (see the freeze baseline for the single current figure).
 - Run `qp decommission inventory` weekly/monthly and store the manifest with
   its sha256. Latest: `/var/lib/qp/decommission-2026-11-24.json`,
   sha256 `e98f4846…` (5 system timers, 0 containers, 13.5 MB captured paths).

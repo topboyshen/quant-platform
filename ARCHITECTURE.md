@@ -1,14 +1,14 @@
-# quant-platform architecture (2026-11-24)
+# quant-platform architecture (2026-11-25)
 
 This repository is a monorepo that imports the nnG8 trading-radar / QuantDinger /
 research stacks as historical snapshots **and** carries the new unified kernel in
 `app/`. Runtime paths on nnG8 are unchanged: services still run from their
 original locations, and nothing in this repository writes to them.
 
-- New kernel status: `0.3.116` deployed; ETF research scores are a read-only shadow.
-- Freeze/observation baseline: [`app/deploy/FREEZE-BASELINE-2026-11-24.md`](app/deploy/FREEZE-BASELINE-2026-11-24.md).
+- New kernel status: `0.3.118-outcome-window-6f60f5a8` deployed; ETF research scores are a read-only shadow.
+- Freeze/observation baseline: [`app/deploy/FREEZE-BASELINE-2026-11-24.md`](app/deploy/FREEZE-BASELINE-2026-11-24.md) (single source for the current release, freeze start and review date).
 - Legacy module status: see [`app/deploy/DECOMMISSION-ROADMAP.md`](app/deploy/DECOMMISSION-ROADMAP.md).
-- Feature freeze is re-baselined at `0.3.116` on 2026-11-25; no M9 Phase 2 stop has been executed.
+- Feature freeze started at 2026-11-25 11:03 CST; `.117`/`.118` are in-freeze correctness fixes; no M9 Phase 2 stop has been executed.
 - No strategy in `app/` is promoted to a trade signal; execution stays outside.
 
 ## 1. Repository map
