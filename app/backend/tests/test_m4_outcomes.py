@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from qp.jobs.registry import JOBS
 from qp.market.kline import DailyBar, KlineResult
+from qp.models.market import TradingDay
 from qp.models.signals import DecisionOutcome, EodRun, TargetDecision
 from qp.signals.outcomes import (
     OutcomeSettings,
@@ -49,7 +50,7 @@ def bar(day: dt.date, *, open_: float, close: float, high: float | None = None, 
 
 def benchmark_bars() -> list[DailyBar]:
     return [
-        bar(day, open_=100.0, close=100.0 + index * 0.5, high=102.0, low=99.0)
+        bar(day, open_=100.0, close=100.0 + index * 0.5, high=112.0, low=99.0)
         for index, day in enumerate(SESSIONS, start=1)
     ]
 
@@ -167,6 +168,128 @@ def test_normalise_bars_filters_as_of_and_duplicates():
     assert [item.close for item in out if item.date == SESSIONS[1]] == [10.55]
 
 
+# --------------------------------------------------------------------------- calendar window
+def test_calendar_window_does_not_shift_on_a_missing_middle_benchmark_day():
+    """Without a calendar a gap silently moves the 3-day exit; with one it must not."""
+    benchmark = [item for item in benchmark_bars() if item.date != SESSIONS[1]]
+    legacy = by_horizon(
+        evaluate_decision(decision(), code_bars=code_bars(), benchmark_bars=benchmark, as_of=SESSIONS[-1])
+    )
+    assert legacy[3]["exit_date"] == SESSIONS[3]  # documented legacy shift
+
+    rows = by_horizon(
+        evaluate_decision(
+            decision(),
+            code_bars=code_bars(),
+            benchmark_bars=benchmark,
+            as_of=SESSIONS[-1],
+            sessions=SESSIONS,
+        )
+    )
+    assert rows[3]["exit_date"] == SESSIONS[2]
+    assert rows[3]["fill_status"] == "filled"
+    assert rows[3]["details"]["window_basis"] == "calendar"
+    assert rows[1]["details"]["window_basis"] == "calendar"
+
+
+def test_missing_benchmark_entry_day_is_a_data_gap_not_a_shifted_fill():
+    benchmark = [item for item in benchmark_bars() if item.date != SESSIONS[0]]
+    gaps: list[dict] = []
+    rows = evaluate_decision(
+        decision(),
+        code_bars=code_bars(),
+        benchmark_bars=benchmark,
+        as_of=SESSIONS[-1],
+        sessions=SESSIONS,
+        data_gaps=gaps,
+    )
+    assert rows == []
+    assert {gap["horizon"] for gap in gaps} == {1, 3, 5, 10, 20}
+    assert all(gap["reason"] == "benchmark_bar_missing" for gap in gaps)
+    entry_gaps = [gap for gap in gaps if gap["horizon"] == 3]
+    assert entry_gaps == [
+        {
+            "decision_id": 1,
+            "horizon": 3,
+            "date": SESSIONS[0].isoformat(),
+            "sides": ["entry"],
+            "reason": "benchmark_bar_missing",
+        }
+    ]
+    assert gaps[0]["sides"] == ["entry", "exit"]  # horizon 1 entry and exit are the same session
+
+
+def test_missing_benchmark_exit_day_leaves_only_that_horizon_unrecorded():
+    benchmark = [item for item in benchmark_bars() if item.date != SESSIONS[2]]
+    gaps: list[dict] = []
+    rows = by_horizon(
+        evaluate_decision(
+            decision(),
+            code_bars=code_bars(),
+            benchmark_bars=benchmark,
+            as_of=SESSIONS[-1],
+            sessions=SESSIONS,
+            data_gaps=gaps,
+        )
+    )
+    assert rows[1]["fill_status"] == "filled"
+    assert 3 not in rows
+    assert [(gap["horizon"], gap["date"], gap["sides"]) for gap in gaps] == [(3, SESSIONS[2].isoformat(), ["exit"])]
+
+
+def test_flat_bar_outside_the_limit_still_fills():
+    bars = code_bars()
+    bars[1] = bar(SESSIONS[0], open_=10.0, close=10.0, high=10.0, low=10.0)
+    rows = by_horizon(
+        evaluate_decision(
+            decision(), code_bars=bars, benchmark_bars=benchmark_bars(), as_of=SESSIONS[-1], sessions=SESSIONS
+        )
+    )
+    assert rows[1]["fill_status"] == "filled"
+    assert rows[1]["gross_return"] == 0
+
+
+def test_one_tick_limit_up_bar_still_reaches_the_liquidity_rule():
+    bars = code_bars()
+    bars[1] = bar(SESSIONS[0], open_=10.8, close=10.8, high=10.8, low=10.789)
+    rows = by_horizon(
+        evaluate_decision(
+            decision(), code_bars=bars, benchmark_bars=benchmark_bars(), as_of=SESSIONS[-1], sessions=SESSIONS
+        )
+    )
+    assert {row["fill_status"] for row in rows.values()} == {"uncertain"}
+    assert {row["fill_reason"] for row in rows.values()} == {"queue_uncertain"}
+
+
+@pytest.mark.parametrize(
+    ("bad_bar", "reason"),
+    [
+        (DailyBar(SESSIONS[0], open=10.0, high=9.0, low=11.0, close=10.0, volume=1000.0), "high_below_low"),
+        (DailyBar(SESSIONS[0], open=12.0, high=10.4, low=9.9, close=10.2, volume=1000.0), "open_out_of_range"),
+        (DailyBar(SESSIONS[0], open=10.0, high=10.4, low=9.9, close=11.0, volume=1000.0), "close_out_of_range"),
+    ],
+)
+def test_incoherent_entry_bar_cannot_fill(bad_bar, reason):
+    rejected: list[dict] = []
+    bars = code_bars()
+    bars[1] = bad_bar
+    clean = normalise_bars(bars, as_of=SESSIONS[-1], rejected=rejected)
+    assert rejected == [{"date": SESSIONS[0].isoformat(), "reason": reason}]
+    rows = by_horizon(
+        evaluate_decision(
+            decision(),
+            code_bars=clean,
+            benchmark_bars=benchmark_bars(),
+            as_of=SESSIONS[-1],
+            sessions=SESSIONS,
+            code_rejections={SESSIONS[0]: reason},
+        )
+    )
+    assert {row["fill_status"] for row in rows.values()} == {"unfilled"}
+    assert {row["fill_reason"] for row in rows.values()} == {f"entry_bar_invalid:{reason}"}
+    assert all(row["net_return"] is None for row in rows.values())
+
+
 # --------------------------------------------------------------------------- persistence
 class FakeFetcher:
     def __init__(self, mapping: dict[str, object]):
@@ -234,6 +357,19 @@ def cleanup(engine, day: dt.date = DAY) -> None:
         session.commit()
 
 
+def seed_calendar(engine, days: list[dt.date]) -> None:
+    with Session(engine) as session:
+        for day in days:
+            session.merge(TradingDay(origin="qp", date=day, is_open=True, source="test"))
+        session.commit()
+
+
+def cleanup_calendar(engine, days: list[dt.date]) -> None:
+    with Session(engine) as session:
+        session.execute(delete(TradingDay).where(TradingDay.origin == "qp", TradingDay.date.in_(days)))
+        session.commit()
+
+
 def test_evaluate_pending_persists_and_is_idempotent(engine):
     decision_id = seed_decision(engine)
     fetcher = FakeFetcher({BENCHMARK: benchmark_bars(), CODE: code_bars()})
@@ -242,6 +378,8 @@ def test_evaluate_pending_persists_and_is_idempotent(engine):
             first = evaluate_pending(session, as_of=SESSIONS[2], fetcher=fetcher, decision_date=DAY)
             session.commit()
         assert (first["checked"], first["inserted"], first["not_mature"], first["failed"]) == (1, 2, 0, 0)
+        assert first["window_basis"] == "benchmark_bars"  # no calendar seeded: legacy parity path
+        assert first["data_gaps"] == [] and first["data_gap_count"] == 0
         with Session(engine) as session:
             second = evaluate_pending(session, as_of=SESSIONS[2], fetcher=fetcher, decision_date=DAY)
             session.commit()
@@ -325,6 +463,99 @@ def test_benchmark_empty_attempts_are_reported(engine):
         assert out["benchmark_ok"] is False
         assert out["benchmark_attempts"][0]["source"] == "tencent"
         assert out["benchmark_error"] is None
+    finally:
+        cleanup(engine)
+
+
+def test_missing_benchmark_day_waits_then_backfills_with_the_same_window(engine):
+    decision_id = seed_decision(engine)
+    days = [DAY, *SESSIONS]
+    seed_calendar(engine, days)
+    missing = [item for item in benchmark_bars() if item.date != SESSIONS[0]]
+    try:
+        with Session(engine) as session:
+            first = evaluate_pending(
+                session,
+                as_of=SESSIONS[-1],
+                fetcher=FakeFetcher({BENCHMARK: missing, CODE: code_bars()}),
+                decision_date=DAY,
+            )
+            session.commit()
+            assert first["window_basis"] == "calendar"
+            assert (first["inserted"], first["waiting_data"], first["data_gap_count"]) == (0, 1, 5)
+            assert session.scalar(select(DecisionOutcome.id).where(DecisionOutcome.decision_id == decision_id)) is None
+        with Session(engine) as session:
+            second = evaluate_pending(
+                session,
+                as_of=SESSIONS[-1],
+                fetcher=FakeFetcher({BENCHMARK: benchmark_bars(), CODE: code_bars()}),
+                decision_date=DAY,
+            )
+            session.commit()
+            rows = list(
+                session.scalars(
+                    select(DecisionOutcome)
+                    .where(DecisionOutcome.decision_id == decision_id)
+                    .order_by(DecisionOutcome.horizon_sessions)
+                )
+            )
+        assert second["inserted"] == 5
+        assert [(row.entry_date, row.exit_date) for row in rows] == [
+            (SESSIONS[0], SESSIONS[0]),
+            (SESSIONS[0], SESSIONS[2]),
+            (SESSIONS[0], SESSIONS[4]),
+            (SESSIONS[0], SESSIONS[9]),
+            (SESSIONS[0], SESSIONS[19]),
+        ]
+        assert all(row.fill_status == "filled" for row in rows)
+        assert rows[0].details["window_basis"] == "calendar"
+        baseline = by_horizon(
+            evaluate_decision(
+                decision(),
+                code_bars=code_bars(),
+                benchmark_bars=benchmark_bars(),
+                as_of=SESSIONS[-1],
+                sessions=SESSIONS,
+            )
+        )
+        assert [float(row.net_return) for row in rows] == pytest.approx(
+            [baseline[int(row.horizon_sessions)]["net_return"] for row in rows]
+        )
+        with Session(engine) as session:
+            third = evaluate_pending(
+                session,
+                as_of=SESSIONS[-1],
+                fetcher=FakeFetcher({BENCHMARK: benchmark_bars(), CODE: code_bars()}),
+                decision_date=DAY,
+            )
+            session.commit()
+        assert third["inserted"] == 0
+    finally:
+        cleanup(engine)
+        cleanup_calendar(engine, days)
+
+
+def test_invalid_entry_bar_is_isolated_and_reported(engine):
+    decision_id = seed_decision(engine)
+    bars = code_bars()
+    bars[1] = DailyBar(SESSIONS[0], open=10.0, high=9.0, low=11.0, close=10.0, volume=1000.0)
+    try:
+        with Session(engine) as session:
+            out = evaluate_pending(
+                session,
+                as_of=SESSIONS[-1],
+                fetcher=FakeFetcher({BENCHMARK: benchmark_bars(), CODE: bars}),
+                decision_date=DAY,
+            )
+            session.commit()
+            rows = list(session.scalars(select(DecisionOutcome).where(DecisionOutcome.decision_id == decision_id)))
+        assert (out["inserted"], out["unfilled"]) == (5, 5)
+        assert out["invalid_bar_count"] == 1
+        assert out["invalid_bars"] == [
+            {"code": CODE, "source": "test", "date": SESSIONS[0].isoformat(), "reason": "high_below_low"}
+        ]
+        assert {row.fill_reason for row in rows} == {"entry_bar_invalid:high_below_low"}
+        assert all(row.net_return is None for row in rows)
     finally:
         cleanup(engine)
 

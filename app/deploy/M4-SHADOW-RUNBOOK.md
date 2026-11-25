@@ -33,6 +33,26 @@ M4 commit/tag，窗口内不得再改代码。
 导出：15:55、16:20 导出当日（`@today`）；次日 08:45 导出前一日（`@yesterday`，周二至周六）。
 15:55 早于 15:48 重试结束，只作中途快照；16:20 与次日 08:45 才是对账输入。
 
+### 结果窗口与缺数处理
+
+`signals.outcomes` 的入场日与期限日以 `market.trading_day[origin=qp]` 交易日历为准；
+基准 510300 只提供价格，不用它的缺口重排窗口。
+
+- 基准日线缺失或 OHLC 自相矛盾（最高价低于最低价、开盘或收盘越界）时不写入成交结果。
+  job result 的 `data_gaps` / `invalid_bars` 记录标的、来源、日期与原因，`waiting_data`
+  计数正在等补数的决策。
+- 数据补齐后重跑会按同一窗口写入；`(decision_id, horizon_sessions)` 唯一，重复运行只有一份结果。
+- 已写入结果需要修订时（旧口径写入，或无效行情/缺日后来补齐），先预览再执行：
+
+  ```bash
+  qp signals outcomes --reconcile --dry-run   # 列出 stored 与 calendar 重算的差异
+  qp signals outcomes --reconcile             # 追加 chain_outcome 修订，不改 decision_outcome
+  ```
+
+  修订依赖记录链（`QP_RECORD_CHAIN=1`）；未开启时返回 `record_chain_disabled`。
+- 没有可用交易日历时回退到基准日线序列（保留旧口径对账）；job result 的 `window_basis`
+  标明 `calendar` 或 `benchmark_bars`。
+
 ## 2. 安装（需授权后执行）
 
 ### 2.1 目录与权限

@@ -9,6 +9,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from qp.market.kline import DailyBar, KlineResult
 from qp.models.chain import (
     ChainAttempt,
     ChainBatch,
@@ -23,6 +24,7 @@ from qp.models.chain import (
 from qp.models.market import TradingDay
 from qp.models.signals import DecisionOutcome, EodRun, TargetDecision, TrendSignal
 from qp.signals import chain
+from qp.signals.outcomes import reconcile_recorded
 
 TABLES = {
     "chain_policy",
@@ -248,6 +250,116 @@ def test_register_run_materialises_only_allowed(engine, chain_on):
             assert all(o.expected_maturity_date > DAY for o in outcomes)
             assert session.scalar(select(func.count()).select_from(ChainOutcome)) == 5
     finally:
+        _cleanup(engine)
+
+
+def test_reconcile_recorded_requires_the_record_chain(engine):
+    with Session(engine) as session:
+        out = reconcile_recorded(session, as_of=DAY)
+    assert out["skipped"] == "record_chain_disabled" and out["revised"] == 0
+
+
+class _BarSource:
+    def __init__(self, bars: list[DailyBar]) -> None:
+        self.bars = bars
+
+    def get(self, code: str) -> KlineResult:
+        return KlineResult(bars=list(self.bars), source="test")
+
+
+def test_reconcile_recorded_appends_a_calendar_correction(engine, chain_on):
+    """A shifted legacy row is corrected by an append-only chain revision, not an update."""
+    _cleanup(engine)
+    _calendar(engine, DAY, 40)
+    run_id = _run(engine)
+    _insert_targets(engine, run_id)
+    decision_id: int | None = None
+    try:
+        with Session(engine) as session:
+            chain.register_run(session, run=session.get(EodRun, run_id), decisions=_decisions(), run_status="success")
+            session.commit()
+        with Session(engine) as session:
+            decision = session.scalar(
+                select(TargetDecision).where(TargetDecision.decision_date == DAY, TargetDecision.code == "510300")
+            )
+            decision_id = decision.id
+            uid = session.scalar(
+                select(ChainDecision.decision_uid).where(
+                    ChainDecision.trade_date == DAY, ChainDecision.code == "510300"
+                )
+            )
+            session.add(
+                DecisionOutcome(
+                    decision_id=decision_id,
+                    horizon_sessions=3,
+                    entry_date=DAY + dt.timedelta(days=2),
+                    exit_date=DAY + dt.timedelta(days=4),
+                    entry_price=1.0,
+                    exit_price=1.0,
+                    gross_return=0.0,
+                    net_return=0.0,
+                    benchmark_return=0.0,
+                    excess_return=0.0,
+                    fill_status="filled",
+                    fill_reason="next_session_open",
+                    details={},
+                )
+            )
+            session.commit()
+        bars = [DailyBar(DAY, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0)]
+        bars.extend(
+            DailyBar(DAY + dt.timedelta(days=i), open=1.0, high=1.5, low=0.5, close=1.0 + i * 0.01, volume=1.0)
+            for i in range(1, 25)
+        )
+        fetcher = _BarSource(bars)
+        with Session(engine) as session:
+            preview = reconcile_recorded(
+                session, as_of=DAY + dt.timedelta(days=25), fetcher=fetcher, decision_date=DAY, dry_run=True
+            )
+            session.commit()
+            preview_revisions = session.scalar(
+                select(func.count())
+                .select_from(ChainOutcome)
+                .where(ChainOutcome.decision_uid == uid, ChainOutcome.horizon_sessions == 3)
+            )
+        assert preview["dry_run"] is True and preview["would_revise"] == 1 and preview["revised"] == 0
+        assert preview_revisions == 1
+        with Session(engine) as session:
+            first = reconcile_recorded(session, as_of=DAY + dt.timedelta(days=25), fetcher=fetcher, decision_date=DAY)
+            session.commit()
+        assert first["ok"] is True and first["affected"] >= 1 and first["revised"] == 1
+        with Session(engine) as session:
+            revisions = list(
+                session.scalars(
+                    select(ChainOutcome)
+                    .where(ChainOutcome.decision_uid == uid, ChainOutcome.horizon_sessions == 3)
+                    .order_by(ChainOutcome.revision)
+                )
+            )
+            stored = session.scalar(
+                select(DecisionOutcome).where(
+                    DecisionOutcome.decision_id == decision_id, DecisionOutcome.horizon_sessions == 3
+                )
+            )
+        assert [row.revision for row in revisions] == [1, 2]
+        latest = revisions[-1]
+        assert (latest.entry_date, latest.exit_date) == (DAY + dt.timedelta(days=1), DAY + dt.timedelta(days=3))
+        assert latest.execution_state == "filled"
+        assert stored.entry_date == DAY + dt.timedelta(days=2)
+        with Session(engine) as session:
+            second = reconcile_recorded(session, as_of=DAY + dt.timedelta(days=25), fetcher=fetcher, decision_date=DAY)
+            session.commit()
+            count = session.scalar(
+                select(func.count())
+                .select_from(ChainOutcome)
+                .where(ChainOutcome.decision_uid == uid, ChainOutcome.horizon_sessions == 3)
+            )
+        assert second["revised"] == 0 and count == 2
+    finally:
+        if decision_id is not None:
+            with Session(engine) as session:
+                session.execute(DecisionOutcome.__table__.delete().where(DecisionOutcome.decision_id == decision_id))
+                session.commit()
         _cleanup(engine)
 
 

@@ -9,6 +9,7 @@ from qp.market.kline import (
     DEFAULT_SOURCES,
     DailyBar,
     KlineFetcher,
+    bar_invalid_reason,
     exchange_prefixed_code,
     fetch_akshare_bars,
     fetch_sina_bars,
@@ -110,7 +111,7 @@ def test_parsers_reject_short_or_malformed_rows():
 def test_normalize_dedupes_last_and_sorts():
     days = business_days(30)
     bars = parse_tencent_klines(tencent_rows(days))
-    duplicate = DailyBar(days[-1], 1, 1, 1, 99.0, 1)
+    duplicate = DailyBar(days[-1], 99.0, 99.0, 99.0, 99.0, 1)
     got = normalize_bars([bars[-1], bars[0], *bars[1:-1], duplicate])
     assert [b.date for b in got] == sorted({b.date for b in bars})
     assert got[-1].close == 99.0
@@ -171,3 +172,50 @@ def test_akshare_source_is_unavailable():
     result = fetcher.get("510300", required_date=END)
     assert result.bars == []
     assert result.attempts[-1]["error"] == "FetchError"
+
+
+@pytest.mark.parametrize(
+    ("bar", "reason"),
+    [
+        (DailyBar(END, open=float("nan"), high=11, low=9, close=10, volume=1), "non_finite_price"),
+        (DailyBar(END, open=0.0, high=11, low=9, close=10, volume=1), "non_positive_price"),
+        (DailyBar(END, open=10, high=10, low=10, close=10, volume=1), None),
+        (DailyBar(END, open=10, high=9, low=11, close=10, volume=1), "high_below_low"),
+        (DailyBar(END, open=8, high=11, low=9, close=10, volume=1), "open_out_of_range"),
+        (DailyBar(END, open=10, high=11, low=9, close=12, volume=1), "close_out_of_range"),
+    ],
+)
+def test_bar_invalid_reason_requires_coherent_ohlc(bar, reason):
+    assert bar_invalid_reason(bar) == reason
+
+
+def test_normalize_bars_reports_dropped_rows():
+    days = business_days(2)
+    valid = DailyBar(days[0], open=10, high=11, low=9, close=10.5, volume=1000)
+    bad = DailyBar(days[1], open=10, high=9, low=11, close=10, volume=1000)
+    rejected: list[dict] = []
+    assert normalize_bars([valid, bad], rejected=rejected) == [valid]
+    assert rejected == [{"date": days[1].isoformat(), "reason": "high_below_low"}]
+
+
+def test_fetcher_reports_dropped_rows_with_symbol_and_source():
+    bars = [DailyBar(day, open=10, high=11, low=9, close=10.5, volume=1000) for day in business_days(30)]
+    bad_day = END + dt.timedelta(days=1)
+    bars.append(DailyBar(bad_day, open=10, high=9, low=11, close=10, volume=1000))
+    fetcher = KlineFetcher(wait_seconds=0, sources=[("tencent", lambda code, days: bars)])
+    result = fetcher.get("510300")
+    assert result.source == "tencent"
+    assert bad_day not in [item.date for item in result.bars]
+    assert result.rejected == [
+        {"code": "510300", "source": "tencent", "date": bad_day.isoformat(), "reason": "high_below_low"}
+    ]
+    assert result.attempts[0]["rejected"] == 1
+
+
+def test_fetcher_marks_a_source_with_only_invalid_rows():
+    bars = [DailyBar(day, open=10, high=9, low=11, close=10, volume=1000) for day in business_days(30)]
+    fetcher = KlineFetcher(wait_seconds=0, sources=[("sina", lambda code, days: bars)])
+    result = fetcher.get("510300")
+    assert result.bars == []
+    assert result.attempts[0]["error"] == "all_bars_invalid"
+    assert len(result.rejected) == 30
