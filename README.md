@@ -19,8 +19,9 @@ directories below are imported snapshots or read-only sources.
 advisory locks. ETF research scores are a read-only shadow; no order or formal
 decision is produced.
 
-Daily signal/report chain (CST): 15:30 EOD → 15:55 chain snapshot → 16:12 chain
-window → 16:45/16:55 ETF score → 17:40 combined report. Full timeline and data
+Daily signal/report chain (CST): 15:30 EOD → 15:50 EOD daily report → 15:55
+chain snapshot → 16:12 chain window → 16:45/16:55 ETF score → 17:40 ETF
+research shadow report. The combined-report switch is off in production. Full timeline and data
 flows: [`ARCHITECTURE.md` §4](ARCHITECTURE.md#4-production-daily-timeline-scheduled-cst).
 
 ## Imported legacy modules
