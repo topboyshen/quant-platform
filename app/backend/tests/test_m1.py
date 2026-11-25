@@ -58,7 +58,10 @@ def client(engine):  # noqa: F811
 
 def test_health_public(client):
     r = client.get("/api/health")
-    assert r.status_code == 200 and r.json()["db"] is True
+    body = r.json()
+    assert r.status_code == 200 and body["db"] is True
+    assert body["version"]
+    assert body["package_version"]
 
 
 def test_unauth_401(client):
