@@ -63,14 +63,18 @@ NO_NEW_RISK = frozenset({"critical", "warning", "unavailable"})
 # Existing freshness parameter. Calendar days, not trading days, and not extended
 # across weekends or holidays. Anchored to the plan decision cutoff, not the
 # execution-day end.
-RISK_FRESH_CALENDAR_DAYS = 4
 RISK_RULE_VERSION = "qp-rotation-risk.v1"
-DECISION_CLOSE = dt.time(15, 0)
+# Repo timers, not an assumed 15:00 close. EOD writes RiskState.observed_at from its
+# own clock. The rotation job freezes the plan later the same afternoon.
+SCHEDULE_CONTRACT = {
+    "risk_observation": "signals.eod Mon-Fri 15:30 CST, retry 15:48; observed_at is that job clock",
+    "plan_freeze": "signals.rotation_shadow Mon-Fri 15:50 and 16:40 CST; decided_at is now_cst() at plan insert",
+    "execution": "next open session, using only the risk binding stored when the plan was frozen",
+}
 VISIBILITY_LIMITATION = (
-    "A row is visible only when both observed_at and created_at are at or before "
-    "the signal close (15:00 CST on signal_date). created_at is the insert clock "
-    "and can be backdated; there is no separate publication receipt. Plans do not "
-    "store decided_at, so this close is the cutoff the stored fields can support."
+    "created_at can be backdated on insert and is not an independent publication receipt. "
+    "Matching created_at<=decided_at does not strictly prove the observation was known then. "
+    "Historical plans without a stored decided_at are unverified; their clocks are not reconstructed."
 )
 
 
@@ -509,10 +513,39 @@ def _input_digest(frames: dict[str, Frame], day: dt.date) -> str:
     return _digest(payload)
 
 
+def _binding_record(selection: dict[str, Any]) -> dict[str, Any]:
+    observed = selection.get("observed_at")
+    created = selection.get("created_at")
+    decided = selection.get("decided_at")
+    return {
+        "status": selection["status"],
+        "level": selection.get("level"),
+        "observation_id": selection.get("observation_id"),
+        "observed_at": None if observed is None else observed.isoformat(),
+        "created_at": None if created is None else created.isoformat(),
+        "decided_at": None if decided is None else decided.isoformat(),
+        "used_previous_ok": False,
+    }
+
+
 def _plan(
     session: Session, account: RotationShadowAccount, frames: dict[str, Frame], day: dt.date, execute: dt.date | None
 ) -> RotationShadowRun:
     selected, universe = _selection(frames, day)
+    decided_at = now_cst()
+    binding = _bind_for_new_plan(session, day, decided_at)
+    detail = {
+        "parameters_sha256": _digest(account.parameters),
+        "input_sha256": _input_digest(frames, day),
+        "ew_weights": _ew_weights(frames, day),
+        "risk_rule_version": RISK_RULE_VERSION,
+        "risk_observation_id": binding.get("observation_id"),
+        "risk_binding": _binding_record(binding),
+        "schedule": SCHEDULE_CONTRACT,
+        "visibility_limitation": VISIBILITY_LIMITATION,
+    }
+    if binding["status"] != "unverified":
+        detail["decided_at"] = decided_at.isoformat()
     row = RotationShadowRun(
         rule_version=account.rule_version,
         phase=account.phase,
@@ -522,11 +555,7 @@ def _plan(
         universe=universe,
         top_k=TOP_K,
         selected=selected,
-        detail={
-            "parameters_sha256": _digest(account.parameters),
-            "input_sha256": _input_digest(frames, day),
-            "ew_weights": _ew_weights(frames, day),
-        },
+        detail=detail,
     )
     session.add(row)
     session.flush()
@@ -625,61 +654,90 @@ def initialize(
     }
 
 
-def plan_decision_cutoff(signal_date: dt.date) -> dt.datetime:
-    """Signal close. This is the only decision deadline stored fields support."""
-    return dt.datetime.combine(signal_date, DECISION_CLOSE, tzinfo=CST)
-
-
 def _aware(value: dt.datetime) -> dt.datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=CST)
     return value.astimezone(CST)
 
 
-def select_visible_risk(rows: Sequence[Any], cutoff: dt.datetime) -> dict[str, Any]:
-    """Latest observation that existed before the plan cutoff.
+def bind_same_day_risk(rows: Sequence[Any], signal_date: dt.date, decided_at: dt.datetime) -> dict[str, Any]:
+    """Bind only a same-day assessment that already existed at decided_at.
 
-    ``missing`` and ``stale`` keep their own reasons. Neither writes or pretends
-    to be an ``unavailable`` observation. The 4-day window is calendar time
-    measured backward from the cutoff: weekends count, and a holiday longer than
-    4 calendar days makes the last pre-holiday observation stale.
+    Yesterday's ok is not a substitute when today's assessment is absent. A row
+    observed or inserted after decided_at cannot be bound. This does not claim
+    that created_at proves the observation was known; see VISIBILITY_LIMITATION.
     """
+    decided = _aware(decided_at)
     visible: list[tuple[dt.datetime, Any]] = []
+    older_exists = False
     for row in rows:
         observed = _aware(row.observed_at)
         created = _aware(row.created_at)
-        if observed <= cutoff and created <= cutoff:
-            visible.append((observed, row))
+        if observed <= decided and created <= decided:
+            older_exists = True
+            if observed.astimezone(CST).date() == signal_date:
+                visible.append((observed, row))
     if not visible:
         return {
-            "status": "missing",
+            "status": "assessment_pending" if older_exists else "missing",
             "level": None,
             "observation_id": None,
             "observed_at": None,
             "created_at": None,
-            "cutoff": cutoff,
+            "decided_at": decided,
+            "used_previous_ok": False,
         }
     observed, row = max(visible, key=lambda item: item[0])
-    status = "fresh" if observed >= cutoff - dt.timedelta(days=RISK_FRESH_CALENDAR_DAYS) else "stale"
     return {
-        "status": status,
+        "status": "fresh",
         "level": str(row.level),
         "observation_id": row.id,
         "observed_at": observed,
         "created_at": _aware(row.created_at),
-        "cutoff": cutoff,
+        "decided_at": decided,
+        "used_previous_ok": False,
     }
 
 
-def _load_visible_risk(session: Session, signal_date: dt.date) -> dict[str, Any]:
-    cutoff = plan_decision_cutoff(signal_date)
-    rows = session.scalars(select(RiskState).where(RiskState.observed_at <= cutoff)).all()
-    return select_visible_risk(rows, cutoff)
+def _unverified_selection() -> dict[str, Any]:
+    return {
+        "status": "unverified",
+        "level": None,
+        "observation_id": None,
+        "observed_at": None,
+        "created_at": None,
+        "decided_at": None,
+        "used_previous_ok": False,
+    }
+
+
+def _bind_for_new_plan(session: Session, signal_date: dt.date, decided_at: dt.datetime) -> dict[str, Any]:
+    if _aware(decided_at).astimezone(CST).date() != signal_date:
+        return _unverified_selection()
+    rows = session.scalars(select(RiskState)).all()
+    return bind_same_day_risk(rows, signal_date, decided_at)
+
+
+def _selection_from_plan(plan: RotationShadowRun) -> dict[str, Any]:
+    """Use the binding frozen with the plan. Do not invent a clock or re-query."""
+    detail = plan.detail or {}
+    binding = detail.get("risk_binding")
+    if not detail.get("decided_at") or not isinstance(binding, dict):
+        return _unverified_selection()
+    return {
+        "status": binding.get("status") or "unverified",
+        "level": binding.get("level"),
+        "observation_id": binding.get("observation_id"),
+        "observed_at": None,
+        "created_at": None,
+        "decided_at": _aware(dt.datetime.fromisoformat(detail["decided_at"])),
+        "used_previous_ok": False,
+    }
 
 
 def _increase_blocked(selection: dict[str, Any], codes: set[str]) -> set[str]:
     """Codes that must not be opened or increased. Reductions stay allowed."""
-    if selection["status"] in {"missing", "stale"}:
+    if selection["status"] in {"missing", "stale", "assessment_pending", "unverified"}:
         return set(codes)
     level = selection.get("level")
     if level == "ok":
@@ -692,14 +750,17 @@ def _increase_blocked(selection: dict[str, Any], codes: set[str]) -> set[str]:
 def _risk_gate_record(selection: dict[str, Any], blocked: set[str]) -> dict[str, Any]:
     status = selection["status"]
     level = selection.get("level")
-    if status in {"missing", "stale"} or (level not in {None, "ok", "growth_blocked"}):
+    if status in {"missing", "stale", "assessment_pending", "unverified"}:
         exposure = "blocked"
     elif level == "growth_blocked":
         exposure = "growth_capped"
-    else:
+    elif level == "ok":
         exposure = "open"
+    else:
+        exposure = "blocked"
     observed = selection.get("observed_at")
     created = selection.get("created_at")
+    decided = selection.get("decided_at")
     return {
         "rule_version": RISK_RULE_VERSION,
         "level": level,
@@ -710,21 +771,16 @@ def _risk_gate_record(selection: dict[str, Any], blocked: set[str]) -> dict[str,
         "benchmarks_ungated": True,
         "benchmark_policy": "ungated_control",
         "ew_policy": "ungated_control",
-        "decision_cutoff": selection["cutoff"].isoformat(),
+        "decided_at": None if decided is None else decided.isoformat(),
         "observation_id": selection.get("observation_id"),
         "observation_observed_at": None if observed is None else observed.isoformat(),
         "observation_created_at": None if created is None else created.isoformat(),
-        "freshness_window": {
-            "value": RISK_FRESH_CALENDAR_DAYS,
-            "unit": "calendar_days",
-            "anchor": "plan_decision_cutoff",
-            "includes_weekends": True,
-            "holiday_extension": False,
-            "trading_day_count": False,
-        },
-        "visibility": "observed_at<=cutoff and created_at<=cutoff",
+        "schedule": SCHEDULE_CONTRACT,
+        "same_day_assessment_required": True,
+        "previous_ok_is_substitute": False,
+        "visibility": "same-day observed_at<=decided_at and created_at<=decided_at",
         "visibility_limitation": VISIBILITY_LIMITATION,
-        "effective_boundary": "new day rows written by this process only; existing nav rows are not rewritten",
+        "effective_boundary": "new plans and day rows only; existing nav and historical plans are not rewritten",
         "nav_rewritten": False,
     }
 
@@ -890,8 +946,10 @@ def replay(
             if plan.detail.get("parameters_sha256") != _digest(account.parameters):
                 return _quality(account, day, "plan_parameters_changed")
             target = {s["code"]: float(s["weight"]) for s in plan.selected}
-            selection = _load_visible_risk(session, plan.signal_date)
+            selection = _selection_from_plan(plan)
             increase_blocked = _increase_blocked(selection, set(shares) | set(target))
+            if selection["status"] != "unverified":
+                plan.detail = {**plan.detail, "risk_gate": _risk_gate_record(selection, increase_blocked)}
             # Daily OHLC lock is an explicitly conservative fill approximation.
             for code in (
                 set(shares)
@@ -915,10 +973,6 @@ def replay(
             plan.fills = fills
             plan.nav_before = round(value_open, 4)
             plan.turnover = round(traded / value_open, 4) if value_open > 0 else 0
-            plan.detail = {
-                **plan.detail,
-                "risk_gate": _risk_gate_record(selection, increase_blocked),
-            }
             ew["cash"], ew_fills, _, _ = _trade(ew["cash"], ew["shares"], dict(plan.detail["ew_weights"]), bars)
             bench_fills = []
             if index < 0:  # buy-and-hold, not silently rebalanced every 20 days
