@@ -335,10 +335,12 @@ def _init_rotation(session: Session) -> dict:
         )
 
 
-def _risk(session: Session, day: dt.date, level: str) -> None:
+def _risk(session: Session, day: dt.date, level: str, *, before_close: bool = False) -> None:
+    stamp = dt.datetime.combine(day, dt.time(14, 0) if before_close else dt.time(15, 0), CST)
     session.add(
         RiskState(
-            observed_at=dt.datetime.combine(day, dt.time(15, 0), CST),
+            observed_at=stamp,
+            created_at=stamp,
             level=level,
             values={},
             sources={},
@@ -366,7 +368,7 @@ def test_critical_risk_does_not_open_new_exposure(engine, monkeypatch):
     with Session(engine) as session:
         _cleanup_rotation(session)
         _seed_rotation(session)
-        _risk(session, ROTATION_START, "critical")
+        _risk(session, ROTATION_BASE, "critical", before_close=True)
         session.commit()
         init = _init_rotation(session)
         assert init.get("ok") is True, init
@@ -392,7 +394,7 @@ def test_growth_block_does_not_open_growth_names(engine, monkeypatch):
     with Session(engine) as session:
         _cleanup_rotation(session)
         _seed_rotation(session)
-        _risk(session, ROTATION_START, "growth_blocked")
+        _risk(session, ROTATION_BASE, "growth_blocked", before_close=True)
         session.commit()
         init = _init_rotation(session)
         assert init.get("ok") is True, init
@@ -417,6 +419,7 @@ def test_critical_risk_does_not_force_liquidate_existing_book(engine, monkeypatc
     with Session(engine) as session:
         _cleanup_rotation(session)
         _seed_rotation(session)
+        _risk(session, ROTATION_BASE, "ok", before_close=True)
         session.commit()
         init = _init_rotation(session)
         assert init.get("ok") is True, init

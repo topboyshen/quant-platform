@@ -322,13 +322,23 @@ def build_report(
         "dimension_labels": {dimension: DIMENSION_LABELS[dimension] for dimension in dimensions},
         "definitions": {
             "overall": "所有成熟且成交的结果，含未触发基线和未过闸样本，不是可执行收益",
-            "executable": "有资格、已触发且风控未阻断的成熟成交，才是可执行收益",
+            "executable": "获准交易的记录收益；撮合校验未完成，不是确认成交",
+            "confirmed": "确认成交收益。本批不产出该数字，不能用获准记录代替",
             "eligible": "当前资格判定为 eligible 的成熟结果",
             "triggered": "当前信号状态为 triggered 的成熟结果",
             "sample_status": "eligible_n 达到阈值才为 sufficient",
         },
+        "fill_validation": "incomplete",
         "overall": _stats(matured),
-        "executable": _stats(executable_rows),
+        "executable": {**_stats(executable_rows), "fill_validation": "incomplete", "confirmed_fill": False},
+        "confirmed": {
+            "n": 0,
+            "avg_net_return": None,
+            "avg_excess_return": None,
+            "fill_validation": "incomplete",
+            "confirmed_fill": False,
+            "status": "unvalidated",
+        },
         "eligible": _stats(eligible),
         "triggered": _stats(triggered),
         "sample": {
@@ -394,8 +404,9 @@ def markdown(data: dict[str, Any]) -> str:
         f"- 总体（含研究/未过闸，不是可执行收益）：胜率 {_pct(data['overall']['win_rate'])}，"
         f"平均净收益 {_pct(data['overall']['avg_net_return'])}，"
         f"平均超额 {_pct(data['overall']['avg_excess_return'])}",
-        f"- 可执行：胜率 {_pct(data['executable']['win_rate'])}，"
-        f"平均净收益 {_pct(data['executable']['avg_net_return'])}，"
+        "- 确认成交：撮合校验未完成，无确认成交收益，不能用获准记录代替",
+        f"- 获准记录（非确认成交）：胜率 {_pct(data['executable']['win_rate'])}，"
+        f"平均记录收益 {_pct(data['executable']['avg_net_return'])}，"
         f"平均超额 {_pct(data['executable']['avg_excess_return'])}",
         f"- 合格样本：胜率 {_pct(data['eligible']['win_rate'])}，平均净收益 {_pct(data['eligible']['avg_net_return'])}，"
         f"平均超额 {_pct(data['eligible']['avg_excess_return'])}",

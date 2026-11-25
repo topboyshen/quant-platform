@@ -49,6 +49,6 @@ export function horizonCell(sample: { outcomes: Record<string, ShadowCell> }, ho
   if (value.fill_status !== 'filled') return '未成交'
   const text = pct(value.net_return)
   if (!value.return_role || value.return_role === 'unknown') return `无依据 ${text}`
-  if (value.return_role === 'executable') return text
+  if (value.return_role === 'executable') return `获准未校验 ${text}`
   return `反事实 ${text}`
 }

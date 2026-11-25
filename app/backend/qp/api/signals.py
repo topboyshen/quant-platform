@@ -64,12 +64,17 @@ def _return_view(
         risk_action=risk_action,
         source=source,
     )
+    approved = role == "executable"
     return {
         "net_return": net_return,
         "return_role": role,
         "return_role_label": ROLE_LABELS[role],
-        "executable": role == "executable",
+        "executable": approved,
+        "approval_status": "approved" if approved else "not_approved",
         "executable_net_return": executable_net_return(role, fill_status, net_return),
+        "fill_validation": "incomplete",
+        "fill_confirmed": False,
+        "confirmed_net_return": None,
     }
 
 

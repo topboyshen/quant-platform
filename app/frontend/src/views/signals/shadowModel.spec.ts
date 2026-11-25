@@ -50,6 +50,6 @@ describe('horizonCell', () => {
       '5': { net_return: 0.02, excess_return: 0.01, fill_status: 'filled', return_role: 'executable' },
     })
     expect(horizonCell(row, 1)).toBe('反事实 4.10%')
-    expect(horizonCell(row, 5)).toBe('2.00%')
+    expect(horizonCell(row, 5)).toBe('获准未校验 2.00%')
   })
 })

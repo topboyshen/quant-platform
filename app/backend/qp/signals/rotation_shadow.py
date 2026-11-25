@@ -60,6 +60,18 @@ SECTORS = {target.code: target.sector for target in TARGETS}
 CODES = tuple(NAMES)
 GROWTH_CODES = {code for code in CODES if is_growth_risk_target(SECTORS.get(code), NAMES.get(code))}
 NO_NEW_RISK = frozenset({"critical", "warning", "unavailable"})
+# Existing freshness parameter. Calendar days, not trading days, and not extended
+# across weekends or holidays. Anchored to the plan decision cutoff, not the
+# execution-day end.
+RISK_FRESH_CALENDAR_DAYS = 4
+RISK_RULE_VERSION = "qp-rotation-risk.v1"
+DECISION_CLOSE = dt.time(15, 0)
+VISIBILITY_LIMITATION = (
+    "A row is visible only when both observed_at and created_at are at or before "
+    "the signal close (15:00 CST on signal_date). created_at is the insert clock "
+    "and can be backdated; there is no separate publication receipt. Plans do not "
+    "store decided_at, so this close is the cutoff the stored fields can support."
+)
 
 
 class DataIssue(ValueError):
@@ -613,47 +625,107 @@ def initialize(
     }
 
 
-def _execution_risk_level(session: Session, day: dt.date) -> str | None:
-    """Latest risk observation on the execution day or the previous few sessions.
+def plan_decision_cutoff(signal_date: dt.date) -> dt.datetime:
+    """Signal close. This is the only decision deadline stored fields support."""
+    return dt.datetime.combine(signal_date, DECISION_CLOSE, tzinfo=CST)
 
-    A missing row is not treated as ``unavailable``: there is no basis to invent a
-    block. An explicit critical/warning/unavailable/growth_blocked row is a basis.
+
+def _aware(value: dt.datetime) -> dt.datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=CST)
+    return value.astimezone(CST)
+
+
+def select_visible_risk(rows: Sequence[Any], cutoff: dt.datetime) -> dict[str, Any]:
+    """Latest observation that existed before the plan cutoff.
+
+    ``missing`` and ``stale`` keep their own reasons. Neither writes or pretends
+    to be an ``unavailable`` observation. The 4-day window is calendar time
+    measured backward from the cutoff: weekends count, and a holiday longer than
+    4 calendar days makes the last pre-holiday observation stale.
     """
-    start = dt.datetime.combine(day - dt.timedelta(days=4), dt.time.min, tzinfo=CST)
-    end = dt.datetime.combine(day, dt.time.max, tzinfo=CST)
-    row = session.scalar(
-        select(RiskState)
-        .where(RiskState.observed_at >= start, RiskState.observed_at <= end)
-        .order_by(RiskState.observed_at.desc())
-        .limit(1)
-    )
-    return None if row is None else str(row.level)
+    visible: list[tuple[dt.datetime, Any]] = []
+    for row in rows:
+        observed = _aware(row.observed_at)
+        created = _aware(row.created_at)
+        if observed <= cutoff and created <= cutoff:
+            visible.append((observed, row))
+    if not visible:
+        return {
+            "status": "missing",
+            "level": None,
+            "observation_id": None,
+            "observed_at": None,
+            "created_at": None,
+            "cutoff": cutoff,
+        }
+    observed, row = max(visible, key=lambda item: item[0])
+    status = "fresh" if observed >= cutoff - dt.timedelta(days=RISK_FRESH_CALENDAR_DAYS) else "stale"
+    return {
+        "status": status,
+        "level": str(row.level),
+        "observation_id": row.id,
+        "observed_at": observed,
+        "created_at": _aware(row.created_at),
+        "cutoff": cutoff,
+    }
 
 
-def _increase_blocked(level: str | None, codes: set[str]) -> set[str]:
+def _load_visible_risk(session: Session, signal_date: dt.date) -> dict[str, Any]:
+    cutoff = plan_decision_cutoff(signal_date)
+    rows = session.scalars(select(RiskState).where(RiskState.observed_at <= cutoff)).all()
+    return select_visible_risk(rows, cutoff)
+
+
+def _increase_blocked(selection: dict[str, Any], codes: set[str]) -> set[str]:
     """Codes that must not be opened or increased. Reductions stay allowed."""
-    if not level or level == "ok":
+    if selection["status"] in {"missing", "stale"}:
+        return set(codes)
+    level = selection.get("level")
+    if level == "ok":
         return set()
     if level == "growth_blocked":
         return {code for code in codes if code in GROWTH_CODES}
     return set(codes)
 
 
-def _risk_gate_record(level: str | None, blocked: set[str]) -> dict[str, Any]:
-    if not level:
-        exposure = "no_observation"
-    elif level == "ok":
-        exposure = "open"
+def _risk_gate_record(selection: dict[str, Any], blocked: set[str]) -> dict[str, Any]:
+    status = selection["status"]
+    level = selection.get("level")
+    if status in {"missing", "stale"} or (level not in {None, "ok", "growth_blocked"}):
+        exposure = "blocked"
     elif level == "growth_blocked":
         exposure = "growth_capped"
     else:
-        exposure = "blocked"
+        exposure = "open"
+    observed = selection.get("observed_at")
+    created = selection.get("created_at")
     return {
+        "rule_version": RISK_RULE_VERSION,
         "level": level,
+        "reason": status,
         "new_exposure": exposure,
         "increase_blocked": sorted(blocked),
         "forced_liquidation": False,
         "benchmarks_ungated": True,
+        "benchmark_policy": "ungated_control",
+        "ew_policy": "ungated_control",
+        "decision_cutoff": selection["cutoff"].isoformat(),
+        "observation_id": selection.get("observation_id"),
+        "observation_observed_at": None if observed is None else observed.isoformat(),
+        "observation_created_at": None if created is None else created.isoformat(),
+        "freshness_window": {
+            "value": RISK_FRESH_CALENDAR_DAYS,
+            "unit": "calendar_days",
+            "anchor": "plan_decision_cutoff",
+            "includes_weekends": True,
+            "holiday_extension": False,
+            "trading_day_count": False,
+        },
+        "visibility": "observed_at<=cutoff and created_at<=cutoff",
+        "visibility_limitation": VISIBILITY_LIMITATION,
+        "effective_boundary": "new day rows written by this process only; existing nav rows are not rewritten",
+        "nav_rewritten": False,
     }
 
 
@@ -809,7 +881,7 @@ def replay(
         if len(due) > 1 or any(p.execute_date is not None and p.execute_date < day for p in plans.values()):
             return _quality(account, day, "pending_plan_clock_conflict")
         plan = due[0] if due else None
-        risk_level = _execution_risk_level(session, day)
+        selection: dict[str, Any] | None = None
         increase_blocked: set[str] = set()
         if plan is not None:
             # Only infer next date for a plan persisted before the calendar horizon.
@@ -818,7 +890,8 @@ def replay(
             if plan.detail.get("parameters_sha256") != _digest(account.parameters):
                 return _quality(account, day, "plan_parameters_changed")
             target = {s["code"]: float(s["weight"]) for s in plan.selected}
-            increase_blocked = _increase_blocked(risk_level, set(shares) | set(target))
+            selection = _load_visible_risk(session, plan.signal_date)
+            increase_blocked = _increase_blocked(selection, set(shares) | set(target))
             # Daily OHLC lock is an explicitly conservative fill approximation.
             for code in (
                 set(shares)
@@ -844,7 +917,7 @@ def replay(
             plan.turnover = round(traded / value_open, 4) if value_open > 0 else 0
             plan.detail = {
                 **plan.detail,
-                "risk_gate": _risk_gate_record(risk_level, increase_blocked),
+                "risk_gate": _risk_gate_record(selection, increase_blocked),
             }
             ew["cash"], ew_fills, _, _ = _trade(ew["cash"], ew["shares"], dict(plan.detail["ew_weights"]), bars)
             bench_fills = []
@@ -883,7 +956,22 @@ def replay(
                 "input_sha256": _digest(
                     [[c, str(day), b.open, b.high, b.low, b.close, b.volume] for c, b in sorted(bars.items())]
                 ),
-                "risk_gate": _risk_gate_record(risk_level, increase_blocked),
+                "risk_gate": _risk_gate_record(selection, increase_blocked)
+                if selection is not None
+                else {
+                    "rule_version": RISK_RULE_VERSION,
+                    "reason": "no_rebalance",
+                    "level": None,
+                    "new_exposure": "no_order",
+                    "forced_liquidation": False,
+                    "benchmarks_ungated": True,
+                    "benchmark_policy": "ungated_control",
+                    "ew_policy": "ungated_control",
+                    "nav_rewritten": False,
+                    "effective_boundary": (
+                        "new day rows written by this process only; existing nav rows are not rewritten"
+                    ),
+                },
             },
         )
         session.add(row)
@@ -964,6 +1052,16 @@ def _run_dict(run: RotationShadowRun) -> dict[str, Any]:
         "selected": run.selected,
         "fills": run.fills,
         "detail": run.detail,
+    }
+
+
+def _performance_versions(days: Sequence[RotationShadowDay]) -> dict[str, Any]:
+    ruled = sum(1 for row in days if (row.detail or {}).get("risk_gate", {}).get("rule_version") == RISK_RULE_VERSION)
+    return {
+        "current_rule": RISK_RULE_VERSION,
+        "ruled_days": ruled,
+        "unmarked_days": len(days) - ruled,
+        "nav_rewritten": False,
     }
 
 
@@ -1070,6 +1168,10 @@ def summary(
         "next_execute_date": str(next_execute) if next_execute else None,
         "quality": account.quality,
         "risk_gate": latest.detail.get("risk_gate"),
+        "risk_rule_version": RISK_RULE_VERSION,
+        "performance_versions": _performance_versions(days),
+        "benchmark_policy": "ungated_control",
+        "ew_policy": "ungated_control",
     }
     if series:
         result["series"] = [
