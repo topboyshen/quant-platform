@@ -93,6 +93,7 @@ def _gate_view(result: dict) -> dict:
         "opened_new_exposure": bool(result["positions"]),
         "valued": result["nav"] is not None,
         "reason": gate.get("reason"),
+        "history_diagnostic": gate.get("history_diagnostic"),
         "level": gate.get("level"),
         "forced_liquidation": gate.get("forced_liquidation"),
         "rule_version": gate.get("rule_version"),
@@ -108,7 +109,8 @@ def test_missing_observation_blocks_new_risk_without_forging_unavailable(engine,
     assert actual == {
         "opened_new_exposure": False,
         "valued": True,
-        "reason": "missing",
+        "reason": "assessment_pending",
+        "history_diagnostic": "absent",
         "level": None,
         "forced_liquidation": False,
         "rule_version": "qp-rotation-risk.v1",
@@ -161,7 +163,8 @@ def test_later_inserted_row_is_not_visible_to_the_plan(engine, monkeypatch):
     finally:
         _finish(engine)
     assert actual["opened_new_exposure"] is False
-    assert actual["reason"] == "missing"
+    assert actual["reason"] == "assessment_pending"
+    assert actual["history_diagnostic"] == "not_qualified"
     assert actual["level"] is None
 
 
@@ -176,7 +179,8 @@ def test_observation_after_decision_cutoff_is_not_used(engine, monkeypatch):
     finally:
         _finish(engine)
     assert actual["opened_new_exposure"] is False
-    assert actual["reason"] == "missing"
+    assert actual["reason"] == "assessment_pending"
+    assert actual["history_diagnostic"] == "not_qualified"
     assert actual["level"] is None
 
 
@@ -257,7 +261,8 @@ def test_observation_arriving_after_decision_is_not_bound(engine, monkeypatch):
             plan = session.get(_HELPERS.rot.RotationShadowRun, init["plan_id"])
             assert str(plan.detail.get("decided_at", "")).startswith(f"{BASE.isoformat()}T15:50")
             assert plan.detail.get("risk_observation_id") is None
-            assert plan.detail["risk_binding"]["status"] == "missing"
+            assert plan.detail["risk_binding"]["status"] == "assessment_pending"
+            assert plan.detail["risk_binding"]["history_diagnostic"] == "absent"
     finally:
         _finish(engine)
 

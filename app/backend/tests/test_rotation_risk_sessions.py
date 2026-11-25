@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
+import time
 from pathlib import Path
+from threading import Thread
 from types import SimpleNamespace
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from qp.market.kline import DailyBar, KlineResult
@@ -105,7 +107,8 @@ def test_uncommitted_risk_is_invisible_and_later_commit_does_not_rebind(engine, 
             planner.commit()
             plan_id = init["plan_id"]
             frozen = planner.get(RotationShadowRun, plan_id)
-            assert frozen.detail["risk_binding"]["status"] == "missing"
+            assert frozen.detail["risk_binding"]["status"] == "assessment_pending"
+            assert frozen.detail["risk_binding"]["history_diagnostic"] == "absent"
             assert frozen.detail.get("risk_observation_id") is None
         holder.commit()
         monkeypatch.setattr(H.rot, "now_cst", lambda: dt.datetime.combine(BASE, dt.time(16, 40), CST))
@@ -116,7 +119,8 @@ def test_uncommitted_risk_is_invisible_and_later_commit_does_not_rebind(engine, 
             assert step.get("error") != "calendar_day_unknown"
             plan = retry.get(RotationShadowRun, plan_id)
             assert plan.detail.get("risk_observation_id") is None
-            assert plan.detail["risk_binding"]["status"] == "missing"
+            assert plan.detail["risk_binding"]["status"] == "assessment_pending"
+            assert plan.detail["risk_binding"]["history_diagnostic"] == "absent"
         monkeypatch.setattr(H.rot, "now_cst", lambda: dt.datetime(2028, 12, 1, 16, tzinfo=CST))
         with Session(engine) as executor:
             replay = H.rot.replay(executor, until=START, phase="forward", rule_version="qp-rotation.contract")
@@ -439,6 +443,95 @@ def test_pending_risk_does_not_add_or_rotate_in_but_allows_strategy_reduction(en
             assert after.get(keep, 0) > 0
             assert after.get(drop, 0) < before[drop]
     finally:
+        with Session(engine) as cleanup:
+            _cleanup_all(cleanup)
+            cleanup.commit()
+
+
+def test_empty_risk_table_is_assessment_pending_with_absent_history(engine):
+    decided = dt.datetime.combine(BASE, dt.time(15, 50), CST)
+    try:
+        with Session(engine) as session:
+            _cleanup_all(session)
+            H._seed_rotation(session)
+            session.commit()
+            default_isolation = session.execute(text("SHOW transaction_isolation")).scalar_one()
+            init = _init_at(session, decided)
+            session.commit()
+            plan = session.get(RotationShadowRun, init["plan_id"])
+            binding = plan.detail["risk_binding"]
+            print(f"default_transaction_isolation={default_isolation}")
+            print(f"snapshot_isolation={binding.get('snapshot_isolation')}")
+            assert default_isolation == "read committed"
+            assert binding["status"] == "assessment_pending"
+            assert binding["history_diagnostic"] == "absent"
+            assert binding["snapshot_isolation"] == "repeatable read"
+            assert plan.detail.get("risk_observation_id") is None
+    finally:
+        with Session(engine) as cleanup:
+            _cleanup_all(cleanup)
+            cleanup.commit()
+
+
+def test_commit_after_snapshot_and_before_select_returns_is_not_bound(engine):
+    """EOD commits while the risk read waits, with timestamps earlier than decided_at."""
+    decided = dt.datetime.combine(BASE, dt.time(15, 50), CST)
+    early = dt.datetime.combine(BASE, dt.time(15, 30), CST)
+    holder = Session(engine)
+    outcome: dict = {}
+
+    def freeze() -> None:
+        outcome["started"] = True
+        try:
+            with Session(engine) as planner:
+                outcome["connected"] = True
+                outcome["init"] = _init_at(planner, decided)
+                planner.commit()
+                outcome["committed"] = True
+        except Exception as exc:
+            outcome["error"] = repr(exc)
+
+    try:
+        with Session(engine) as setup:
+            _cleanup_all(setup)
+            H._seed_rotation(setup)
+            setup.commit()
+        holder.execute(text("LOCK TABLE signals.risk_state IN ACCESS EXCLUSIVE MODE"))
+        late = _risk(holder, level="critical", observed_at=early, created_at=early)
+        late_id = late.id
+        worker = Thread(target=freeze)
+        worker.start()
+        deadline = time.time() + 15
+        waiting = 0
+        while time.time() < deadline:
+            waiting = holder.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM pg_locks l
+                    JOIN pg_class c ON c.oid = l.relation
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'signals' AND c.relname = 'risk_state' AND NOT l.granted
+                    """
+                )
+            ).scalar_one()
+            if waiting:
+                break
+            time.sleep(0.05)
+        assert waiting, outcome
+        holder.commit()
+        worker.join(timeout=15)
+        assert not worker.is_alive()
+        assert "error" not in outcome, outcome.get("error")
+        with Session(engine) as session:
+            plan = session.get(RotationShadowRun, outcome["init"]["plan_id"])
+            assert plan.detail.get("risk_observation_id") is None
+            assert plan.detail["risk_binding"]["status"] == "assessment_pending"
+            assert plan.detail["risk_binding"]["history_diagnostic"] == "absent"
+            assert plan.detail["risk_binding"]["snapshot_isolation"] == "repeatable read"
+            assert session.get(RiskState, late_id) is not None
+    finally:
+        holder.close()
         with Session(engine) as cleanup:
             _cleanup_all(cleanup)
             cleanup.commit()

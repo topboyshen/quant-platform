@@ -67,13 +67,17 @@ RISK_RULE_VERSION = "qp-rotation-risk.v1"
 # Repo timers, not an assumed 15:00 close. EOD writes RiskState.observed_at from its
 # own clock. The rotation job freezes the plan later the same afternoon.
 SCHEDULE_CONTRACT = {
-    "risk_observation": "signals.eod Mon-Fri 15:30 CST, retry 15:48; observed_at is that job clock",
-    "plan_freeze": "signals.rotation_shadow Mon-Fri 15:50 and 16:40 CST; decided_at is now_cst() at plan insert",
+    "risk_observation": "signals.eod Mon-Fri 15:30 CST, retry 15:48; observed_at is the now captured at run_eod entry",
+    "plan_freeze": (
+        "signals.rotation_shadow Mon-Fri 15:50 and 16:40 CST; a new REPEATABLE READ snapshot "
+        "is established before decided_at = now_cst(); only rows in that snapshot can be bound"
+    ),
     "execution": "next open session, using only the risk binding stored when the plan was frozen",
 }
 VISIBILITY_LIMITATION = (
-    "created_at can be backdated on insert and is not an independent publication receipt. "
-    "Matching created_at<=decided_at does not strictly prove the observation was known then. "
+    "The bound row is one returned by the REPEATABLE READ snapshot taken before decided_at. "
+    "A commit after that snapshot is not bound, even if its timestamps are earlier. "
+    "created_at is the writer's transaction_timestamp(), not a publication receipt and not commit order. "
     "Historical plans without a stored decided_at are unverified; their clocks are not reconstructed."
 )
 
@@ -525,6 +529,8 @@ def _binding_record(selection: dict[str, Any]) -> dict[str, Any]:
         "created_at": None if created is None else created.isoformat(),
         "decided_at": None if decided is None else decided.isoformat(),
         "used_previous_ok": False,
+        "history_diagnostic": selection.get("history_diagnostic"),
+        "snapshot_isolation": selection.get("snapshot_isolation"),
     }
 
 
@@ -532,8 +538,12 @@ def _plan(
     session: Session, account: RotationShadowAccount, frames: dict[str, Frame], day: dt.date, execute: dt.date | None
 ) -> RotationShadowRun:
     selected, universe = _selection(frames, day)
-    decided_at = now_cst()
-    binding = _bind_for_new_plan(session, day, decided_at)
+    decided_at, snapshot_isolation, rows = _read_risk_snapshot(session)
+    if _aware(decided_at).astimezone(CST).date() != day:
+        binding = _unverified_selection()
+    else:
+        binding = bind_same_day_risk(rows, day, decided_at)
+        binding["snapshot_isolation"] = snapshot_isolation
     detail = {
         "parameters_sha256": _digest(account.parameters),
         "input_sha256": _input_digest(frames, day),
@@ -660,28 +670,45 @@ def _aware(value: dt.datetime) -> dt.datetime:
     return value.astimezone(CST)
 
 
-def bind_same_day_risk(rows: Sequence[Any], signal_date: dt.date, decided_at: dt.datetime) -> dict[str, Any]:
-    """Bind only a same-day assessment that already existed at decided_at.
+def _read_risk_snapshot(session: Session) -> tuple[dt.datetime, str, list[Any]]:
+    """Read risk_state from a snapshot established before decided_at is sampled.
 
-    Yesterday's ok is not a substitute when today's assessment is absent. A row
-    observed or inserted after decided_at cannot be bound. Same-day ties use
-    observed_at, then created_at, then id, so a later critical is not skipped
-    for an earlier ok. This does not claim that created_at proves the
-    observation was known; see VISIBILITY_LIMITATION.
+    The caller's transaction stays at the engine default. This opens a separate
+    REPEATABLE READ transaction, runs one statement to establish its snapshot,
+    then samples now_cst(). The following read cannot see a commit that lands
+    after that snapshot, including one that commits while this read waits.
+    """
+    bind = session.get_bind()
+    with bind.connect().execution_options(isolation_level="REPEATABLE READ") as conn:
+        with conn.begin():
+            conn.execute(text("SELECT 1"))
+            decided_at = now_cst()
+            rows = list(
+                conn.execute(select(RiskState.id, RiskState.level, RiskState.observed_at, RiskState.created_at))
+            )
+            isolation = str(conn.execute(text("SHOW transaction_isolation")).scalar_one())
+    return decided_at, isolation, rows
+
+
+def bind_same_day_risk(rows: Sequence[Any], signal_date: dt.date, decided_at: dt.datetime) -> dict[str, Any]:
+    """Choose a same-day row from an already-taken snapshot.
+
+    The snapshot, not a later SELECT, is the visibility boundary. Yesterday's ok
+    is not a substitute. Same-day ties use observed_at, then created_at, then id.
+    That key is not commit order: observed_at is the EOD entry clock, created_at
+    is the writer's transaction start, and id is only a stable tie-break.
     """
     decided = _aware(decided_at)
     visible: list[tuple[dt.datetime, Any]] = []
-    older_exists = False
     for row in rows:
         observed = _aware(row.observed_at)
         created = _aware(row.created_at)
-        if observed <= decided and created <= decided:
-            older_exists = True
-            if observed.astimezone(CST).date() == signal_date:
-                visible.append((observed, row))
+        if observed <= decided and created <= decided and observed.astimezone(CST).date() == signal_date:
+            visible.append((observed, row))
     if not visible:
         return {
-            "status": "assessment_pending" if older_exists else "missing",
+            "status": "assessment_pending",
+            "history_diagnostic": "absent" if not rows else "not_qualified",
             "level": None,
             "observation_id": None,
             "observed_at": None,
@@ -713,13 +740,6 @@ def _unverified_selection() -> dict[str, Any]:
     }
 
 
-def _bind_for_new_plan(session: Session, signal_date: dt.date, decided_at: dt.datetime) -> dict[str, Any]:
-    if _aware(decided_at).astimezone(CST).date() != signal_date:
-        return _unverified_selection()
-    rows = session.scalars(select(RiskState)).all()
-    return bind_same_day_risk(rows, signal_date, decided_at)
-
-
 def _selection_from_plan(plan: RotationShadowRun) -> dict[str, Any]:
     """Use the binding frozen with the plan. Do not invent a clock or re-query."""
     detail = plan.detail or {}
@@ -734,6 +754,8 @@ def _selection_from_plan(plan: RotationShadowRun) -> dict[str, Any]:
         "created_at": None,
         "decided_at": _aware(dt.datetime.fromisoformat(detail["decided_at"])),
         "used_previous_ok": False,
+        "history_diagnostic": binding.get("history_diagnostic"),
+        "snapshot_isolation": binding.get("snapshot_isolation"),
     }
 
 
@@ -780,7 +802,9 @@ def _risk_gate_record(selection: dict[str, Any], blocked: set[str]) -> dict[str,
         "schedule": SCHEDULE_CONTRACT,
         "same_day_assessment_required": True,
         "previous_ok_is_substitute": False,
-        "visibility": "same-day observed_at<=decided_at and created_at<=decided_at",
+        "history_diagnostic": selection.get("history_diagnostic"),
+        "snapshot_isolation": selection.get("snapshot_isolation"),
+        "visibility": "repeatable-read snapshot taken before decided_at; same-day filter applies only inside it",
         "visibility_limitation": VISIBILITY_LIMITATION,
         "effective_boundary": "new plans and day rows only; existing nav and historical plans are not rewritten",
         "nav_rewritten": False,
