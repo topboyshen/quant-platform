@@ -29,8 +29,9 @@ SameSite=Lax, Path=/next/.
 - **Research** — read-only imports (ledger, phase2, backtests, AI, profit,
   projects), ETF score import (20d/5d), research comparison and the read-only
   ETF/rotation/rule shadows. Research never creates orders or formal decisions.
-- **Reports** — EOD and ETF shadow report; the 17:40 combined report is the
-  production daily delivery when enabled.
+- **Reports** — 15:50 EOD daily report and 17:40 ETF research shadow report are
+  separate production deliveries. The combined-report mode exists but its
+  production switch is off.
 - **Notifications** — `notify.outbox` + `notify.delivery_attempt`. General
   notifications default to `shadow`; signal/report delivery is controlled by
   `QP_SIGNALS_NOTIFY_MODE` and is live in production. A failed live delivery is
@@ -60,8 +61,9 @@ pytest                         # unit suite; repo-asset tests are skipped
 pytest --run-assets -m assets  # docs, lockfiles, deploy units, frontend source
 ```
 
-CI runs both suites, ruff check/format, frontend Vitest/build, Playwright smoke,
-Gitleaks and advisory dependency audit. The coverage floor is 80%. Runtime pins
+CI runs both suites, ruff check/format, frontend lint/Vitest/build, Playwright
+smoke, Gitleaks and a blocking dependency audit. The coverage floor is 85%
+(current coverage is above 88%). Runtime pins
 live in `backend/requirements-runtime.lock`; the test lock additionally carries
 `pytest`/`httpx`/`pgserver`.
 
