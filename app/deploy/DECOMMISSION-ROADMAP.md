@@ -33,11 +33,11 @@ in the freeze baseline above.
 
 | Module | Runtime path | Replacement | Status | Next action |
 |---|---|---|---|---|
-| `signals/trading-radar` | `~/trading-radar` | `app/` signals + `/next/` | **mostly retired**; `quant-approved-signals.service` still active (8094); `radar-quantdinger-*` containers up | confirm approved-signals intake consumer; decide pg/redis retention at Phase 4 |
+| `signals/trading-radar` | `~/trading-radar` | `app/` signals + `/next/` | **mostly retired**; `quant-approved-signals.service` still active (8094); `radar-quantdinger-*` containers up | intake path confirmed via nginx `quantdinger-8443` (no recent traffic); decide pg/redis retention at Phase 4 |
 | `execution/quantdinger` | `~/QuantDinger` | none (vendor) | **retired runtime** | keep snapshot; no new work |
 | `research/astock` | `~/AStock_AI_System` | `app/` morning shadow (M8) | **inactive producer**; morning cron commented `SUPERSEDED_2026-09-08` | M9 stop authorization; confirm no report consumer |
-| `signals/signal-bus` | `~/signal-bus` | `app/` signals/notify | **no active unit/process found** (2026-11-25 scan); path retained | confirm consumers and rollback before any stop |
-| `reports/daily-report-tracking` | `~/releases/daily-report-tracking-release-20261109.2/candidate` | `app/` reports + 17:40 combined | **frozen source**; files may still be read | stop producers first, then freeze imports |
+| `signals/signal-bus` | `~/signal-bus` | `app/` signals/notify | **no active unit/process/timer/cron** (2026-11-25 scan); historical references only | no stop action unless reactivated |
+| `reports/daily-report-tracking` | `~/releases/daily-report-tracking-release-20261109.2/candidate` | `app/` reports + 17:40 combined | **frozen source**; `quant-research-daily-summary.service` defined but inactive/not scheduled (no journal in 30 days) | retain files until Phase 4; no active producer to stop |
 | `market-data/research-data` | `~/research-data` | `app/market` imports | **active legacy**; ubuntu cron 22:30 snapshot | replace remaining collectors; keep qlib history |
 | `market-data/qlib-scripts` | `~/qlib/scripts` | external qlib; `app/market.qlib_check` reads status | **active external**; cron 22:00/06:30/09:15 | do not fold into repo; monitor only |
 | `research/research-ledger` | `/opt/research-ledger` | read-only `research.import_ledger` | **active import source** (`research-ledger.service`, 18769); qp timer 09:40 | keep as source until import retires |
