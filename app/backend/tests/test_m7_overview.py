@@ -340,7 +340,7 @@ def test_overview_marks_same_day_recovered_failures(engine, client, monkeypatch)
             session.add(
                 JobRun(
                     job_name="research.compare",
-                    status="failed",
+                    status="succeeded",
                     trigger="test",
                     started_at=NOW - dt.timedelta(hours=1),
                     result={"overall": "FAIL"},
@@ -350,7 +350,8 @@ def test_overview_marks_same_day_recovered_failures(engine, client, monkeypatch)
         seed(engine)
         data = _get(client, engine, ["signals:read", "research:read"])
         matched = [item for item in data["same_day_failures"] if item["job_name"] == "research.compare"]
-        assert matched and matched[0]["status"] == "failed"
+        assert matched and matched[0]["result_failed"] is True
+        assert matched[0]["status"] == "succeeded"
         assert matched[0]["recovered_by_run_id"]
     finally:
         cleanup(engine)

@@ -26,7 +26,7 @@
             <n-alert v-for="item in data.same_day_failures" :key="`${item.job_name}:${item.run_id}`"
                      type="warning" :show-icon="true">
               <n-space align="center" size="small" :wrap="true">
-                <n-tag size="small" type="warning">{{ item.status }}</n-tag>
+                <n-tag size="small" type="warning">{{ item.result_failed ? 'result FAIL' : item.status }}</n-tag>
                 <n-text strong>{{ item.job_name }}</n-text>
                 <n-text depth="3">run {{ item.run_id }} · {{ fmt(item.started_at) }}</n-text>
                 <n-text depth="3">后续成功 run {{ item.recovered_by_run_id }}</n-text>
@@ -188,8 +188,8 @@ interface Overview {
   access: { kind: string; name: string; scopes: string[] }
   modules: Record<string, ModuleData>
   pending: Issue[]
-  same_day_failures: { job_name: string; run_id: number; status: string; started_at: string | null;
-    recovered_by_run_id: number }[]
+  same_day_failures: { job_name: string; run_id: number; status: string; result_failed?: boolean;
+    started_at: string | null; recovered_by_run_id: number }[]
   recent_quality: QualityRow[]
 }
 

@@ -119,26 +119,36 @@ def _job_day(job: JobRun | None) -> dt.date | None:
     return job.started_at.astimezone(CST).date()
 
 
+def _result_failed(run: JobRun) -> bool:
+    result = run.result if isinstance(run.result, dict) else {}
+    return result.get("overall") == "FAIL" or result.get("verdict") == "FAIL"
+
+
 def _same_day_failures(session: Session, day: dt.date) -> list[dict[str, Any]]:
     """Failures earlier today that a later success for the same job superseded.
 
     The module status uses the latest run; this list keeps the earlier internal
-    failure visible instead of letting a later PASS erase it.
+    failure visible instead of letting a later PASS erase it.  A run can exit
+    ``succeeded`` while its own verdict is FAIL (research.compare), so the job
+    status alone is not enough.
     """
     rows = list(
         session.scalars(
             select(JobRun)
-            .where(JobRun.status.in_(("failed", "blocked")))
+            .where(JobRun.status.in_(("failed", "blocked", "succeeded")))
             .order_by(JobRun.started_at.desc(), JobRun.id.desc())
-            .limit(200)
+            .limit(300)
         )
     )
     out: list[dict[str, Any]] = []
     for run in rows:
         if _job_day(run) != day:
             continue
+        internal_failure = _result_failed(run)
+        if run.status not in ("failed", "blocked") and not internal_failure:
+            continue
         recovered_by = session.scalar(
-            select(JobRun.id)
+            select(JobRun)
             .where(
                 JobRun.job_name == run.job_name,
                 JobRun.id > run.id,
@@ -147,15 +157,16 @@ def _same_day_failures(session: Session, day: dt.date) -> list[dict[str, Any]]:
             .order_by(JobRun.id)
             .limit(1)
         )
-        if recovered_by is None:
+        if recovered_by is None or _result_failed(recovered_by):
             continue
         out.append(
             {
                 "job_name": run.job_name,
                 "run_id": run.id,
                 "status": run.status,
+                "result_failed": internal_failure,
                 "started_at": _iso(run.started_at),
-                "recovered_by_run_id": recovered_by,
+                "recovered_by_run_id": recovered_by.id,
             }
         )
     return out
