@@ -329,3 +329,28 @@ def test_overview_chain_window_presence_is_today_job_not_today_row(engine, clien
         assert any(issue["id"] == "signals:chain_window_missing" for issue in data["pending"])
     finally:
         cleanup(engine)
+
+
+def test_overview_marks_same_day_recovered_failures(engine, client, monkeypatch):
+    monkeypatch.setattr("qp.api.overview._now", lambda: NOW)
+    monkeypatch.setattr("qp.research.etf_score.expected_session", lambda _: DAY)
+    cleanup(engine)
+    try:
+        with Session(engine) as session:
+            session.add(
+                JobRun(
+                    job_name="research.compare",
+                    status="failed",
+                    trigger="test",
+                    started_at=NOW - dt.timedelta(hours=1),
+                    result={"overall": "FAIL"},
+                )
+            )
+            session.commit()
+        seed(engine)
+        data = _get(client, engine, ["signals:read", "research:read"])
+        matched = [item for item in data["same_day_failures"] if item["job_name"] == "research.compare"]
+        assert matched and matched[0]["status"] == "failed"
+        assert matched[0]["recovered_by_run_id"]
+    finally:
+        cleanup(engine)

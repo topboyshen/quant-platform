@@ -119,6 +119,48 @@ def _job_day(job: JobRun | None) -> dt.date | None:
     return job.started_at.astimezone(CST).date()
 
 
+def _same_day_failures(session: Session, day: dt.date) -> list[dict[str, Any]]:
+    """Failures earlier today that a later success for the same job superseded.
+
+    The module status uses the latest run; this list keeps the earlier internal
+    failure visible instead of letting a later PASS erase it.
+    """
+    rows = list(
+        session.scalars(
+            select(JobRun)
+            .where(JobRun.status.in_(("failed", "blocked")))
+            .order_by(JobRun.started_at.desc(), JobRun.id.desc())
+            .limit(200)
+        )
+    )
+    out: list[dict[str, Any]] = []
+    for run in rows:
+        if _job_day(run) != day:
+            continue
+        recovered_by = session.scalar(
+            select(JobRun.id)
+            .where(
+                JobRun.job_name == run.job_name,
+                JobRun.id > run.id,
+                JobRun.status == "succeeded",
+            )
+            .order_by(JobRun.id)
+            .limit(1)
+        )
+        if recovered_by is None:
+            continue
+        out.append(
+            {
+                "job_name": run.job_name,
+                "run_id": run.id,
+                "status": run.status,
+                "started_at": _iso(run.started_at),
+                "recovered_by_run_id": recovered_by,
+            }
+        )
+    return out
+
+
 def _outbox_summary(session: Session, outbox: Outbox | None) -> dict[str, Any] | None:
     if outbox is None:
         return None
@@ -669,5 +711,6 @@ def overview(p: Principal = Depends(require_auth), db: Session = Depends(get_db)
         "access": {"kind": p.kind, "name": p.name, "scopes": list(p.scopes or [])},
         "modules": modules,
         "pending": _issues(modules, ops, signals),
+        "same_day_failures": _same_day_failures(db, day),
         "recent_quality": _recent_quality(db, day, now) if _allowed(p, "signals") or _allowed(p, "ops") else [],
     }
