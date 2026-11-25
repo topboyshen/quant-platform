@@ -664,8 +664,10 @@ def bind_same_day_risk(rows: Sequence[Any], signal_date: dt.date, decided_at: dt
     """Bind only a same-day assessment that already existed at decided_at.
 
     Yesterday's ok is not a substitute when today's assessment is absent. A row
-    observed or inserted after decided_at cannot be bound. This does not claim
-    that created_at proves the observation was known; see VISIBILITY_LIMITATION.
+    observed or inserted after decided_at cannot be bound. Same-day ties use
+    observed_at, then created_at, then id, so a later critical is not skipped
+    for an earlier ok. This does not claim that created_at proves the
+    observation was known; see VISIBILITY_LIMITATION.
     """
     decided = _aware(decided_at)
     visible: list[tuple[dt.datetime, Any]] = []
@@ -687,7 +689,7 @@ def bind_same_day_risk(rows: Sequence[Any], signal_date: dt.date, decided_at: dt
             "decided_at": decided,
             "used_previous_ok": False,
         }
-    observed, row = max(visible, key=lambda item: item[0])
+    observed, row = max(visible, key=lambda item: (item[0], _aware(item[1].created_at), item[1].id or 0))
     return {
         "status": "fresh",
         "level": str(row.level),
