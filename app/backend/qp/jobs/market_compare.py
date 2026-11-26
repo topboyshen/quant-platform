@@ -167,22 +167,50 @@ def compare(s: Session) -> list[tuple[str, str, str, dict]]:
         day = both[-1]
         a, b = legs[day].data, qps[day].data
         fields = {}
-        for k in ("breadth", "coverage"):
-            if (a.get(k) or {}) != {kk: (b.get(k) or {}).get(kk) for kk in (a.get(k) or {})}:
-                fields[k] = {"legacy": a.get(k), "qp": b.get(k)}
+        breadth_a, breadth_b = a.get("breadth") or {}, b.get("breadth") or {}
+        if breadth_a != {k: breadth_b.get(k) for k in breadth_a}:
+            fields["breadth"] = {"legacy": a.get("breadth"), "qp": b.get("breadth")}
+        legacy_gen = (a.get("generation") or {}).get("tag")
+        qp_gen = (b.get("generation") or {}).get("tag")
+        # coverage.eligible/invalid/ratio describe the Qlib instrument universe, not the market
+        # content.  A deliberate tree replacement (new release tag) revises that universe for old
+        # dates, so a recomputed qp row may legitimately differ from the sealed legacy row.  Across
+        # generations only the vintage-free valid count is comparable; same-generation rows must
+        # still agree on every coverage field.
+        cross_generation = bool(legacy_gen and qp_gen and legacy_gen != qp_gen)
+        cov_a, cov_b = a.get("coverage") or {}, b.get("coverage") or {}
+        cov_keys = ("valid",) if cross_generation else tuple(cov_a)
+        if {k: cov_a.get(k) for k in cov_keys} != {k: cov_b.get(k) for k in cov_keys}:
+            fields["coverage"] = {"legacy": a.get("coverage"), "qp": b.get("coverage")}
         for k in ("topGainers", "topLosers", "topAmount"):
             sa, sb = [x.get("sym") for x in a.get(k) or []], [x.get("sym") for x in b.get(k) or []]
             if sa != sb:
                 fields[k] = {"legacy": sa, "qp": sb}
         diffs_n = len(fields)
         st = _item_verdict(1, 0, diffs_n)
+        if fields:
+            tail = f"；differs in {','.join(fields)}"
+        elif cross_generation:
+            tail = "；breadth/top lists equal, coverage.valid equal"
+        else:
+            tail = "；breadth/coverage/top lists equal"
+        if cross_generation:
+            tail += f"（Qlib 代次 legacy {legacy_gen} ≠ qp {qp_gen}，coverage 仅比对 valid）"
         out.append(
             (
                 "snapshot.core_vs_qp",
                 st,
-                f"{day}: {_cov_summary(1, 1, 0, diffs_n)}"
-                + (f"；differs in {','.join(fields)}" if fields else "；breadth/coverage/top lists equal"),
-                _cov(1, 1, 0, diffs_n, date=day.isoformat(), diff_fields=fields),
+                f"{day}: {_cov_summary(1, 1, 0, diffs_n)}" + tail,
+                _cov(
+                    1,
+                    1,
+                    0,
+                    diffs_n,
+                    date=day.isoformat(),
+                    diff_fields=fields,
+                    generation={"legacy": legacy_gen, "qp": qp_gen},
+                    coverage_scope="valid" if cross_generation else "full",
+                ),
             )
         )
     named = dict(s.execute(select(Instrument.symbol, Instrument.name).where(Instrument.name.is_not(None))).all())
