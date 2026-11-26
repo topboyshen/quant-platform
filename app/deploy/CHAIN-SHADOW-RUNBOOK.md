@@ -16,7 +16,8 @@
 | 16:12 | 5 日窗口表（`signals.chain_window`） | qp timer |
 | 16:15 | 影子结果（`signals.shadow_outcomes`） | qp timer |
 | 16:30 | 指数收盘 | qp timer |
-| 16:50 | M4 不变量验收（A1–A10） | qp timer |
+| 17:40 | 日报合并投递（`daily-combined`） | qp timer |
+| 17:50 | M4 不变量验收（A1–A10） | qp timer |
 
 ## 2. 每日核对命令
 

@@ -36,7 +36,7 @@ MODULE_SCOPES = {
     "reports": "reports:read",
     "ops": "ops:read",
 }
-DEADLINES = {"market": "07:05", "signals": "16:50", "research": "18:10", "reports": "17:40"}
+DEADLINES = {"market": "07:05", "signals": "17:50", "research": "18:10", "reports": "17:40"}
 DAILY_PREFIXES = ("watchdog:", "daily-combined:")
 
 
