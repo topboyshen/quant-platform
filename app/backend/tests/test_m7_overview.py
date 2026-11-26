@@ -355,3 +355,64 @@ def test_overview_marks_same_day_recovered_failures(engine, client, monkeypatch)
         assert matched[0]["recovered_by_run_id"]
     finally:
         cleanup(engine)
+
+
+def test_overview_same_day_failures_survive_newer_runs_after_holiday(engine, client, monkeypatch):
+    """The business day can be an earlier open day (holiday/weekend).  Later
+    runs must not push that day's recovered failure out of the same-day query.
+    """
+    business_day = dt.date(2026, 11, 20)  # Friday
+    holiday = business_day + dt.timedelta(days=1)
+    now = dt.datetime(2026, 11, 21, 10, 0, tzinfo=dt.timezone(dt.timedelta(hours=8)))
+    monkeypatch.setattr("qp.api.overview._now", lambda: now)
+    cleanup(engine)
+    try:
+        with Session(engine) as session:
+            session.add(TradingDay(origin="qp", date=business_day, is_open=True, source="test"))
+            session.add(TradingDay(origin="qp", date=holiday, is_open=False, source="test"))
+            failed = JobRun(
+                job_name="research.compare",
+                status="failed",
+                trigger="test",
+                started_at=dt.datetime(2026, 11, 20, 9, 0, tzinfo=now.tzinfo),
+                finished_at=dt.datetime(2026, 11, 20, 9, 0, tzinfo=now.tzinfo),
+                result={"overall": "FAIL"},
+            )
+            session.add(failed)
+            session.flush()
+            recovered = JobRun(
+                job_name="research.compare",
+                status="succeeded",
+                trigger="test",
+                started_at=dt.datetime(2026, 11, 20, 10, 0, tzinfo=now.tzinfo),
+                finished_at=dt.datetime(2026, 11, 20, 10, 0, tzinfo=now.tzinfo),
+                result={"overall": "PASS"},
+            )
+            session.add(recovered)
+            session.flush()
+            # More later runs than the previous unfiltered newest-300 window, so a
+            # day filter is required to keep the business day's failure visible.
+            base = dt.datetime(2026, 11, 21, 0, 0, tzinfo=now.tzinfo)
+            session.add_all(
+                [
+                    JobRun(
+                        job_name="test.other.job",
+                        status="succeeded",
+                        trigger="test",
+                        started_at=base + dt.timedelta(minutes=index),
+                        finished_at=base + dt.timedelta(minutes=index),
+                        result={},
+                    )
+                    for index in range(310)
+                ]
+            )
+            session.commit()
+            failed_id, recovered_id = failed.id, recovered.id
+        data = _get(client, engine, ["signals:read"])
+        assert data["business_date"] == business_day.isoformat()
+        matched = [item for item in data["same_day_failures"] if item["run_id"] == failed_id]
+        assert matched, data["same_day_failures"]
+        assert matched[0]["status"] == "failed"
+        assert matched[0]["recovered_by_run_id"] == recovered_id
+    finally:
+        cleanup(engine)
