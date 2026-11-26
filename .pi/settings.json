@@ -1,0 +1,5 @@
+{
+  "defaultProvider": "xai",
+  "defaultModel": "grok-4.7",
+  "defaultTools": ["+grep", "+find", "+ls", "+powershell"]
+}
