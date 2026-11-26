@@ -372,6 +372,99 @@ def test_compare_job_skipped_does_not_resolve_mismatch_alert(engine):
         assert a.state == "firing" and a.resolved_at is None, (a.state, a.resolved_at, res)
 
 
+# ---------------------------------------------------------------------------
+# 3b. snapshot.core_vs_qp compares market content, not the universe metadata of
+#     a different Qlib tree vintage.
+# ---------------------------------------------------------------------------
+_TOPS = {
+    "topGainers": [{"sym": "sh600000", "chg": 1.5}],
+    "topLosers": [{"sym": "sz000001", "chg": -1.2}],
+    "topAmount": [{"sym": "sh600000", "amount": 1e8}],
+}
+
+
+def _core_summary(tag: str, *, valid: int, eligible: int, invalid: int) -> dict:
+    return {
+        "coverage": {"valid": valid, "eligible": eligible, "invalid": invalid, "ratio": round(valid / eligible, 6)},
+        "breadth": {"up": 2, "down": 1, "flat": 1, "total": 4},
+        "generation": {"tag": tag},
+        **_TOPS,
+    }
+
+
+def _seed_core_summaries(s: Session, legacy_tag: str, qp_tag: str, legacy_cov: dict, qp_cov: dict) -> None:
+    day = dt.date(2026, 11, 10)
+    for origin, tag, cov in (("legacy", legacy_tag, legacy_cov), ("qp", qp_tag, qp_cov)):
+        s.add(
+            MarketSummary(
+                origin=origin,
+                trade_date=day,
+                data=_core_summary(tag, **cov),
+                generated_at=NOW.astimezone(dt.UTC),
+            )
+        )
+    s.commit()
+
+
+def test_snapshot_compare_accepts_cross_generation_universe_metadata(engine):
+    """A revised Qlib tree changes eligible/invalid for old dates; equal valid content still matches."""
+    from qp.jobs.market import compare
+
+    with Session(engine) as s:
+        _wipe(s)
+        _seed_core_summaries(
+            s,
+            legacy_tag="2026-09-06",
+            qp_tag="2026-11-25",
+            legacy_cov={"valid": 4, "eligible": 5, "invalid": 1},
+            qp_cov={"valid": 4, "eligible": 4, "invalid": 0},
+        )
+        res = {item: (st, summary, detail) for item, st, summary, detail in compare(s)}
+        st, summary, detail = res["snapshot.core_vs_qp"]
+        assert st == "match", (st, summary, detail)
+        assert detail["coverage_scope"] == "valid" and detail["diff_fields"] == {}
+        assert detail["generation"] == {"legacy": "2026-09-06", "qp": "2026-11-25"}
+        assert "Qlib 代次" in summary
+
+
+def test_snapshot_compare_rejects_cross_generation_valid_difference(engine):
+    """Even across generations, a different valid count means the market content differs."""
+    from qp.jobs.market import compare
+
+    with Session(engine) as s:
+        _wipe(s)
+        _seed_core_summaries(
+            s,
+            legacy_tag="2026-09-06",
+            qp_tag="2026-11-25",
+            legacy_cov={"valid": 4, "eligible": 5, "invalid": 1},
+            qp_cov={"valid": 3, "eligible": 4, "invalid": 1},
+        )
+        res = {item: (st, summary, detail) for item, st, summary, detail in compare(s)}
+        st, summary, detail = res["snapshot.core_vs_qp"]
+        assert st == "mismatch", (st, summary, detail)
+        assert set(detail["diff_fields"]) == {"coverage"} and detail["coverage_scope"] == "valid"
+
+
+def test_snapshot_compare_requires_full_coverage_within_one_generation(engine):
+    """Same Qlib generation must still reproduce every coverage field exactly."""
+    from qp.jobs.market import compare
+
+    with Session(engine) as s:
+        _wipe(s)
+        _seed_core_summaries(
+            s,
+            legacy_tag="2026-11-25",
+            qp_tag="2026-11-25",
+            legacy_cov={"valid": 4, "eligible": 5, "invalid": 1},
+            qp_cov={"valid": 4, "eligible": 4, "invalid": 0},
+        )
+        res = {item: (st, summary, detail) for item, st, summary, detail in compare(s)}
+        st, summary, detail = res["snapshot.core_vs_qp"]
+        assert st == "mismatch", (st, summary, detail)
+        assert set(detail["diff_fields"]) == {"coverage"} and detail["coverage_scope"] == "full"
+
+
 def test_apply_alerts_resolves_only_explicit_recovery_keys(engine):
     """Without recovery evidence an owned alert stays firing; market keys stay out of scope."""
     from qp.jobs.inventory import apply_alerts

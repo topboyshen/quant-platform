@@ -24,6 +24,7 @@ def legacy(tmp_path):
     root = tmp_path / "qlib/cn_data"
     (root / "calendars").mkdir(parents=True)
     (root / "calendars/day.txt").write_text("\n".join(CAL) + "\n")
+    (tmp_path / "qlib/.tag").write_text("2026-11-10\n")
     (root / "instruments").mkdir()
     insts = [
         ("SH600000", "2026-11-02", "2026-11-10"),
@@ -143,6 +144,8 @@ def test_reader_and_summary(legacy):
     # sh688999 listed on the day -> not eligible; sh600000 up, sz000001 down, sh600519 flat, sz300750 up
     assert s["coverage"] == {"valid": 4, "eligible": 4, "invalid": 0, "ratio": 1.0}
     assert s["breadth"] == {"up": 2, "down": 1, "flat": 1, "total": 4}
+    # The release tag identifies the tree vintage that produced this historical summary.
+    assert s["generation"] == {"tag": "2026-11-10"}
     assert snap["core_market"]["rows"][0]["payload_sha256"] == snap["core_market"]["rows"][0]["computed_sha256"]
     assert "payload" not in json.dumps(snap["snapshot_db"]["rows"][0]["keys"])
 

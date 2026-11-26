@@ -206,7 +206,7 @@ def _reference_date(root: Path, cal: list[str], sym: str) -> str | None:
     return None
 
 
-def qlib_summary(root: Path, cal: list[str], insts: list[list[str]], date: str) -> dict:
+def qlib_summary(root: Path, cal: list[str], insts: list[list[str]], date: str, tag: str | None = None) -> dict:
     if date not in cal:
         return {"ok": False, "date": date, "error": "date_not_in_calendar"}
     di = cal.index(date)
@@ -245,7 +245,7 @@ def qlib_summary(root: Path, cal: list[str], insts: list[list[str]], date: str) 
         rows.append((s, chg, am))
     coverage = len(rows) / eligible if eligible else 0.0
     rows.sort(key=lambda r: -r[1])
-    return {
+    out = {
         "ok": True,
         "date": date,
         "coverage": {"valid": len(rows), "eligible": eligible, "invalid": invalid, "ratio": round(coverage, 6)},
@@ -255,6 +255,12 @@ def qlib_summary(root: Path, cal: list[str], insts: list[list[str]], date: str) 
         "topLosers": [{"sym": r[0], "chg": round(r[1] * 100, 2)} for r in rows[-10:][::-1]],
         "topAmount": [{"sym": r[0], "amount": round(r[2], 0)} for r in sorted(rows, key=lambda r: -r[2])[:10]],
     }
+    # The Qlib release tag lets consumers tell two vintages of the same tree apart.  A
+    # deliberate tree replacement revises the instrument universe of old dates, so a
+    # recomputed historical summary is only fully comparable with a same-tag record.
+    if tag:
+        out["generation"] = {"tag": tag}
+    return out
 
 
 def legacy_core(path: Path) -> dict:
@@ -415,7 +421,7 @@ def collect(paths: dict, summary_dates: list[str] | None = None) -> dict:
             dates.add(core_rows[-1]["date"])
         for d in sorted(dates)[-3:]:
             try:
-                sums.append(qlib_summary(paths["qlib"], cal, insts, d))
+                sums.append(qlib_summary(paths["qlib"], cal, insts, d, tag=q.get("tag")))
             except Exception as e:  # noqa: BLE001
                 sums.append({"ok": False, "date": d, "error": type(e).__name__})
     snap["qlib_summary"] = sums
