@@ -7,9 +7,9 @@ Phase 2 review.
 
 ## 1. Freeze window
 
-- Current production release: `0.3.119-acceptance-after-daily-report-6e5e111d`
-- Current production deploy commit: `aa4755ad9f00652b58a7bd77fc8c2d9ac79b9937`
-- Release record: [`RELEASE-NOTES-2026-11-26-zh-CN.md`](RELEASE-NOTES-2026-11-26-zh-CN.md)
+- Current production release: `0.3.120-market-generation-bce0f98e`
+- Current production deploy commit: `4f7047ca982e20af60586995f1ff5a9102c0de20`
+- Release record: [`RELEASE-NOTES-2026-11-26-0.3.120-zh-CN.md`](RELEASE-NOTES-2026-11-26-0.3.120-zh-CN.md)
 - Freeze start: **2026-11-25 11:03 CST** (unchanged since the `.115` re-baseline;
   the freeze-start production release was `0.3.116-health-inventory-8375f5c8`,
   deploy commit `0a48377e5e5b677480484fa39f6289abec06da18`)
@@ -20,8 +20,9 @@ Phase 2 review.
 
 `0.3.117-correctness-batch1-f531e552` (2026-11-25 15:18 CST; PR #72),
 `0.3.118-outcome-window-6f60f5a8` (2026-11-25 21:28 CST; PR #74, with the PR #73
-documents in the release bundle) and `0.3.119-acceptance-after-daily-report-6e5e111d`
-(2026-11-26 10:12 CST; PR #84) are in-freeze correctness fixes. They do not
+documents in the release bundle), `0.3.119-acceptance-after-daily-report-6e5e111d`
+(2026-11-26 10:12 CST; PR #84) and `0.3.120-market-generation-bce0f98e`
+(2026-11-26 19:17 CST; PR #86) are in-freeze correctness fixes. They do not
 change the freeze start or the earliest review date.
 
 The 2026-11-24 business day is a **mixed-version day**: `.105` 09:02, `.106`
@@ -29,8 +30,8 @@ The 2026-11-24 business day is a **mixed-version day**: `.105` 09:02, `.106`
 19:09 CST were all activated after the 09:30 open. 2026-11-25 added `.112`–`.118`
 before/after the open: `.112`–`.116` incident/report-correctness fixes, `.117`
 correctness batch 1, `.118` outcome-window/OHLC fix. 2026-11-26 added `.119`
-acceptance-after-daily-report. None of these days is a clean single-release
-baseline. `.107/.108` were the user-authorized C4
+acceptance-after-daily-report and `.120` market-generation compare. None of
+these days is a clean single-release baseline. `.107/.108` were the user-authorized C4
 exception. No cosmetic or feature release is allowed before the 2026-12-09
 review. The 10-trading-day observation window (2026-11-18 → 2026-12-01)
 continues separately.
