@@ -46,6 +46,25 @@ def test_weekly_attribution_enqueues_once_and_renders(engine, monkeypatch):
         _clean(engine)
 
 
+def test_weekly_attribution_previous_week_uses_its_own_cutoff(engine, monkeypatch):
+    """The week-over-week section is labelled with the prior week's cutoff, not today's."""
+    _clean(engine)
+    frozen = dt.datetime(2026, 11, 17, 8, 30, tzinfo=dt.timezone(dt.timedelta(hours=8)))
+    monkeypatch.setattr("qp.jobs.signals.now_cst", lambda: frozen)
+    try:
+        result = attribution_weekly_job(JobContext(engine=engine, run_id=0, name="test"))
+        with Session(engine) as session:
+            row = session.scalar(select(Outbox).where(Outbox.dedup_key == f"attribution-weekly:{result['week']}"))
+        assert row is not None
+        payload = json.loads(row.body)
+        assert payload["as_of"] == "2026-11-17"
+        assert payload["previous_as_of"] == "2026-11-10"
+        assert "总体环比（截至 2026-11-10）" in payload["text"]
+        assert "总体环比（截至 2026-11-17）" not in payload["text"]
+    finally:
+        _clean(engine)
+
+
 def test_attribution_text_lists_dimensions_and_warnings():
     data = {
         "horizon": 20,
