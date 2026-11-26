@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from pathlib import Path
 
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
@@ -557,4 +558,11 @@ def test_cli_acceptance_exit_codes(engine, monkeypatch, tmp_path, capsys):
 def test_acceptance_job_registered():
     from qp.jobs.registry import JOBS
 
-    assert JOBS["signals.acceptance"].schedule_hint.startswith("Mon-Fri 16:50 CST")
+    assert JOBS["signals.acceptance"].schedule_hint.startswith("Mon-Fri 17:50 CST")
+
+
+def test_acceptance_timer_runs_after_daily_report():
+    timer = Path(__file__).resolve().parents[2] / "deploy/systemd/qp-signals-acceptance.timer"
+    text = timer.read_text(encoding="utf-8")
+    assert "OnCalendar=Mon..Fri *-*-* 17:50:00 Asia/Shanghai" in text
+    assert "16:50:00" not in text

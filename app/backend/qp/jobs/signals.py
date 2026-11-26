@@ -327,7 +327,7 @@ def shadow_outcomes_job(ctx: JobContext) -> dict:
 @job(
     "signals.acceptance",
     "M4 live acceptance invariants for the latest decision day (replaces legacy compare)",
-    schedule_hint="Mon-Fri 16:50 CST (after outcomes 16:10 and index_close 16:30)",
+    schedule_hint="Mon-Fri 17:50 CST (after outcomes 16:10, index_close 16:30 and daily report 17:40)",
 )
 def acceptance_job(ctx: JobContext) -> dict:
     from qp.signals import acceptance
