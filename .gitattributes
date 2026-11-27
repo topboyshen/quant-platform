@@ -1,3 +1,7 @@
+# Normalise every text file to LF. Windows checkouts (core.autocrlf=true) and
+# editors that rewrite files with CRLF must not be able to reintroduce it.
+* text=auto eol=lf
+
 # M4 fixtures are pinned byte-for-byte by sha256 in each manifest.json.
 # Keep LF in the working tree even on Windows checkouts with core.autocrlf=true.
 app/backend/tests/fixtures/m4/20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/*.json text eol=lf
