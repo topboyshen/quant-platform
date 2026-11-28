@@ -87,6 +87,13 @@ find /etc/systemd/system /home/ubuntu/.config/systemd/user -maxdepth 1 -type f \
      -o -name 'research-*' -o -name 'signal-bus*' -o -name 'qd-*' \
      -o -name 'radar-*' -o -name 'nng8-*' \) 2>"$ERROR" \
   | sed 's#^/##' | sort -u > "$EXPECTED"
+# unit drop-ins (.d/*.conf) are part of the unit and must be archived too
+DROPINS="$WORK/unit-dropins.txt"
+while IFS= read -r f; do
+  d="/$f.d"
+  [ -d "$d" ] && find "$d" -maxdepth 1 -type f
+done < "$EXPECTED" | sed 's#^/##' | sort -u > "$DROPINS"
+sort -u "$EXPECTED" "$DROPINS" > "$EXPECTED.tmp" && mv "$EXPECTED.tmp" "$EXPECTED"
 [ -s "$EXPECTED" ] || { echo "ARCHIVE_NO_INPUT" >&2; exit 1; }
 
 if ! tar -C / -czf "$ARCHIVE" -T "$EXPECTED" 2>>"$ERROR"; then
@@ -107,6 +114,9 @@ wc -l < "$EXPECTED"
 
 - 任何 `tar` 失败、目录缺失、输入为空、成员清单不一致都必须停止；不得把
   stderr 重定向丢弃后继续。
+- 2026-11-28 首版归档只取 `-maxdepth 1`，遗漏 14 个 `.d/*.conf`；已用
+  `/var/lib/qp/decommission-2026-11-28-units-dropins.tgz`
+  （sha256 `644227a7…9372b`）补充。后续按上面的 drop-in 步骤执行。
 - 数据只记录清单与 sha256（`qp decommission inventory`），**不迁移、不打包、不删除**。
 - 文档：本 runbook + `M9-EXECUTION-CHECKLIST.md` + 盘点 JSON + 停服记录。
 

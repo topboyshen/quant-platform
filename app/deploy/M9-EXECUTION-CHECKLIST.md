@@ -21,8 +21,8 @@ of 2026-11-27; remaining 11-30/12-01 confirmed open by qp and legacy calendars).
 ## 1. Pre-flight (once)
 
 - [ ] `qp decommission inventory --out ...` manifest saved and sha256 recorded.
-- [ ] Unit/config backup archive verified by member list, not only by hash
-      (see `M9-DECOMMISSION-RUNBOOK.md` §4).
+- [ ] Unit/config backup archive verified by member list, including `.d/*.conf`
+      drop-ins, not only by hash (see `M9-DECOMMISSION-RUNBOOK.md` §4).
 - [ ] `qp` health, backup, chain window, and 17:40 report are green.
 - [ ] Rollback command for this unit is written down and tested on a mock unit.
 - [ ] The observation window required by the roadmap has actually elapsed.
