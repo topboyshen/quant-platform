@@ -6,7 +6,7 @@
 
 ## 0. 共同前置门
 
-- 当前 release：`0.3.120-market-generation-bce0f98e`，源 `4f7047c`，DB `0017`。
+- 当前 release：`0.3.121-backtest-latest-7dfcb452`，源 `68902b4`，DB `0017`。
 - 观察窗口：**2026-11-18 → 2026-12-01**；截至 2026-11-27 为 8/10，11-30、12-01 未到。
 - Phase 2 最早复核：**2026-12-09**，且必须有单独的用户授权。
 - qp health、compare、10 个业务日 acceptance/日报均为绿色；当前无未恢复告警。
@@ -19,11 +19,11 @@
 | Field | Value |
 |---|---|
 | Unit | `research-ledger.service`（127.0.0.1:18769，`researchledger`，enabled/active） |
-| Current responsibility | Research Ledger local-only API |
+| Current responsibility | Research Ledger local-only API；`runtime-health.mode=FROZEN`，备份状态停留在 2026-09-10 |
 | Replacement | qp `research.import_ledger`（09:40 / 16:40，最近 2026-11-27 成功） |
 | Consumer switched | qp `research.import_ledger` 已成功运行；qp research 模块读取导入结果 |
-| Independent supervision | qp job timer + qp health/ops inventory |
-| Paired monitor | `research-ledger-healthcheck.timer` / `.service`；它监控该 legacy source，**没有 qp equivalent** |
+| Independent supervision | qp job timer + qp health/ops inventory；legacy 侧 `research-ledger-healthcheck.timer` 每 5 分钟检查并以 Telegram alert 报错 |
+| Paired monitor | `research-ledger-healthcheck.timer` / `.service`；它监控该 legacy source，**没有 qp equivalent**，停服前必须先停 |
 | Stop order | 先停 `research-ledger-healthcheck.timer`，确认 inactive；再停 `research-ledger.service` |
 | Rollback | `sudo systemctl enable --now research-ledger-healthcheck.timer research-ledger.service` |
 | Post-stop check | qp `research.import_ledger` 下一轮成功；qp health 无新增 warning；无 ledger 消费者报错 |
@@ -36,10 +36,10 @@ Packet A 必须把 healthcheck 作为同一 source pair 记录；不能只停 se
 | Field | Value |
 |---|---|
 | Unit | `research-system-phase2.service`（127.0.0.1:18768，`researchphase2`，enabled/active） |
-| Current responsibility | Research System Phase 2 loopback dashboard |
-| Replacement | qp `research.import_phase2`（每 10 分钟，最近 2026-11-27 成功） |
+| Current responsibility | Research System Phase 2 loopback dashboard；`runtime-health.mode=FROZEN` |
+| Replacement | qp `research.import_phase2`（Mon-Fri 16:45，14 天 10/10，最近 2026-11-27 16:45 成功；job hint 写 every 10 min，以实际 timer 为准） |
 | Consumer switched | qp import job 成功；无独立 legacy consumer 连接 |
-| Independent supervision | qp job timer + qp health/ops inventory |
+| Independent supervision | qp job timer + qp health/ops inventory；legacy healthcheck 每 5 分钟检查并以 Telegram alert 报错 |
 | Rollback | `sudo systemctl enable --now research-system-phase2.service` |
 | Post-stop check | qp `research.import_phase2` 成功；qp research health 不变；报告/页面无依赖 |
 | Current status | **ready for authorization after observation**, actual stop/start not tested |
@@ -50,7 +50,7 @@ Packet A 必须把 healthcheck 作为同一 source pair 记录；不能只停 se
 |---|---|
 | Unit | `quant-approved-signals.service`（127.0.0.1:8094，enabled/active） |
 | Consumer path | nginx `quantdinger-8443` 的 approved-signals location → 8094；路径存在 |
-| Observed traffic | 2026-11-28 当前/上一份 nginx access log 未发现该路径请求；无 established 连接 |
+| Observed traffic | 全部保留日志（2026-11-11 → 11-28，含 `.gz`）该路径命中 0；采样无 established 连接 |
 | Replacement | qp `signals.approved` + `/next/` |
 | Open gap | 未观测到近期实际请求；不能仅凭“无连接”证明消费者已切换 |
 | Decision | **hold**：补请求/consumer 证据或由 owner 明确接受停服影响后再发 packet |
@@ -119,3 +119,5 @@ user timers、cert-renew、notify maintenance。
 - inventory：`/var/lib/qp/decommission-2026-11-28.json`
 - unit archive：`/var/lib/qp/decommission-2026-11-28-units.tgz`
 - mock drill：`/var/lib/qp/decommission/2026-11-28/rollback-drill.log`
+- PM refresh（2026-11-28 16:05 CST）：`/var/lib/qp/decommission/2026-11-28/pm-refresh/`
+  （`SHA256SUMS` 覆盖 8 个文件）
