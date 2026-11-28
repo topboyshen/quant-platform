@@ -1,8 +1,8 @@
 <template>
   <n-space vertical>
     <n-space>
-      <n-input v-model:value="q" placeholder="策略或代码" clearable style="width: 220px" @keyup.enter="load" />
-      <n-button :loading="loading" @click="load">查询</n-button>
+      <n-input v-model:value="q" :disabled="loading" placeholder="策略或代码" clearable style="width: 220px" @keyup.enter="load" />
+      <n-button :disabled="loading" :loading="loading" @click="load">查询</n-button>
       <n-text v-if="!loading && !error" depth="3">共 {{ total }} 条</n-text>
     </n-space>
     <AsyncState :loading="loading" :error="error" :empty="!loading && !rows.length" empty-text="暂无回测">

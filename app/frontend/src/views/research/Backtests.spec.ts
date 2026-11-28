@@ -59,6 +59,38 @@ it('lets the user retry a failed list request and removes the old error', async 
   }
 })
 
+it('disables editing and submitting a query until its response arrives', async () => {
+  let finishSearch!: (result: typeof hit) => void
+  const slowSearch = new Promise<typeof hit>(resolve => { finishSearch = resolve })
+  vi.mocked(api).mockResolvedValueOnce(hit).mockReturnValueOnce(slowSearch).mockResolvedValueOnce({ total: 0, rows: [] })
+  const wrapper = mount(Backtests)
+  try {
+    await flushPromises()
+    const input = wrapper.get('input')
+    const button = wrapper.get('button')
+    await input.setValue('MA')
+    await input.trigger('keyup.enter')
+    expect(api).toHaveBeenLastCalledWith('/research/backtests?limit=100&q=MA')
+    expect(input.element.disabled).toBe(true)
+    expect(button.element.disabled).toBe(true)
+    expect(input.element.value).toBe('MA')
+
+    finishSearch(hit)
+    await flushPromises()
+    expect(input.element.disabled).toBe(false)
+    expect(button.element.disabled).toBe(false)
+    expect(wrapper.get('tbody tr').text()).toContain('MA 双均线')
+    await input.setValue('ZZZ')
+    await button.trigger('click')
+    await flushPromises()
+    expect(api).toHaveBeenLastCalledWith('/research/backtests?limit=100&q=ZZZ')
+    expect(wrapper.text()).toContain('暂无回测')
+    expect(wrapper.find('tbody tr').exists()).toBe(false)
+  } finally {
+    wrapper.unmount()
+  }
+})
+
 it('requests the latest trades for the selected run and shows the full trade count', async () => {
   // Captured from the detail API for a run with indices 1..501 and profit equal to index.
   vi.mocked(api).mockResolvedValueOnce({ total: 1, rows: [latest.run] }).mockResolvedValueOnce(latest)
