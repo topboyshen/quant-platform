@@ -80,7 +80,7 @@ Packet A 必须把 healthcheck 作为同一 source pair 记录；不能只停 se
 | Independent supervision | qp `market.health` 的 `index_close.qp_current`（最近 ok）会写 `market:health:*` alert |
 | Rollback | `sudo systemctl enable --now research-index-close-cache.timer` |
 | Post-stop check | qp index close 下一交易日成功；qp market compare/health 不变 |
-| Current status | **blocked**：qp compare 的 `index_close.legacy_vs_qp` 依赖 legacy 最近 20 天数据；停后约 20 天该项变 `skipped`、`compare.latest` 转 `unknown`。需先发版退役/放宽该比较项，或保留 legacy producer |
+| Current status | **blocked**：qp compare 的 `index_close.legacy_vs_qp` 依赖 legacy 最近 20 天数据；停后约 20 天该项变 `skipped`、`compare.latest` 转 `unknown`。前置方案见 [`M9-PHASE2-INDEX-COMPARE-PREREQ-2026-11-28.md`](M9-PHASE2-INDEX-COMPARE-PREREQ-2026-11-28.md) |
 
 ## 6. Hold / retain（不在本批）
 
@@ -132,3 +132,4 @@ user timers、cert-renew、notify maintenance。
   （数据完整性、监督矩阵、归档缺口、回滚单元校验）
 - drop-in 补充归档：`/var/lib/qp/decommission-2026-11-28-units-dropins.tgz`
   （14 成员，sha256 `644227a7…9372b`）
+- Packet E 前置方案：`M9-PHASE2-INDEX-COMPARE-PREREQ-2026-11-28.md`
