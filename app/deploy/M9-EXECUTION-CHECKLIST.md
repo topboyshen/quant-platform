@@ -16,7 +16,7 @@ Per-service consumer/replacement/rollback evidence:
 `missing` rows are hard stops. Draft per-unit stop/rollback packets:
 [`M9-PHASE2-EXECUTION-PACKETS-2026-11-28.md`](M9-PHASE2-EXECUTION-PACKETS-2026-11-28.md).
 Observation window: **2026-11-18 → 2026-12-01** (8/10 trading days complete as
-of 2026-11-27).
+of 2026-11-27; remaining 11-30/12-01 confirmed open by qp and legacy calendars).
 
 ## 1. Pre-flight (once)
 
