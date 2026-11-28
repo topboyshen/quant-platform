@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
@@ -83,7 +83,12 @@ def backtests(
 
 
 @router.get("/backtests/{run_id}")
-def backtest_detail(run_id: int, p: Principal = Depends(require_auth), db: Session = Depends(get_db)) -> dict[str, Any]:
+def backtest_detail(
+    run_id: int,
+    p: Principal = Depends(require_auth),
+    db: Session = Depends(get_db),
+    trades: Literal["earliest", "latest"] = "earliest",
+) -> dict[str, Any]:
     row = db.get(BacktestRun, run_id)
     if row is None:
         raise HTTPException(status_code=404, detail="backtest not found")
@@ -95,9 +100,13 @@ def backtest_detail(run_id: int, p: Principal = Depends(require_auth), db: Sessi
             .limit(2000)
         ).scalars()
     )
-    trades = list(
+    trade_index = BacktestTrade.trade_index
+    trade_rows = list(
         db.execute(
-            select(BacktestTrade).where(BacktestTrade.run_id == run_id).order_by(BacktestTrade.trade_index).limit(500)
+            select(BacktestTrade)
+            .where(BacktestTrade.run_id == run_id)
+            .order_by(trade_index.desc() if trades == "latest" else trade_index.asc())
+            .limit(500)
         ).scalars()
     )
     equity_total = (
@@ -124,7 +133,7 @@ def backtest_detail(run_id: int, p: Principal = Depends(require_auth), db: Sessi
                 "profit": t.profit,
                 "reason": t.reason,
             }
-            for t in trades
+            for t in trade_rows
         ],
         "counts": {"equity_points": equity_total, "trades": trade_total},
     }
