@@ -13,7 +13,8 @@ Per-service consumer/replacement/rollback evidence:
 [`M9-EXIT-EVIDENCE-2026-11-25.md`](M9-EXIT-EVIDENCE-2026-11-25.md) and the
 2026-11-28 preparation dossier
 [`M9-PHASE2-PREP-2026-11-28.md`](M9-PHASE2-PREP-2026-11-28.md); `partial` or
-`missing` rows are hard stops.
+`missing` rows are hard stops. Draft per-unit stop/rollback packets:
+[`M9-PHASE2-EXECUTION-PACKETS-2026-11-28.md`](M9-PHASE2-EXECUTION-PACKETS-2026-11-28.md).
 Observation window: **2026-11-18 → 2026-12-01** (8/10 trading days complete as
 of 2026-11-27).
 
