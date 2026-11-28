@@ -4,8 +4,8 @@
 `astock*`, `quant-*`, etc.). Each unit is stopped only after its own row below
 is complete and signed off. A blank cell is a hard stop.
 
-Current freeze baseline: production `0.3.122-backtest-search-recovery-ad12fb37`
-(source `bf45bc2cccb02afce121ab1afc0b7cadb15d7528`), freeze
+Current freeze baseline: production `0.3.123-index-close-union-5f698f20`
+(source `f0c51f12de9368a6cd6f93041af07752c8faa081`), freeze
 **2026-11-25 11:03 CST → 2026-12-09**. Do not execute any Phase 2 row before
 2026-12-09 and the separate authorization;
 see [`FREEZE-BASELINE-2026-11-24.md`](FREEZE-BASELINE-2026-11-24.md).
