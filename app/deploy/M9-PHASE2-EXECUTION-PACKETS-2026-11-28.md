@@ -11,6 +11,8 @@
 - Phase 2 最早复核：**2026-12-09**，且必须有单独的用户授权。
 - qp health、compare、10 个业务日 acceptance/日报均为绿色；当前无未恢复告警。
 - 每个 packet 执行前重新跑 inventory 和 unit/config archive，核对 sha256。
+- 数据完整性（2026-11-28 readiness-2）：ledger 9/9 表、phase2 6/6 表行数与源
+  完全一致；calendar/index 对账见 prep §10.1。
 - **禁止前缀批量 stop**；禁止 `docker rm`、数据删除、配置删除。
 - 每个 packet 只停一个 unit；停后观察至少一个业务日，再考虑下一个。
 
@@ -22,7 +24,7 @@
 | Current responsibility | Research Ledger local-only API；`runtime-health.mode=FROZEN`，备份状态停留在 2026-09-10 |
 | Replacement | qp `research.import_ledger`（09:40 / 16:40，最近 2026-11-27 成功） |
 | Consumer switched | qp `research.import_ledger` 已成功运行；qp research 模块读取导入结果 |
-| Independent supervision | qp job timer + qp health/ops inventory；legacy 侧 `research-ledger-healthcheck.timer` 每 5 分钟检查并以 Telegram alert 报错 |
+| Independent supervision | qp job timer + qp health/ops inventory；legacy 侧 `research-ledger-healthcheck.timer` 每 5 分钟检查并以 Telegram alert 报错。**qp 只有连续两次失败告警，无“定时器不再运行”告警**，执行日需人工核对 `ops.job_run` 最近一次 run |
 | Paired monitor | `research-ledger-healthcheck.timer` / `.service`；它监控该 legacy source，**没有 qp equivalent**，停服前必须先停 |
 | Stop order | 先停 `research-ledger-healthcheck.timer`，确认 inactive；再停 `research-ledger.service` |
 | Rollback | `sudo systemctl enable --now research-ledger-healthcheck.timer research-ledger.service` |
@@ -39,7 +41,7 @@ Packet A 必须把 healthcheck 作为同一 source pair 记录；不能只停 se
 | Current responsibility | Research System Phase 2 loopback dashboard；`runtime-health.mode=FROZEN` |
 | Replacement | qp `research.import_phase2`（Mon-Fri 16:45，14 天 10/10，最近 2026-11-27 16:45 成功；job hint 写 every 10 min，以实际 timer 为准） |
 | Consumer switched | qp import job 成功；无独立 legacy consumer 连接 |
-| Independent supervision | qp job timer + qp health/ops inventory；legacy healthcheck 每 5 分钟检查并以 Telegram alert 报错 |
+| Independent supervision | qp job timer + qp health/ops inventory；legacy healthcheck 每 5 分钟检查并以 Telegram alert 报错。**qp 只有连续两次失败告警，无“定时器不再运行”告警**，执行日需人工核对 `ops.job_run` 最近一次 run |
 | Rollback | `sudo systemctl enable --now research-system-phase2.service` |
 | Post-stop check | qp `research.import_phase2` 成功；qp research health 不变；报告/页面无依赖 |
 | Current status | **ready for authorization after observation**, actual stop/start not tested |
@@ -61,7 +63,8 @@ Packet A 必须把 healthcheck 作为同一 source pair 记录；不能只停 se
 |---|---|
 | Unit | `research-trading-calendar-refresh.timer`（enabled/active；06:20） |
 | Current responsibility | legacy A-share calendar cache refresh |
-| Replacement | qp `market.calendar`（06:30，最近 2026-11-28 成功） |
+| Replacement | qp `market.calendar`（06:30，14 天 14/14，最近 2026-11-28 成功） |
+| Independent supervision | qp `market.health` 的 `calendar.qp`（最近 ok）会写 `market:health:*` alert |
 | Rollback | `sudo systemctl enable --now research-trading-calendar-refresh.timer` |
 | Post-stop check | qp calendar 下一交易日成功；qp market health/compare 不变 |
 | Current status | **ready for authorization after observation** |
@@ -72,7 +75,8 @@ Packet A 必须把 healthcheck 作为同一 source pair 记录；不能只停 se
 |---|---|
 | Unit | `research-index-close-cache.timer`（enabled/active；15:55） |
 | Current responsibility | legacy four-index close cache |
-| Replacement | qp `market.index_close`（16:30/16:40，最近 2026-11-27 成功） |
+| Replacement | qp `market.index_close`（16:30/16:40，14 天 20/20，最近 2026-11-27 成功） |
+| Independent supervision | qp `market.health` 的 `index_close.qp_current`（最近 ok）会写 `market:health:*` alert |
 | Rollback | `sudo systemctl enable --now research-index-close-cache.timer` |
 | Post-stop check | qp index close 下一交易日成功；qp market compare/health 不变 |
 | Current status | **ready for authorization after observation** |
@@ -95,7 +99,7 @@ Packet A 必须把 healthcheck 作为同一 source pair 记录；不能只停 se
 
 - [ ] 观察窗口已完成，日期 ≥2026-12-01，且已过 2026-12-09 复核。
 - [ ] 用户给出该 unit 的单独 stop 授权（范围、时间、owner）。
-- [ ] `qp decommission inventory` fresh inventory 与 unit/config archive 已重跑并核对 sha256。
+- [ ] `qp decommission inventory` fresh inventory 与 unit/config archive 已重跑并核对 sha256；确认 `.d/*.conf` 已包含或补充归档已核对。
 - [ ] qp health、compare、acceptance、日报、告警均 green；无回滚历史。
 - [ ] unit 当前状态、enabled、消费者路径和 rollback 命令再次核对。
 - [ ] mock rollback drill 记录在案；实际 stop/start 仍按授权执行。
@@ -121,3 +125,7 @@ user timers、cert-renew、notify maintenance。
 - mock drill：`/var/lib/qp/decommission/2026-11-28/rollback-drill.log`
 - PM refresh（2026-11-28 16:05 CST）：`/var/lib/qp/decommission/2026-11-28/pm-refresh/`
   （`SHA256SUMS` 覆盖 8 个文件）
+- readiness-2（2026-11-28 16:20 CST）：`/var/lib/qp/decommission/2026-11-28/readiness-2/`
+  （数据完整性、监督矩阵、归档缺口、回滚单元校验）
+- drop-in 补充归档：`/var/lib/qp/decommission-2026-11-28-units-dropins.tgz`
+  （14 成员，sha256 `644227a7…9372b`）
