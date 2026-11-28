@@ -13,6 +13,7 @@
 - 每个 packet 执行前重新跑 inventory 和 unit/config archive，核对 sha256。
 - 数据完整性（2026-11-28 readiness-2）：ledger 9/9 表、phase2 6/6 表行数与源
   完全一致；calendar/index 对账见 prep §10.1。
+- D/E 与 `market.compare` 的耦合见 prep §11；Packet E 当前 **blocked**。
 - **禁止前缀批量 stop**；禁止 `docker rm`、数据删除、配置删除。
 - 每个 packet 只停一个 unit；停后观察至少一个业务日，再考虑下一个。
 
@@ -66,8 +67,8 @@ Packet A 必须把 healthcheck 作为同一 source pair 记录；不能只停 se
 | Replacement | qp `market.calendar`（06:30，14 天 14/14，最近 2026-11-28 成功） |
 | Independent supervision | qp `market.health` 的 `calendar.qp`（最近 ok）会写 `market:health:*` alert |
 | Rollback | `sudo systemctl enable --now research-trading-calendar-refresh.timer` |
-| Post-stop check | qp calendar 下一交易日成功；qp market health/compare 不变 |
-| Current status | **ready for authorization after observation** |
+| Post-stop check | qp calendar 下一交易日成功；qp market health/compare 不变；出现 `calendar.*` mismatch 即恢复 timer |
+| Current status | **ready for authorization after observation（带条件）**：legacy 日历文件将冻结，不再跟随修订；停后必须监控 compare |
 
 ## 5. Packet E — research-index-close-cache.timer
 
@@ -79,7 +80,7 @@ Packet A 必须把 healthcheck 作为同一 source pair 记录；不能只停 se
 | Independent supervision | qp `market.health` 的 `index_close.qp_current`（最近 ok）会写 `market:health:*` alert |
 | Rollback | `sudo systemctl enable --now research-index-close-cache.timer` |
 | Post-stop check | qp index close 下一交易日成功；qp market compare/health 不变 |
-| Current status | **ready for authorization after observation** |
+| Current status | **blocked**：qp compare 的 `index_close.legacy_vs_qp` 依赖 legacy 最近 20 天数据；停后约 20 天该项变 `skipped`、`compare.latest` 转 `unknown`。需先发版退役/放宽该比较项，或保留 legacy producer |
 
 ## 6. Hold / retain（不在本批）
 
@@ -94,6 +95,7 @@ Packet A 必须把 healthcheck 作为同一 source pair 记录；不能只停 se
 | `nng8-dashboard-cert-renew.timer` | 无 qp replacement |
 | user timers (`hermes-telegram-watchdog`, `research-data-bundle`, `launchpadlib-cache-clean`) | 无 qp replacement，需 user scope/owner |
 | `quant-research-daily-summary.service` | inactive，无 timer；无运行可停 |
+| `research-index-close-cache.timer` | **blocked**：qp compare 依赖 legacy 最近 20 天数据，需先发版退役/放宽比较项 |
 
 ## 7. 执行日 preflight（逐 packet）
 
@@ -108,10 +110,11 @@ Packet A 必须把 healthcheck 作为同一 source pair 记录；不能只停 se
 
 ## 8. 结论
 
-可执行包：research-ledger（pair）、research-system-phase2、legacy calendar timer、
-legacy index timer；前提是观察窗口完成、2026-12-09 复核和单独授权。
+可执行包：research-ledger（pair）、research-system-phase2、legacy calendar timer
+（带 compare 监控条件）；前提是观察窗口完成、2026-12-09 复核和单独授权。
 
-暂缓：approved-signals（流量证据不足）。
+阻塞：legacy index timer（`index_close.legacy_vs_qp` 依赖 legacy 最近 20 天数据，
+需先发版退役/放宽该比较项）。暂缓：approved-signals（流量证据不足）。
 保留：nng8、QD PG/Redis、research-data/qlib、ledger healthcheck（除 packet A 成对处理）、
 user timers、cert-renew、notify maintenance。
 
