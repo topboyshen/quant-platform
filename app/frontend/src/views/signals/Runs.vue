@@ -3,7 +3,7 @@
     <AsyncState :loading="loading" :error="error" :empty="!loading && !error && !rows.length" emptyText="暂无 EOD 运行">
     <n-text depth="3">共 {{ total }} 次运行</n-text>
     <n-data-table :columns="columns" :data="rows" :loading="loading" :row-props="rowProps" size="small" />
-    <n-drawer v-model:show="show" :width="760">
+    <n-drawer :show="show" :width="760" @update:show="updateDrawer">
       <n-drawer-content :title="current ? `运行 #${current.run_id}` : '运行'">
         <template v-if="current">
           <n-descriptions :column="3" size="small" bordered>
@@ -15,7 +15,13 @@
             <n-descriptions-item label="拦截">{{ current.blocked }}</n-descriptions-item>
           </n-descriptions>
           <n-h4>目标决策</n-h4>
-          <n-data-table :columns="decisionColumns" :data="decisions" size="small" :max-height="360" />
+          <n-alert v-if="detailError" type="error" title="目标决策加载失败">
+            <n-space align="center">
+              {{ detailError }}
+              <n-button size="small" @click="loadDetail(current)">重试</n-button>
+            </n-space>
+          </n-alert>
+          <n-data-table v-else :columns="decisionColumns" :data="decisions" :loading="detailLoading" size="small" :max-height="360" />
         </template>
       </n-drawer-content>
     </n-drawer>
@@ -24,7 +30,7 @@
 </template>
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { NDataTable, NDescriptions, NDescriptionsItem, NDrawer, NDrawerContent, NH4, NSpace, NText } from 'naive-ui'
+import { NAlert, NButton, NDataTable, NDescriptions, NDescriptionsItem, NDrawer, NDrawerContent, NH4, NSpace, NText } from 'naive-ui'
 import AsyncState from '../../components/AsyncState.vue'
 import { api } from '../../api/client'
 
@@ -38,6 +44,9 @@ const error = ref('')
 const show = ref(false)
 const current = ref<Run | null>(null)
 const decisions = ref<Decision[]>([])
+const detailLoading = ref(false)
+const detailError = ref('')
+let detailRequest = 0
 
 const columns = [
   { title: 'ID', key: 'run_id', width: 70 },
@@ -65,10 +74,35 @@ async function load() {
     total.value = data.total
   } catch (e) { error.value = (e as Error).message } finally { loading.value = false }
 }
-function rowProps(row: Run) { return { style: 'cursor: pointer', onClick: async () => {
+async function loadDetail(row: Run) {
+  const request = ++detailRequest
   current.value = row
-  decisions.value = (await api<{ decisions: Decision[] }>(`/signals/runs/${row.run_id}`)).decisions
+  decisions.value = []
+  detailError.value = ''
+  detailLoading.value = true
+  try {
+    const data = await api<{ decisions: Decision[] }>(`/signals/runs/${row.run_id}`)
+    if (request !== detailRequest) return
+    decisions.value = data.decisions
+  } catch (e) {
+    if (request !== detailRequest) return
+    detailError.value = (e instanceof Error && e.message) || '请求失败'
+  }
+  detailLoading.value = false
   show.value = true
-} } }
+}
+
+function updateDrawer(visible: boolean) {
+  if (!visible) {
+    ++detailRequest
+    detailLoading.value = false
+  }
+  show.value = visible
+}
+
+function rowProps(row: Run) {
+  return { style: 'cursor: pointer', onClick: () => loadDetail(row) }
+}
+
 onMounted(load)
 </script>
