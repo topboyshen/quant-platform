@@ -30,17 +30,41 @@ const opt = (sym: string) => {
     series: [{ name: '新平台', type: 'line', data: m(qp), showSymbol: false, connectNulls: true },
       { name: '旧缓存', type: 'line', data: m(lg), symbolSize: 8, lineStyle: { opacity: 0 } }] }
 }
+interface DetailRow {
+  symbol: string
+  trade_date: string
+  close: number | null
+  source: string | null
+  legacy: number | null
+}
 const table = computed(() => {
-  const key = (r: R) => `${r.symbol}|${r.trade_date}`
-  const lg = new Map(rows.value.filter((r) => r.origin === 'legacy').map((r) => [key(r), r]))
-  return rows.value.filter((r) => r.origin === 'qp').map((r) => ({ ...r, legacy: lg.get(key(r))?.close ?? null }))
-    .sort((a, b) => b.trade_date.localeCompare(a.trade_date) || a.symbol.localeCompare(b.symbol))
+  const details = new Map<string, DetailRow>()
+  for (const { origin, symbol, trade_date, close, source } of rows.value) {
+    if (origin !== 'qp' && origin !== 'legacy') continue
+    const key = `${symbol}|${trade_date}`
+    const detail = details.get(key) ?? { symbol, trade_date, close: null, source: null, legacy: null }
+    if (origin === 'qp') {
+      detail.close = close
+      detail.source = source
+    } else {
+      detail.legacy = close
+    }
+    details.set(key, detail)
+  }
+  return [...details.values()].sort((a, b) => b.trade_date.localeCompare(a.trade_date) || a.symbol.localeCompare(b.symbol))
 })
 const cols = [
-  { title: '日期', key: 'trade_date' }, { title: '指数', key: 'symbol' }, { title: '新平台', key: 'close' }, { title: '来源', key: 'source' },
-  { title: '旧缓存', key: 'legacy', render: (r: { legacy: number | null }) => r.legacy ?? '-' },
-  { title: '对比', key: 'cmp', render: (r: { legacy: number | null; close: number }) => r.legacy == null ? '-' :
-    h(NTag, { size: 'small', type: Math.abs(r.legacy - r.close) <= 0.011 ? 'success' : 'error' }, { default: () => (Math.abs(r.legacy! - r.close) <= 0.011 ? '一致' : `差 ${(r.close - r.legacy!).toFixed(4)}`) }) },
+  { title: '日期', key: 'trade_date' }, { title: '指数', key: 'symbol' },
+  { title: '新平台', key: 'close', render: (r: DetailRow) => r.close ?? '-' },
+  { title: '来源', key: 'source', render: (r: DetailRow) => r.source ?? '-' },
+  { title: '旧缓存', key: 'legacy', render: (r: DetailRow) => r.legacy ?? '-' },
+  { title: '对比', key: 'cmp', render: ({ close, legacy }: DetailRow) => {
+    if (close == null || legacy == null) return '-'
+    // Compare at the stored price precision so the tolerance includes exactly 0.0110.
+    const difference = (close - legacy).toFixed(4)
+    const matches = Math.abs(Number(difference)) <= 0.011
+    return h(NTag, { size: 'small', type: matches ? 'success' : 'error' }, { default: () => matches ? '一致' : `差 ${difference}` })
+  } },
 ]
 async function load() { rows.value = await api<R[]>(`/market/index-close?days=${days.value}`) }
 watch(days, load)
