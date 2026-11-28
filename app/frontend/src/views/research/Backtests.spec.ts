@@ -1,10 +1,63 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { expect, it, vi } from 'vitest'
-import { api } from '../../api/client'
+import { beforeEach, expect, it, vi } from 'vitest'
+import { api, ApiError } from '../../api/client'
 import Backtests from './Backtests.vue'
 import latest from './fixtures/backtest-latest-501.json'
 
-vi.mock('../../api/client', () => ({ api: vi.fn() }))
+vi.mock('../../api/client', async (original) => ({
+  ...await original<typeof import('../../api/client')>(),
+  api: vi.fn(),
+}))
+
+beforeEach(() => { vi.mocked(api).mockReset() })
+
+const hit = { total: 1, rows: [{
+  run_id: 42, strategy_name: 'MA 双均线', symbol: '000001.SZ',
+  timeframe: '1d', status: 'finished', created_at: '2026-11-27T15:00:00+08:00',
+}] }
+
+it('lets the user clear an unmatched search and find the run again', async () => {
+  vi.mocked(api).mockResolvedValueOnce(hit).mockResolvedValueOnce({ total: 0, rows: [] }).mockResolvedValueOnce(hit)
+  const wrapper = mount(Backtests)
+  try {
+    await flushPromises()
+    expect(wrapper.get('tbody tr').text()).toContain('MA 双均线')
+    const query = 'ZZZ-无匹配'
+    await wrapper.get('input').setValue(query)
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(api).toHaveBeenLastCalledWith(`/research/backtests?limit=100&q=${encodeURIComponent(query)}`)
+    expect(wrapper.text()).toContain('暂无回测')
+    expect(wrapper.find('tbody tr').exists()).toBe(false)
+    expect(wrapper.get('button').text()).toBe('查询')
+    await wrapper.get('input').setValue('')
+    await wrapper.get('input').trigger('keyup.enter')
+    await flushPromises()
+    expect(api).toHaveBeenLastCalledWith('/research/backtests?limit=100&q=')
+    expect(wrapper.get('tbody tr').text()).toContain('MA 双均线')
+    expect(wrapper.text()).not.toContain('暂无回测')
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('lets the user retry a failed list request and removes the old error', async () => {
+  vi.mocked(api).mockRejectedValueOnce(new ApiError(500, '服务不可用')).mockResolvedValueOnce(hit)
+  const wrapper = mount(Backtests)
+  try {
+    await flushPromises()
+    expect(wrapper.text()).toContain('服务不可用')
+    expect(wrapper.get('input').element.value).toBe('')
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(api).toHaveBeenLastCalledWith('/research/backtests?limit=100&q=')
+    expect(wrapper.text()).not.toContain('服务不可用')
+    expect(wrapper.get('tbody tr').text()).toContain('MA 双均线')
+  } finally {
+    wrapper.unmount()
+  }
+})
 
 it('requests the latest trades for the selected run and shows the full trade count', async () => {
   // Captured from the detail API for a run with indices 1..501 and profit equal to index.

@@ -1,12 +1,13 @@
 <template>
   <n-space vertical>
-    <AsyncState :loading="loading" :error="error" :empty="!loading && !error && !rows.length" emptyText="暂无回测">
     <n-space>
       <n-input v-model:value="q" placeholder="策略或代码" clearable style="width: 220px" @keyup.enter="load" />
-      <n-button @click="load">查询</n-button>
-      <n-text depth="3">共 {{ total }} 条</n-text>
+      <n-button :loading="loading" @click="load">查询</n-button>
+      <n-text v-if="!loading && !error" depth="3">共 {{ total }} 条</n-text>
     </n-space>
-    <n-data-table :columns="columns" :data="rows" :loading="loading" :row-props="rowProps" size="small" />
+    <AsyncState :loading="loading" :error="error" :empty="!loading && !rows.length" empty-text="暂无回测">
+      <n-data-table :columns="columns" :data="rows" :row-props="rowProps" size="small" />
+    </AsyncState>
     <n-drawer v-model:show="show" :width="640">
       <n-drawer-content :title="detail ? `回测 #${detail.run.run_id}` : '回测'">
         <template v-if="detail">
@@ -23,7 +24,6 @@
         </template>
       </n-drawer-content>
     </n-drawer>
-  </AsyncState>
   </n-space>
 </template>
 <script setup lang="ts">
@@ -61,7 +61,9 @@ const tradeColumns = [
 ]
 
 async function load() {
+  if (loading.value) return
   loading.value = true
+  error.value = ''
   try {
     const data = await api<{ total: number; rows: Run[] }>(`/research/backtests?limit=100&q=${encodeURIComponent(q.value)}`)
     rows.value = data.rows
