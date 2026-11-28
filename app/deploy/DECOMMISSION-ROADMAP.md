@@ -6,7 +6,7 @@ provides stop-only tooling and requires separate authorization.
 
 Current baseline: [`FREEZE-BASELINE-2026-11-24.md`](FREEZE-BASELINE-2026-11-24.md)
 — the single source for the current production release, freeze start and earliest
-Phase 2 review (currently `0.3.118-outcome-window-6f60f5a8`, freeze
+Phase 2 review (currently `0.3.120-market-generation-bce0f98e`, freeze
 2026-11-25 11:03 CST → earliest review 2026-12-09).
 
 Related: [`M9-DECOMMISSION-RUNBOOK.md`](M9-DECOMMISSION-RUNBOOK.md),
@@ -64,15 +64,19 @@ in the freeze baseline above.
   were activated after the open (mixed-version day).
 - **2026-11-25:** freeze window re-baselined at `0.3.115` 11:03 CST; `.112`–`.118`
   are in-freeze correctness fixes. Current production is
-  `0.3.118-outcome-window-6f60f5a8`; earliest Phase 2 review is 2026-12-09
+  `0.3.120-market-generation-bce0f98e`; `.119` / `.120` are also in-freeze
+  correctness fixes. Earliest Phase 2 review is 2026-12-09
   (see the freeze baseline for the single current figure).
 - Run `qp decommission inventory` weekly/monthly and store the manifest with
-  its sha256. Latest: `/var/lib/qp/decommission-2026-11-24.json`,
-  sha256 `e98f4846…` (5 system timers, 0 containers, 13.5 MB captured paths).
+  its sha256. Latest: `/var/lib/qp/decommission-2026-11-28.json`,
+  sha256 `b745f73e…` (5 qp-scope system timers, 0 containers, 13.5 MB captured
+  paths); root/ubuntu scope is supplemented by the 2026-11-28 prep dossier.
 - 2026-11-25 read-only scan (units, timers, containers, cron, processes, nginx,
   paths) is recorded in
   [`M9-EXIT-EVIDENCE-2026-11-25.md`](M9-EXIT-EVIDENCE-2026-11-25.md); several
-  statuses above were corrected from it.
+  statuses above were corrected from it. The 2026-11-28 refresh, unit archive
+  and mock rollback drill are in
+  [`M9-PHASE2-PREP-2026-11-28.md`](M9-PHASE2-PREP-2026-11-28.md).
 - User timers must be scanned separately as `ubuntu`; root-owned paths need a
   root scan before Phase 2 evidence is complete.
 - Confirm each "active legacy" consumer with its timer/unit owner.

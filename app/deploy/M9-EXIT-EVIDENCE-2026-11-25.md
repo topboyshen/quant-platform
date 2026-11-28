@@ -1,5 +1,10 @@
 # M9 exit evidence — 2026-11-25
 
+> 2026-11-28 refresh: current production is `0.3.120-market-generation-bce0f98e`;
+> see [`M9-PHASE2-PREP-2026-11-28.md`](M9-PHASE2-PREP-2026-11-28.md) for the
+> current inventory, unit archive and mock rollback drill. Phase 2 remains
+> unauthorized and the observation window is 8/10 complete.
+
 Read-only evidence for the services listed in
 [`DECOMMISSION-ROADMAP.md`](DECOMMISSION-ROADMAP.md). **No legacy unit, timer,
 container or data was stopped, disabled or deleted for this document.**

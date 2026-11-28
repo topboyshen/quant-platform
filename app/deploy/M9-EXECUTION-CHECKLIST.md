@@ -4,13 +4,18 @@
 `astock*`, `quant-*`, etc.). Each unit is stopped only after its own row below
 is complete and signed off. A blank cell is a hard stop.
 
-Current freeze baseline: production `0.3.118-outcome-window-6f60f5a8`, freeze
+Current freeze baseline: production `0.3.120-market-generation-bce0f98e`
+(source `4f7047ca982e20af60586995f1ff5a9102c0de20`), freeze
 **2026-11-25 11:03 CST → 2026-12-09**. Do not execute any Phase 2 row before
 2026-12-09 and the separate authorization;
 see [`FREEZE-BASELINE-2026-11-24.md`](FREEZE-BASELINE-2026-11-24.md).
 Per-service consumer/replacement/rollback evidence:
-[`M9-EXIT-EVIDENCE-2026-11-25.md`](M9-EXIT-EVIDENCE-2026-11-25.md); `partial` or
+[`M9-EXIT-EVIDENCE-2026-11-25.md`](M9-EXIT-EVIDENCE-2026-11-25.md) and the
+2026-11-28 preparation dossier
+[`M9-PHASE2-PREP-2026-11-28.md`](M9-PHASE2-PREP-2026-11-28.md); `partial` or
 `missing` rows are hard stops.
+Observation window: **2026-11-18 → 2026-12-01** (8/10 trading days complete as
+of 2026-11-27).
 
 ## 1. Pre-flight (once)
 
@@ -20,8 +25,8 @@ Per-service consumer/replacement/rollback evidence:
 - [ ] `qp` health, backup, chain window, and 17:40 report are green.
 - [ ] Rollback command for this unit is written down and tested on a mock unit.
 - [ ] The observation window required by the roadmap has actually elapsed.
-      Current window: 2026-11-25 11:03 CST → 2026-12-09; 2026-11-24 and 2026-11-25
-      are mixed-version days.
+      Observation window: **2026-11-18 → 2026-12-01** (8/10 trading days complete
+      as of 2026-11-27); Phase 2 review is not before 2026-12-09.
 
 ## 2. Per-unit gate
 
