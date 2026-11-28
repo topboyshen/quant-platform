@@ -6,7 +6,7 @@ provides stop-only tooling and requires separate authorization.
 
 Current baseline: [`FREEZE-BASELINE-2026-11-24.md`](FREEZE-BASELINE-2026-11-24.md)
 — the single source for the current production release, freeze start and earliest
-Phase 2 review (currently `0.3.120-market-generation-bce0f98e`, freeze
+Phase 2 review (currently `0.3.121-backtest-latest-7dfcb452`, freeze
 2026-11-25 11:03 CST → earliest review 2026-12-09).
 
 Related: [`M9-DECOMMISSION-RUNBOOK.md`](M9-DECOMMISSION-RUNBOOK.md),
@@ -64,9 +64,11 @@ in the freeze baseline above.
   were activated after the open (mixed-version day).
 - **2026-11-25:** freeze window re-baselined at `0.3.115` 11:03 CST; `.112`–`.118`
   are in-freeze correctness fixes. Current production is
-  `0.3.120-market-generation-bce0f98e`; `.119` / `.120` are also in-freeze
+  `0.3.121-backtest-latest-7dfcb452`; `.119`–`.121` are also in-freeze
   correctness fixes. Earliest Phase 2 review is 2026-12-09
   (see the freeze baseline for the single current figure).
+- **2026-11-28:** `.121` backtest latest-trades selection activated 14:22 CST
+  (PR #93); observation window unchanged.
 - Run `qp decommission inventory` weekly/monthly and store the manifest with
   its sha256. Latest: `/var/lib/qp/decommission-2026-11-28.json`,
   sha256 `b745f73e…` (5 qp-scope system timers, 0 containers, 13.5 MB captured
