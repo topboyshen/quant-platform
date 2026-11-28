@@ -6,7 +6,7 @@
 
 ## 0. 共同前置门
 
-- 当前 release：`0.3.122-backtest-search-recovery-ad12fb37`，源 `bf45bc2`，DB `0017`。
+- 当前 release：`0.3.123-index-close-union-5f698f20`，源 `f0c51f12`，DB `0017`。
 - 观察窗口：**2026-11-18 → 2026-12-01**；截至 2026-11-27 为 8/10，11-30、12-01 未到。
 - Phase 2 最早复核：**2026-12-09**，且必须有单独的用户授权。
 - qp health、compare、10 个业务日 acceptance/日报均为绿色；当前无未恢复告警。

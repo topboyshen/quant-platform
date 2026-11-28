@@ -2,7 +2,7 @@
 
 > **依据**：`main` 分支 HEAD `23333cb`（与 `origin/main` 一致）；HEAD 提交时间 2026-11-25 21:51 +0800；读取时间 2026-11-25 22:02 +0800。
 >
-> **部署依据**：生产部署记录 [`app/deploy/RELEASE-NOTES-2026-11-28-0.3.122-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-28-0.3.122-zh-CN.md)。当前生产为 `0.3.122-backtest-search-recovery-ad12fb37`（2026-11-28 16:30 激活）；`.121` 保留为回滚目标。历史版本见 `.108`–`.121` 的发布记录与收据。
+> **部署依据**：生产部署记录 [`app/deploy/RELEASE-NOTES-2026-11-28-0.3.123-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-28-0.3.123-zh-CN.md)。当前生产为 `0.3.123-index-close-union-5f698f20`（2026-11-28 18:31 激活）；`.122` 保留为回滚目标。历史版本见 `.108`–`.122` 的发布记录与收据。
 >
 > **关键文档**：`README.md`、`ARCHITECTURE.md`、`app/README.md`、`app/deploy/FREEZE-BASELINE-2026-11-24.md`、`app/deploy/KNOWN-LIMITATIONS.md`、`app/deploy/DECOMMISSION-ROADMAP.md`、`app/deploy/RELEASE-ACTIVATION.md`。
 >
@@ -12,7 +12,7 @@
 
 > **版本状态（截至 2026-11-25 22:02 CST）**
 >
-> - **当前生产：`0.3.122-backtest-search-recovery-ad12fb37`**，源码基线 `bf45bc2`（PR #94），2026-11-28 16:30 激活。当前版本、冻结起点与复核日以 `app/deploy/FREEZE-BASELINE-2026-11-24.md` 为唯一口径。
+> - **当前生产：`0.3.123-index-close-union-5f698f20`**，源码基线 `f0c51f12`（PR #100），2026-11-28 18:31 激活。当前版本、冻结起点与复核日以 `app/deploy/FREEZE-BASELINE-2026-11-24.md` 为唯一口径。
 > - 冻结起点 **2026-11-25 11:03 CST** 不变，最早 Phase 2 复核 **2026-12-09**；2026-11-24 是 `.105`–`.111` 的混合版本日，2026-11-25 又发布 `.112`–`.118`，均不能算单版本干净日。
 > - 版本映射：`#59`→`.112`；`#61` 同版；`#62`→`.113`；`#63`→`.114`；`#64`→`.115`；`#65`/`#66`→`.116`；`#72`→`.117`；`#74`→`.118`（`#73` 文档随版）；`#67`/`#69`/`#75` 为文档或测试改动，未单独发版。
 > - 冻结期只允许事故修复、安全修复、证据纠正和文档；12-09 前不再为文案、列宽、概览措辞发版。
@@ -221,7 +221,7 @@ npm run smoke    # Playwright 冒烟（需要可登录的真实数据库）
 - 本项目是研究与信号工程平台，**不构成投资建议，也不承诺任何收益**。仓库与本文档不发布任何业绩、资金或实盘运营数据。
 - ETF 评分、C13 轮动、规则影子、绩效归因都是**只读研究/观察**；不产生订单，不生成正式交易决策。
 - **测试通过不等于策略有效**；CI 绿色只证明代码与测试，不证明自然样本、策略有效性或未来表现。
-- **仓库有代码不等于已部署或已在实盘运行；合并提交也不等于部署。** 生产版本以部署记录为准；当前生产为 `0.3.122-backtest-search-recovery-ad12fb37`（2026-11-28 16:30 激活，见 [`RELEASE-NOTES-2026-11-28-0.3.122-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-28-0.3.122-zh-CN.md)）。
+- **仓库有代码不等于已部署或已在实盘运行；合并提交也不等于部署。** 生产版本以部署记录为准；当前生产为 `0.3.123-index-close-union-5f698f20`（2026-11-28 18:31 激活，见 [`RELEASE-NOTES-2026-11-28-0.3.123-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-28-0.3.123-zh-CN.md)）。
 - 旧模块是历史快照，按 `DECOMMISSION-ROADMAP.md` 冻结；第三方组件（QuantDinger、qlib 等）遵循其各自许可证与商标声明。仓库根目录未发现 LICENSE 文件，本仓库自身的授权方式需由维护者确认。
 - 数据源可用性、交易日历与第三方接口都可能变化；已知限制见 `app/deploy/KNOWN-LIMITATIONS.md`。
 
@@ -249,11 +249,11 @@ npm run smoke    # Playwright 冒烟（需要可登录的真实数据库）
 ### 8.1 版本口径
 
 - 仓库内没有 git tag；版本号来自本地部署收据与 `app/deploy/FREEZE-BASELINE-2026-11-24.md`。
-- **当前生产基线：`0.3.122-backtest-search-recovery-ad12fb37`**，源码基线 `bf45bc2cccb02afce121ab1afc0b7cadb15d7528`（PR #94），2026-11-28 16:30 激活。冻结窗口自 2026-11-25 11:03 CST 起，最早 Phase 2 复核 2026-12-09。[^freeze]
+- **当前生产基线：`0.3.123-index-close-union-5f698f20`**，源码基线 `f0c51f12de9368a6cd6f93041af07752c8faa081`（PR #100），2026-11-28 18:31 激活。冻结窗口自 2026-11-25 11:03 CST 起，最早 Phase 2 复核 2026-12-09。[^freeze]
 - `0.3.108` 是历史冻结基线；`.109` 仅有间接记录，`.110`–`.116` 均有直接部署收据；`.117` 有 release 目录与部署前备份、未找到自身激活收据；`.118` 为本次直接部署。`.112` 包含 #59 C13 账户口径修正与 #61 README；`.113`–`.115` 为同日“曾失败”标记修正；`.116` 包含 #65 health/基准口径与 #66 容器告警修复；`.117` 包含 #72 correctness batch 1；`.118` 包含 #74 日历收益窗口/OHLC 校验与 #73 评分文档。
-- 更早的同日版本链见 [`app/deploy/RELEASE-NOTES-2026-11-24-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-24-zh-CN.md)；本次发布见 [`app/deploy/RELEASE-NOTES-2026-11-28-0.3.122-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-28-0.3.122-zh-CN.md)。
+- 更早的同日版本链见 [`app/deploy/RELEASE-NOTES-2026-11-24-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-24-zh-CN.md)；本次发布见 [`app/deploy/RELEASE-NOTES-2026-11-28-0.3.123-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-28-0.3.123-zh-CN.md)。
 
-[^freeze]: `FREEZE-BASELINE-2026-11-24.md` 已更新为 `.122` 当前生产口径；冻结起点保持 2026-11-25 11:03 CST；2026-11-24 记录为 `.105`–`.111` 混合版本日，2026-11-25 为 `.112`–`.118` 混合版本日；`.121`/`.122` 于 2026-11-28（周六，休市）14:22/16:30 激活。
+[^freeze]: `FREEZE-BASELINE-2026-11-24.md` 已更新为 `.123` 当前生产口径；冻结起点保持 2026-11-25 11:03 CST；2026-11-24 记录为 `.105`–`.111` 混合版本日，2026-11-25 为 `.112`–`.118` 混合版本日；`.121`–`.123` 于 2026-11-28（周六，休市）14:22/16:30/18:31 激活。
 
 ### 8.2 #56–#66 逐项状态
 
@@ -297,6 +297,7 @@ npm run smoke    # Playwright 冒烟（需要可登录的真实数据库）
 | #86 | `4f7047c` | `0.3.120-market-generation-bce0f98e` | 跨 Qlib 代次只比较 coverage.valid；2026-11-26 19:17 激活 | [`RELEASE-NOTES-2026-11-26-0.3.120-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-26-0.3.120-zh-CN.md)；直接 |
 | #93 | `68902b4` | `0.3.121-backtest-latest-7dfcb452` | 回测明细新增最新成交视图，默认仍为最早；2026-11-28 14:22 激活 | [`RELEASE-NOTES-2026-11-28-0.3.121-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-28-0.3.121-zh-CN.md)；直接 |
 | #94 | `bf45bc2` | `0.3.122-backtest-search-recovery-ad12fb37` | 回测列表在空结果/错误后可继续查询；2026-11-28 16:30 激活 | [`RELEASE-NOTES-2026-11-28-0.3.122-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-28-0.3.122-zh-CN.md)；直接 |
+| #100 | `f0c51f12` | `0.3.123-index-close-union-5f698f20` | 指数收盘明细按（指数，交易日）取新平台与旧缓存并集；2026-11-28 18:31 激活 | [`RELEASE-NOTES-2026-11-28-0.3.123-zh-CN.md`](app/deploy/RELEASE-NOTES-2026-11-28-0.3.123-zh-CN.md)；直接 |
 
 ### 8.4 2026-11-25 生产运行状态核对
 
