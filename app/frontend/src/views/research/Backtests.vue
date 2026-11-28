@@ -69,7 +69,7 @@ async function load() {
   } catch (e) { error.value = (e as Error).message } finally { loading.value = false }
 }
 function rowProps(row: Run) { return { style: 'cursor: pointer', onClick: async () => {
-  detail.value = await api<Detail>(`/research/backtests/${row.run_id}`)
+  detail.value = await api<Detail>(`/research/backtests/${row.run_id}?trades=latest`)
   show.value = true
 } } }
 onMounted(load)

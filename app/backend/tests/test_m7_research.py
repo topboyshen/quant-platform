@@ -135,11 +135,11 @@ def seed(engine) -> None:
         session.commit()
 
 
-def _token(engine) -> str:
+def _token(engine, name: str = "m7-research", scope: str = "research:read") -> str:
     from qp.auth.sessions import create_service_token
 
     with Session(engine) as s:
-        tok = create_service_token(s, "m7-research", ["research:read"])
+        tok = create_service_token(s, name, [scope])
         s.commit()
     return tok
 
@@ -185,3 +185,45 @@ def test_research_endpoints(engine, client):
 
 def test_research_requires_auth(client):
     assert client.get("/api/research/backtests").status_code == 401
+
+
+def test_backtest_trade_windows(engine, client):
+    samples = {101: range(1, 502), 102: range(1, 4), 103: range(1, 501), 104: range(0), 105: range(3)}
+    equity = [{"index": i, "time": f"2026-08-{i:02d}", "value": 100000.0 + i} for i in (1, 2, 3)]
+    headers = {"authorization": f"Bearer {_token(engine, 'backtest-trade-windows')}"}
+    try:
+        with Session(engine) as session:
+            for run_id, indices in samples.items():
+                session.add(BacktestRun(run_id=run_id))
+                session.add_all(
+                    BacktestEquity(run_id=run_id, point_index=e["index"], point_time=e["time"], point_value=e["value"])
+                    for e in reversed(equity)
+                )
+                session.add_all(
+                    BacktestTrade(run_id=run_id, trade_index=i, profit=float(i), reason=f"run-{run_id}")
+                    for i in indices
+                )
+            session.commit()
+
+        for run_id, indices in samples.items():
+            url = f"/api/research/backtests/{run_id}"
+            for params, window in (({}, indices[:500]), ({"trades": "latest"}, indices[::-1][:500])):
+                response = client.get(url, params=params, headers=headers)
+                assert response.status_code == 200
+                detail = response.json()
+                assert detail["run"]["run_id"] == run_id
+                assert detail["counts"] == {"equity_points": 3, "trades": len(indices)}
+                assert detail["equity"] == equity
+                assert [(t["index"], t["profit"], t["reason"]) for t in detail["trades"]] == [
+                    (i, float(i), f"run-{run_id}") for i in window
+                ]
+
+        assert client.get("/api/research/backtests/101?trades=latest").status_code == 401
+        other = {"authorization": f"Bearer {_token(engine, 'backtest-other-scope', 'market:read')}"}
+        assert client.get("/api/research/backtests/101?trades=latest", headers=other).status_code == 403
+        assert client.get("/api/research/backtests/999?trades=latest", headers=headers).status_code == 404
+    finally:
+        with Session(engine) as session:
+            for model in (BacktestTrade, BacktestEquity, BacktestRun):
+                session.execute(delete(model).where(model.run_id.in_(samples)))
+            session.commit()
